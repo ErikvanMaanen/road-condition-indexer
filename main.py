@@ -2,12 +2,25 @@ import os
 from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
 
 app = FastAPI(title="Road Condition Indexer")
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+def read_index():
+    """Serve the main application page."""
+    return FileResponse("static/index.html")
+
+
+@app.get("/welcome.html")
+def read_welcome():
+    """Serve the welcome page."""
+    return FileResponse("static/welcome.html")
 
 # In-memory debug log
 DEBUG_LOG: List[str] = []

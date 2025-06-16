@@ -24,8 +24,10 @@ This project collects road roughness data from mobile devices and stores it in a
    uvicorn main:app --reload
    ```
 
-The built-in frontend is served from the `static/` directory when the
-server is running. Visit `/welcome.html` for a simple welcome page.
+The built-in frontend is served from the `static/` directory under the
+`/static` path when the server is running. The main interface is
+available at `/`, and you can still visit `/welcome.html` for a simple
+welcome page.
 
 ## Database Schema
 
