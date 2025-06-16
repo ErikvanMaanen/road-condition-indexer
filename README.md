@@ -29,6 +29,9 @@ The built-in frontend is served from the `static/` directory under the
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
+When the API starts it will automatically create the `bike_data` table
+if it does not already exist.
+
 ## Database Schema
 
 ```

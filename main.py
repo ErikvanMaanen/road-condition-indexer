@@ -54,6 +54,37 @@ def get_db_connection():
     return pyodbc.connect(conn_str)
 
 
+@app.on_event("startup")
+def init_db() -> None:
+    """Ensure that the bike_data table exists."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            IF OBJECT_ID('bike_data', 'U') IS NULL
+            CREATE TABLE bike_data (
+                id INT IDENTITY PRIMARY KEY,
+                timestamp DATETIME DEFAULT GETDATE(),
+                latitude FLOAT,
+                longitude FLOAT,
+                speed FLOAT,
+                direction FLOAT,
+                roughness FLOAT
+            )
+            """
+        )
+        conn.commit()
+        log_debug("Ensured database table exists")
+    except Exception as exc:
+        log_debug(f"Database init error: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 class LogEntry(BaseModel):
     latitude: float
     longitude: float
