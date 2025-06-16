@@ -29,6 +29,9 @@ The built-in frontend is served from the `static/` directory under the
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
+The interactive map displayed on the main page is centered on Houten,
+Netherlands by default.
+
 When the API starts it will automatically create the `bike_data` table
 if it does not already exist.
 
