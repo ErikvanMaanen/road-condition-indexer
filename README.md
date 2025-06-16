@@ -25,7 +25,7 @@ This project collects road roughness data from mobile devices and stores it in a
    ```
 
 The built-in frontend is served from the `static/` directory when the
-server is running.
+server is running. Visit `/welcome.html` for a simple welcome page.
 
 ## Database Schema
 
