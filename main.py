@@ -113,6 +113,9 @@ def post_log(entry: LogEntry):
             entry.direction,
             roughness,
         )
+        if cursor.rowcount != 1:
+            log_debug(f"Insert affected {cursor.rowcount} rows")
+            raise HTTPException(status_code=500, detail="Insert failed")
         conn.commit()
         log_debug("Data inserted into database")
     except Exception as exc:

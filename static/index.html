@@ -23,7 +23,8 @@ let zValues = [];
 let map;
 
 function initMap() {
-    map = L.map('map').setView([0, 0], 13);
+    // Start slightly zoomed out so a larger area is visible
+    map = L.map('map').setView([0, 0], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -54,8 +55,9 @@ function loadLogs() {
             });
         }
         data.reverse().forEach(row => {
-            const { latitude, longitude, roughness } = row;
-            recordEl.textContent += `${latitude}, ${longitude} - roughness ${roughness.toFixed(2)}\n`;
+            const { latitude, longitude, roughness, timestamp } = row;
+            const timeStr = new Date(timestamp).toLocaleString();
+            recordEl.textContent += `${timeStr} - ${latitude}, ${longitude} - roughness ${roughness.toFixed(2)}\n`;
             if (map) {
                 L.circleMarker([latitude, longitude], {
                     radius: 6,
