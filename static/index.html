@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Road Condition Indexer</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #log, #debug { width: 100%; height: 200px; overflow: auto; border: 1px solid #ccc; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+<h1>Road Condition Indexer</h1>
+<div id="log"></div>
+<div id="debug"></div>
+<script>
+let zValues = [];
+
+function addLog(msg) {
+    const div = document.getElementById('log');
+    div.textContent += msg + '\n';
+    div.scrollTop = div.scrollHeight;
+}
+
+function addDebug(msg) {
+    const div = document.getElementById('debug');
+    div.textContent += msg + '\n';
+    div.scrollTop = div.scrollHeight;
+}
+
+if (window.DeviceMotionEvent) {
+    window.addEventListener('devicemotion', (event) => {
+        if (event.accelerationIncludingGravity) {
+            zValues.push(event.accelerationIncludingGravity.z || 0);
+        }
+    });
+}
+
+if (navigator.geolocation) {
+    navigator.geolocation.watchPosition((pos) => {
+        const { latitude, longitude, speed, heading } = pos.coords;
+        addLog(`Location: ${latitude}, ${longitude} speed: ${speed}`);
+        if (zValues.length > 0) {
+            fetch('/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    speed: speed || 0,
+                    direction: heading || 0,
+                    z_values: zValues
+                })
+            }).then(r => r.json()).then(data => {
+                if (data.roughness !== undefined) {
+                    addLog('Roughness: ' + data.roughness.toFixed(2));
+                }
+            }).catch(err => addDebug('Error: ' + err));
+            zValues = [];
+        }
+    }, err => addDebug('Geolocation error: ' + err.message));
+}
+
+function pollDebug() {
+    fetch('/debuglog').then(r => r.json()).then(data => {
+        document.getElementById('debug').textContent = data.log.join('\n');
+    }).catch(console.error).finally(() => setTimeout(pollDebug, 2000));
+}
+
+pollDebug();
+</script>
+</body>
+</html>
