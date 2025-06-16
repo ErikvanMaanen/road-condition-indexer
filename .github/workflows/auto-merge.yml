@@ -1,0 +1,24 @@
+name: Auto Merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.event.pull_request.mergeable_state == 'clean' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto merge PR
+        uses: pascalgn/automerge-action@v0.15.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          mergeMethod: squash           # or 'merge' / 'rebase'
+          mergeLabel: ''                # empty disables label requirement
+          mergeCommitMessage: pull-request-title
+          deleteBranchAfterMerge: true # optional
