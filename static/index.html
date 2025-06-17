@@ -55,6 +55,8 @@
     </thead>
     <tbody></tbody>
 </table>
+<button id="gpx-button">Generate GPX</button>
+<a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
@@ -261,6 +263,17 @@ function pollDebug() {
     }).catch(console.error).finally(() => setTimeout(pollDebug, 2000));
 }
 
+function generateGpx() {
+    fetch('/gpx').then(r => r.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const link = document.getElementById('gpx-link');
+        link.href = url;
+        link.download = 'records.gpx';
+        link.style.display = 'inline';
+        link.textContent = 'Download GPX';
+    }).catch(err => addDebug('GPX error: ' + err));
+}
+
 updateStatus();
 initMap();
 loadLogs();
@@ -275,6 +288,8 @@ document.getElementById('toggle').addEventListener('click', () => {
         document.getElementById('toggle').textContent = 'Stop';
     }
 });
+
+document.getElementById('gpx-button').addEventListener('click', generateGpx);
 
 let wakeLock = null;
 async function requestWakeLock() {
