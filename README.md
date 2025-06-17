@@ -5,7 +5,8 @@ This project collects road roughness data from mobile devices and stores it in a
 ## Endpoints
 
 - `POST /log` – Submit a new measurement. Requires JSON payload with latitude,
-  longitude, **speed in km/h**, direction and a list of Z-axis acceleration values.
+  longitude, **speed in km/h**, direction, a device identifier, the browser
+  user agent and a list of Z-axis acceleration values.
 - `GET /logs` – Fetch recent measurements. Accepts an optional `limit` query
   parameter (default 100).
 - `GET /debuglog` – Retrieve backend debug messages.
@@ -44,6 +45,8 @@ CREATE TABLE bike_data (
   longitude FLOAT,
   speed FLOAT,
   direction FLOAT,
-  roughness FLOAT
+  roughness FLOAT,
+  device_id NVARCHAR(100),
+  user_agent NVARCHAR(256)
 );
 ```
