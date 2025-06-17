@@ -7,13 +7,20 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 1rem; }
-        #log, #records {
+        #log {
             width: 100%;
             height: 150px;
             overflow: auto;
             border: 1px solid #ccc;
             margin-bottom: 1rem;
             white-space: pre;
+        }
+        #records {
+            width: 100%;
+            height: 150px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
         }
         #debug {
             width: 100%;
@@ -27,10 +34,23 @@
 <body>
 <h1>Road Condition Indexer</h1>
 <div id="status"></div>
+<button id="toggle">Start</button>
 <h3>Activity Log</h3>
 <div id="log"></div>
 <h3>Records</h3>
-<pre id="records"></pre>
+<table id="records">
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Speed (km/h)</th>
+            <th>Direction</th>
+            <th>Roughness</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
 <div id="map"></div>
 <h3>Debug Messages</h3>
 <textarea id="debug" readonly></textarea>
@@ -49,6 +69,8 @@ let map;
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
 let geoPollId = null;
+let geoWatchId = null;
+let loggingEnabled = false;
 let recordCount = 0;
 
 function initMap() {
@@ -84,6 +106,21 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
+function directionToCompass(deg) {
+    if (deg === null || isNaN(deg)) return 'N/A';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round((deg % 360) / 45) % 8;
+    return directions[idx];
+}
+
+function roughnessLabel(r) {
+    if (r < 1) return 'Very smooth';
+    if (r < 2) return 'Smooth';
+    if (r < 3) return 'Moderate';
+    if (r < 4) return 'Rough';
+    return 'Very rough';
+}
+
 function addMarker(lat, lon, roughness) {
     if (!map) return;
     L.circleMarker([lat, lon], {
@@ -96,8 +133,8 @@ function addMarker(lat, lon, roughness) {
 
 function loadLogs() {
     fetch('/logs').then(r => r.json()).then(data => {
-        const recordEl = document.getElementById('records');
-        recordEl.textContent = '';
+        const tbody = document.querySelector('#records tbody');
+        tbody.innerHTML = '';
         if (map) {
             map.eachLayer(layer => {
                 if (layer instanceof L.CircleMarker) {
@@ -106,9 +143,17 @@ function loadLogs() {
             });
         }
         data.reverse().forEach(row => {
-            const { latitude, longitude, roughness, timestamp } = row;
+            const { latitude, longitude, speed, direction, roughness, timestamp } = row;
             const timeStr = new Date(timestamp).toLocaleString();
-            recordEl.textContent += `${timeStr} - ${latitude}, ${longitude} - roughness ${roughness.toFixed(2)}\n`;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${timeStr}</td>
+                <td>${latitude.toFixed(5)}</td>
+                <td>${longitude.toFixed(5)}</td>
+                <td>${speed.toFixed(1)}</td>
+                <td>${directionToCompass(direction)}</td>
+                <td>${roughnessLabel(roughness)}</td>`;
+            tbody.appendChild(tr);
             addMarker(latitude, longitude, roughness);
         });
         addLog(`Total records loaded: ${data.length}`);
@@ -143,7 +188,7 @@ function handlePosition(pos) {
     lastDir = heading || 0;
     updateStatus();
     addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
-    if (zValues.length > 0) {
+    if (loggingEnabled && zValues.length > 0 && lastSpeed > 0 && lastDir > 0) {
         fetch('/log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -178,10 +223,27 @@ function startGeolocation() {
         addDebug('Geolocation not supported');
         return;
     }
-    navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTIONS);
-    geoPollId = setInterval(() => {
-        navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, GEO_OPTIONS);
-    }, POLL_INTERVAL_MS);
+    if (geoWatchId === null) {
+        geoWatchId = navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTIONS);
+    }
+    if (geoPollId === null) {
+        geoPollId = setInterval(() => {
+            navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, GEO_OPTIONS);
+        }, POLL_INTERVAL_MS);
+    }
+    loggingEnabled = true;
+}
+
+function stopGeolocation() {
+    loggingEnabled = false;
+    if (geoWatchId !== null) {
+        navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = null;
+    }
+    if (geoPollId !== null) {
+        clearInterval(geoPollId);
+        geoPollId = null;
+    }
 }
 
 function pollDebug() {
@@ -194,7 +256,16 @@ updateStatus();
 initMap();
 loadLogs();
 pollDebug();
-startGeolocation();
+
+document.getElementById('toggle').addEventListener('click', () => {
+    if (loggingEnabled) {
+        stopGeolocation();
+        document.getElementById('toggle').textContent = 'Start';
+    } else {
+        startGeolocation();
+        document.getElementById('toggle').textContent = 'Stop';
+    }
+});
 
 let wakeLock = null;
 async function requestWakeLock() {
