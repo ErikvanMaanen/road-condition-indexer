@@ -94,6 +94,16 @@ let lastDir = 0;
 let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
 let map;
+let orientationData = {alpha:0, beta:0, gamma:0};
+let roughMin = 0;
+let roughMax = 10;
+if (window.DeviceOrientationEvent) {
+    window.addEventListener('deviceorientation', (event) => {
+        if (event.beta !== null && event.gamma !== null) {
+            orientationData = { alpha: event.alpha || 0, beta: event.beta, gamma: event.gamma };
+        }
+    });
+}
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
 let geoPollId = null;
@@ -128,7 +138,11 @@ function updateStatus() {
 }
 
 function colorForRoughness(r) {
-    const ratio = Math.min(Math.max(r / 10, 0), 1);
+    let ratio = 0;
+    if (roughMax !== roughMin) {
+        ratio = (r - roughMin) / (roughMax - roughMin);
+        ratio = Math.min(Math.max(ratio, 0), 1);
+    }
     const red = Math.floor(255 * ratio);
     const green = Math.floor(255 * (1 - ratio));
     return `rgb(${red},${green},0)`;
@@ -147,6 +161,19 @@ function roughnessLabel(r) {
     if (r < 3) return 'Moderate';
     if (r < 4) return 'Rough';
     return 'Very rough';
+}
+
+function zUp(acc) {
+    const beta = orientationData.beta * Math.PI / 180;
+    const gamma = orientationData.gamma * Math.PI / 180;
+    const gX = -Math.sin(beta);
+    const gY = Math.cos(beta) * Math.sin(gamma);
+    const gZ = Math.cos(beta) * Math.cos(gamma);
+    const upX = -gX;
+    const upY = -gY;
+    const upZ = -gZ;
+    const mag = Math.sqrt(upX*upX + upY*upY + upZ*upZ) || 1;
+    return (acc.x * upX + acc.y * upY + acc.z * upZ) / mag;
 }
 
 function addMarker(lat, lon, roughness, info = null) {
@@ -180,6 +207,14 @@ function loadLogs() {
                 }
             });
         }
+        roughMin = Infinity;
+        roughMax = -Infinity;
+        data.forEach(row => {
+            if (row.roughness < roughMin) roughMin = row.roughness;
+            if (row.roughness > roughMax) roughMax = row.roughness;
+        });
+        if (!isFinite(roughMin)) { roughMin = 0; }
+        if (!isFinite(roughMax)) { roughMax = 1; }
         data.reverse().forEach(row => {
             const { latitude, longitude, speed, direction, roughness, timestamp, device_id, user_agent } = row;
             const timeStr = new Date(timestamp).toLocaleString();
@@ -213,8 +248,9 @@ if (window.DeviceMotionEvent) {
             const acc = event.accelerationIncludingGravity;
             xValues.push(acc.x || 0);
             yValues.push(acc.y || 0);
-            zValues.push(acc.z || 0);
-            lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
+            const zUpVal = zUp(acc);
+            zValues.push(zUpVal);
+            lastAcc = { x: acc.x || 0, y: acc.y || 0, z: zUpVal };
             updateStatus();
         }
     });
