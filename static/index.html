@@ -16,6 +16,7 @@
 <h1>Road Condition Indexer</h1>
 <div id="status"></div>
 <div id="log"></div>
+<button id="recentBtn">Load Last 10</button>
 <pre id="records"></pre>
 <div id="map"></div>
 <textarea id="debug" readonly></textarea>
@@ -65,8 +66,8 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
-function loadLogs() {
-    fetch('/logs').then(r => r.json()).then(data => {
+function loadLogs(limit = 100) {
+    fetch(`/logs?limit=${limit}`).then(r => r.json()).then(data => {
         const recordEl = document.getElementById('records');
         recordEl.textContent = '';
         if (map) {
@@ -89,6 +90,7 @@ function loadLogs() {
                 }).addTo(map);
             }
         });
+        addLog(`Loaded ${data.length} entries`);
     }).catch(err => console.error(err)).finally(() => setTimeout(loadLogs, 10000));
 }
 
@@ -154,6 +156,7 @@ function pollDebug() {
 updateStatus();
 initMap();
 loadLogs();
+document.getElementById('recentBtn').addEventListener('click', () => loadLogs(10));
 pollDebug();
 </script>
 </body>
