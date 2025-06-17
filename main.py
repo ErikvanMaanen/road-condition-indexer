@@ -116,6 +116,9 @@ class LogEntry(BaseModel):
 @app.post("/log")
 def post_log(entry: LogEntry):
     log_debug(f"Received log entry: {entry}")
+    if entry.speed <= 7:
+        log_debug(f"Ignored log entry with low speed: {entry.speed} km/h")
+        return {"status": "ignored", "reason": "low speed"}
     elevation = get_elevation(entry.latitude, entry.longitude)
     if elevation is not None:
         log_debug(f"Elevation: {elevation} m")
@@ -152,18 +155,21 @@ def post_log(entry: LogEntry):
 
 
 @app.get("/logs")
-def get_logs(limit: int = 100):
-    """Return the most recent log entries.
+def get_logs(limit: Optional[int] = None):
+    """Return recent log entries.
 
-    The optional ``limit`` query parameter controls how many rows are
-    returned (max 1000, default 100).
+    If ``limit`` is not provided, all rows are returned. When supplied it must be
+    between 1 and 1000.
     """
-    if limit < 1 or limit > 1000:
+    if limit is not None and (limit < 1 or limit > 1000):
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+        if limit is None:
+            cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+        else:
+            cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
         log_debug("Fetched logs from database")
