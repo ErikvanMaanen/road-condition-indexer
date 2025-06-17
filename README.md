@@ -6,7 +6,8 @@ This project collects road roughness data from mobile devices and stores it in a
 
 - `POST /log` – Submit a new measurement. Requires JSON payload with latitude,
   longitude, **speed in km/h**, direction and a list of Z-axis acceleration values.
-- `GET /logs` – Fetch the last 100 measurements.
+- `GET /logs` – Fetch recent measurements. Accepts an optional `limit` query
+  parameter (default 100).
 - `GET /debuglog` – Retrieve backend debug messages.
 
 ## Setup
