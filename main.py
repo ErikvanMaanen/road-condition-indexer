@@ -1,5 +1,8 @@
 import os
-from typing import List
+from datetime import datetime
+from typing import List, Optional
+
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -27,8 +30,9 @@ DEBUG_LOG: List[str] = []
 
 
 def log_debug(message: str) -> None:
-    """Append message to debug log."""
-    DEBUG_LOG.append(message)
+    """Append message to debug log with timestamp."""
+    timestamp = datetime.utcnow().isoformat()
+    DEBUG_LOG.append(f"{timestamp} - {message}")
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
@@ -52,6 +56,22 @@ def get_db_connection():
         f"PWD={password}"
     )
     return pyodbc.connect(conn_str)
+
+
+def get_elevation(latitude: float, longitude: float) -> Optional[float]:
+    """Fetch elevation for the coordinates from OpenTopodata."""
+    url = (
+        "https://api.opentopodata.org/v1/srtm90m"
+        f"?locations={latitude},{longitude}"
+    )
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return data["results"][0]["elevation"]
+    except Exception as exc:
+        log_debug(f"Elevation fetch error: {exc}")
+        return None
 
 
 @app.on_event("startup")
@@ -96,6 +116,11 @@ class LogEntry(BaseModel):
 @app.post("/log")
 def post_log(entry: LogEntry):
     log_debug(f"Received log entry: {entry}")
+    elevation = get_elevation(entry.latitude, entry.longitude)
+    if elevation is not None:
+        log_debug(f"Elevation: {elevation} m")
+    else:
+        log_debug("Elevation not available")
     roughness = float(np.std(entry.z_values))
     log_debug(f"Calculated roughness: {roughness}")
     try:
