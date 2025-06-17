@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   automerge:
-    if: github.event.pull_request.mergeable_state == 'clean' && github.event.pull_request.draft == false
+    if: github.event.pull_request.mergeable_state != 'dirty' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Auto merge PR
