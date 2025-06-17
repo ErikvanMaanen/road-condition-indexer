@@ -2,13 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Condition Indexer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: Arial, sans-serif; }
-        #log, #records { width: 100%; height: 150px; overflow: auto; border: 1px solid #ccc; margin-bottom: 1rem; white-space: pre; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 1rem; }
+        #log, #records {
+            width: 100%;
+            height: 150px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+            white-space: pre;
+        }
         #debug { width: 100%; height: 150px; margin-top: 1rem; }
-        #map { width: 100%; height: 300px; margin-bottom: 1rem; }
+        #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
         #status { margin-bottom: 1rem; font-weight: bold; }
     </style>
 </head>
@@ -34,8 +42,8 @@ let lastAcc = {x:0, y:0, z:0};
 let map;
 
 function initMap() {
-    // Show the entire world but focus roughly on Houten, NL
-    map = L.map('map').setView([52.028, 5.168], 3);
+    // Show roughly a 10km area around Houten, NL
+    map = L.map('map').setView([52.028, 5.168], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -53,7 +61,7 @@ function updateStatus() {
         `Lat: ${lastLat.toFixed(5)}, Lon: ${lastLon.toFixed(5)} | ` +
         `Speed: ${lastSpeed.toFixed(1)} km/h | ` +
         `Dir: ${lastDir.toFixed(0)}\u00B0 | ` +
-        `AccX: ${lastAcc.x.toFixed(2)} ` +
+        `Acc: X: ${lastAcc.x.toFixed(2)} ` +
         `Y: ${lastAcc.y.toFixed(2)} ` +
         `Z: ${lastAcc.z.toFixed(2)} | ` +
         `Roughness: ${lastRoughness.toFixed(2)}`;
