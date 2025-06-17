@@ -17,11 +17,27 @@
         }
         #records {
             width: 100%;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+        }
+        #records thead {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+        #records tbody {
+            display: block;
             height: 150px;
             overflow-y: auto;
             overflow-x: hidden;
-            border: 1px solid #ccc;
-            margin-bottom: 1rem;
+        }
+        #records tbody tr {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+        #records th, #records td {
+            padding: 0 0.5rem;
         }
         #debug {
             width: 100%;
