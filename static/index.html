@@ -40,6 +40,9 @@ let lastDir = 0;
 let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
 let map;
+const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
+const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
+let geoPollId = null;
 
 function initMap() {
     // Show roughly a 10km area around Houten, NL
@@ -121,38 +124,51 @@ if (window.DeviceMotionEvent) {
     });
 }
 
-if (navigator.geolocation) {
-    navigator.geolocation.watchPosition((pos) => {
-        const { latitude, longitude, speed, heading } = pos.coords;
-        lastLat = latitude;
-        lastLon = longitude;
-        lastSpeed = (speed || 0) * 3.6; // convert to km/h
-        lastDir = heading || 0;
-        updateStatus();
-        addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
-        if (zValues.length > 0) {
-            fetch('/log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    latitude,
-                    longitude,
-                    speed: lastSpeed,
-                    direction: lastDir,
-                    z_values: zValues
-                })
-            }).then(r => r.json()).then(data => {
-                if (data.roughness !== undefined) {
-                    lastRoughness = data.roughness;
-                    addLog('Roughness: ' + data.roughness.toFixed(2));
-                    updateStatus();
-                }
-            }).catch(err => addDebug('Error: ' + err));
-            xValues = [];
-            yValues = [];
-            zValues = [];
-        }
-    }, err => addDebug('Geolocation error: ' + err.message));
+function handlePosition(pos) {
+    const { latitude, longitude, speed, heading } = pos.coords;
+    lastLat = latitude;
+    lastLon = longitude;
+    lastSpeed = (speed || 0) * 3.6; // convert to km/h
+    lastDir = heading || 0;
+    updateStatus();
+    addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
+    if (zValues.length > 0) {
+        fetch('/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                latitude,
+                longitude,
+                speed: lastSpeed,
+                direction: lastDir,
+                z_values: zValues
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.roughness !== undefined) {
+                lastRoughness = data.roughness;
+                addLog('Roughness: ' + data.roughness.toFixed(2));
+                updateStatus();
+            }
+        }).catch(err => addDebug('Error: ' + err));
+        xValues = [];
+        yValues = [];
+        zValues = [];
+    }
+}
+
+function handleGeoError(err) {
+    addDebug('Geolocation error: ' + err.message);
+}
+
+function startGeolocation() {
+    if (!navigator.geolocation) {
+        addDebug('Geolocation not supported');
+        return;
+    }
+    navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTIONS);
+    geoPollId = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, GEO_OPTIONS);
+    }, POLL_INTERVAL_MS);
 }
 
 function pollDebug() {
@@ -166,6 +182,27 @@ initMap();
 loadLogs();
 document.getElementById('recentBtn').addEventListener('click', () => loadLogs(10));
 pollDebug();
+startGeolocation();
+
+let wakeLock = null;
+async function requestWakeLock() {
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => addDebug('Wake lock released'));
+        addDebug('Wake lock acquired');
+    } catch (err) {
+        addDebug('Wake lock error: ' + err.message);
+    }
+}
+
+if ('wakeLock' in navigator) {
+    requestWakeLock();
+    document.addEventListener('visibilitychange', () => {
+        if (wakeLock !== null && document.visibilityState === 'visible') {
+            requestWakeLock();
+        }
+    });
+}
 </script>
 </body>
 </html>
