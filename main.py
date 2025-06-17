@@ -82,18 +82,22 @@ def init_db() -> None:
         cursor = conn.cursor()
         cursor.execute(
             """
-            IF OBJECT_ID('bike_data', 'U') IS NULL
-            CREATE TABLE bike_data (
-                id INT IDENTITY PRIMARY KEY,
-                timestamp DATETIME DEFAULT GETDATE(),
-                latitude FLOAT,
-                longitude FLOAT,
-                speed FLOAT,
-                direction FLOAT,
-                roughness FLOAT,
-                device_id NVARCHAR(100),
-                user_agent NVARCHAR(256)
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = 'bike_data'
             )
+            BEGIN
+                CREATE TABLE bike_data (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME DEFAULT GETDATE(),
+                    latitude FLOAT,
+                    longitude FLOAT,
+                    speed FLOAT,
+                    direction FLOAT,
+                    roughness FLOAT,
+                    device_id NVARCHAR(100),
+                    user_agent NVARCHAR(256)
+                )
+            END
             """
         )
         conn.commit()
