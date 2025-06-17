@@ -5,7 +5,7 @@ from typing import List, Optional
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
@@ -129,6 +129,8 @@ def post_log(entry: LogEntry):
     else:
         log_debug("Elevation not available")
     roughness = float(np.std(entry.z_values))
+    if entry.speed > 0:
+        roughness /= entry.speed
     log_debug(f"Calculated roughness: {roughness}")
     try:
         conn = get_db_connection()
@@ -188,6 +190,49 @@ def get_logs(limit: Optional[int] = None):
         except Exception:
             pass
     return rows
+
+
+@app.get("/gpx")
+def get_gpx(limit: Optional[int] = None):
+    """Return log records as a GPX file."""
+    if limit is not None and (limit < 1 or limit > 1000):
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if limit is None:
+            cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+        else:
+            cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+        columns = [column[0] for column in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        log_debug("Fetched logs for GPX generation")
+    except Exception as exc:
+        log_debug(f"Database error on GPX fetch: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    gpx_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gpx version="1.1" creator="Road Condition Indexer" xmlns="http://www.topografix.com/GPX/1/1">',
+        '<trk><name>Road Data</name><trkseg>'
+    ]
+    for row in reversed(rows):
+        timestamp = row['timestamp']
+        if isinstance(timestamp, datetime):
+            time_str = timestamp.isoformat()
+        else:
+            time_str = str(timestamp)
+        gpx_lines.append(
+            f'<trkpt lat="{row["latitude"]}" lon="{row["longitude"]}"><time>{time_str}</time></trkpt>'
+        )
+    gpx_lines.append('</trkseg></trk></gpx>')
+    gpx_data = "\n".join(gpx_lines)
+    return Response(content=gpx_data, media_type="application/gpx+xml", headers={"Content-Disposition": "attachment; filename=records.gpx"})
 
 
 @app.get("/debuglog")
