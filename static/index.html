@@ -43,6 +43,7 @@ let map;
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
 let geoPollId = null;
+let lastLoaded = 0;
 
 function initMap() {
     // Show roughly a 10km area around Houten, NL
@@ -77,8 +78,12 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
-function loadLogs(limit = 100) {
-    fetch(`/logs?limit=${limit}`).then(r => r.json()).then(data => {
+function loadLogs(limit = undefined) {
+    let url = '/logs';
+    if (limit !== undefined) {
+        url += `?limit=${limit}`;
+    }
+    fetch(url).then(r => r.json()).then(data => {
         const recordEl = document.getElementById('records');
         recordEl.textContent = '';
         if (map) {
@@ -101,7 +106,10 @@ function loadLogs(limit = 100) {
                 }).addTo(map);
             }
         });
-        addLog(`Loaded ${data.length} entries`);
+        if (data.length > lastLoaded) {
+            addLog(`Loaded ${data.length - lastLoaded} new entries`);
+        }
+        lastLoaded = data.length;
     }).catch(err => console.error(err)).finally(() => setTimeout(loadLogs, 10000));
 }
 
