@@ -36,6 +36,21 @@ def log_debug(message: str) -> None:
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO debug_log (message) VALUES (?)",
+            f"{timestamp} - {message}"
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_db_connection():
@@ -76,7 +91,7 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
 
 @app.on_event("startup")
 def init_db() -> None:
-    """Ensure that the bike_data table exists."""
+    """Ensure that required tables exist."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -100,8 +115,22 @@ def init_db() -> None:
             END
             """
         )
+        cursor.execute(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = 'debug_log'
+            )
+            BEGIN
+                CREATE TABLE debug_log (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME DEFAULT GETDATE(),
+                    message NVARCHAR(4000)
+                )
+            END
+            """
+        )
         conn.commit()
-        log_debug("Ensured database table exists")
+        log_debug("Ensured database tables exist")
     except Exception as exc:
         log_debug(f"Database init error: {exc}")
     finally:

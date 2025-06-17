@@ -32,8 +32,11 @@ The built-in frontend is served from the `static/` directory under the
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
-When the API starts it will automatically create the `bike_data` table
-if it does not already exist.
+Use the **Update Records** button in the interface to reload the latest
+roughness records from the database and refresh the map.
+
+When the API starts it will automatically create the `bike_data` and
+`debug_log` tables if they do not already exist.
 
 ## Database Schema
 
@@ -48,5 +51,11 @@ CREATE TABLE bike_data (
   roughness FLOAT,
   device_id NVARCHAR(100),
   user_agent NVARCHAR(256)
+);
+
+CREATE TABLE debug_log (
+  id INT IDENTITY PRIMARY KEY,
+  timestamp DATETIME DEFAULT GETDATE(),
+  message NVARCHAR(4000)
 );
 ```

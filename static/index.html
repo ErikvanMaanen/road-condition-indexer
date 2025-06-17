@@ -74,6 +74,7 @@
     <tbody></tbody>
 </table>
 <button id="gpx-button">Generate GPX</button>
+<button id="update-button" style="margin-left:1rem;">Update Records</button>
 <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -148,14 +149,24 @@ function roughnessLabel(r) {
     return 'Very rough';
 }
 
-function addMarker(lat, lon, roughness) {
+function addMarker(lat, lon, roughness, info = null) {
     if (!map) return;
-    L.circleMarker([lat, lon], {
+    const opts = {
         radius: 6,
         color: colorForRoughness(roughness),
         fillColor: colorForRoughness(roughness),
         fillOpacity: 0.8
-    }).addTo(map);
+    };
+    const marker = L.circleMarker([lat, lon], opts).addTo(map);
+    let popup = `Roughness: ${roughnessLabel(roughness)}`;
+    if (info) {
+        const timeStr = new Date(info.timestamp).toLocaleString();
+        popup = `Time: ${timeStr}<br>` +
+                `Speed: ${info.speed.toFixed(1)} km/h<br>` +
+                `Dir: ${directionToCompass(info.direction)}<br>` +
+                `Roughness: ${roughnessLabel(info.roughness)}`;
+    }
+    marker.bindPopup(popup);
 }
 
 function loadLogs() {
@@ -183,7 +194,7 @@ function loadLogs() {
                 <td>${device_id}</td>
                 <td>${user_agent}</td>`;
             tbody.appendChild(tr);
-            addMarker(latitude, longitude, roughness);
+            addMarker(latitude, longitude, roughness, row);
         });
         addLog(`Total records loaded: ${data.length}`);
         recordCount = data.length;
@@ -235,8 +246,14 @@ function handlePosition(pos) {
                 lastRoughness = data.roughness;
                 addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent}`);
                 updateStatus();
-                addMarker(latitude, longitude, data.roughness);
+                addMarker(latitude, longitude, data.roughness, {
+                    timestamp: new Date().toISOString(),
+                    speed: lastSpeed,
+                    direction: lastDir,
+                    roughness: data.roughness
+                });
                 recordCount += 1;
+                loadLogs();
             }
         }).catch(err => addDebug('Error: ' + err));
         xValues = [];
@@ -310,6 +327,7 @@ document.getElementById('toggle').addEventListener('click', () => {
 });
 
 document.getElementById('gpx-button').addEventListener('click', generateGpx);
+document.getElementById('update-button').addEventListener('click', loadLogs);
 
 let wakeLock = null;
 async function requestWakeLock() {
