@@ -15,7 +15,11 @@
             margin-bottom: 1rem;
             white-space: pre;
         }
-        #debug { width: 100%; height: 150px; margin-top: 1rem; }
+        #debug {
+            width: 100%;
+            height: 150px;
+            margin-top: 1rem;
+        }
         #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
         #status { margin-bottom: 1rem; font-weight: bold; }
     </style>
@@ -23,10 +27,12 @@
 <body>
 <h1>Road Condition Indexer</h1>
 <div id="status"></div>
+<h3>Activity Log</h3>
 <div id="log"></div>
-<button id="recentBtn">Load Last 10</button>
+<h3>Records</h3>
 <pre id="records"></pre>
 <div id="map"></div>
+<h3>Debug Messages</h3>
 <textarea id="debug" readonly></textarea>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -43,7 +49,7 @@ let map;
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
 let geoPollId = null;
-let lastLoaded = 0;
+let recordCount = 0;
 
 function initMap() {
     // Show roughly a 10km area around Houten, NL
@@ -78,12 +84,18 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
-function loadLogs(limit = undefined) {
-    let url = '/logs';
-    if (limit !== undefined) {
-        url += `?limit=${limit}`;
-    }
-    fetch(url).then(r => r.json()).then(data => {
+function addMarker(lat, lon, roughness) {
+    if (!map) return;
+    L.circleMarker([lat, lon], {
+        radius: 6,
+        color: colorForRoughness(roughness),
+        fillColor: colorForRoughness(roughness),
+        fillOpacity: 0.8
+    }).addTo(map);
+}
+
+function loadLogs() {
+    fetch('/logs').then(r => r.json()).then(data => {
         const recordEl = document.getElementById('records');
         recordEl.textContent = '';
         if (map) {
@@ -97,20 +109,11 @@ function loadLogs(limit = undefined) {
             const { latitude, longitude, roughness, timestamp } = row;
             const timeStr = new Date(timestamp).toLocaleString();
             recordEl.textContent += `${timeStr} - ${latitude}, ${longitude} - roughness ${roughness.toFixed(2)}\n`;
-            if (map) {
-                L.circleMarker([latitude, longitude], {
-                    radius: 6,
-                    color: colorForRoughness(roughness),
-                    fillColor: colorForRoughness(roughness),
-                    fillOpacity: 0.8
-                }).addTo(map);
-            }
+            addMarker(latitude, longitude, roughness);
         });
-        if (data.length > lastLoaded) {
-            addLog(`Loaded ${data.length - lastLoaded} new entries`);
-        }
-        lastLoaded = data.length;
-    }).catch(err => console.error(err)).finally(() => setTimeout(loadLogs, 10000));
+        addLog(`Total records loaded: ${data.length}`);
+        recordCount = data.length;
+    }).catch(err => console.error(err));
 }
 
 function addDebug(msg) {
@@ -156,6 +159,8 @@ function handlePosition(pos) {
                 lastRoughness = data.roughness;
                 addLog('Roughness: ' + data.roughness.toFixed(2));
                 updateStatus();
+                addMarker(latitude, longitude, data.roughness);
+                recordCount += 1;
             }
         }).catch(err => addDebug('Error: ' + err));
         xValues = [];
@@ -188,7 +193,6 @@ function pollDebug() {
 updateStatus();
 initMap();
 loadLogs();
-document.getElementById('recentBtn').addEventListener('click', () => loadLogs(10));
 pollDebug();
 startGeolocation();
 
