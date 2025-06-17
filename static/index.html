@@ -8,23 +8,33 @@
         body { font-family: Arial, sans-serif; }
         #log, #records { width: 100%; height: 150px; overflow: auto; border: 1px solid #ccc; margin-bottom: 1rem; white-space: pre; }
         #debug { width: 100%; height: 150px; margin-top: 1rem; }
-        #map { width: 100%; height: 400px; margin-bottom: 1rem; }
+        #map { width: 100%; height: 300px; margin-bottom: 1rem; }
+        #status { margin-bottom: 1rem; font-weight: bold; }
     </style>
 </head>
 <body>
 <h1>Road Condition Indexer</h1>
+<div id="status"></div>
 <div id="log"></div>
 <pre id="records"></pre>
 <div id="map"></div>
 <textarea id="debug" readonly></textarea>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+let xValues = [];
+let yValues = [];
 let zValues = [];
+let lastLat = 0;
+let lastLon = 0;
+let lastSpeed = 0;
+let lastDir = 0;
+let lastRoughness = 0;
+let lastAcc = {x:0, y:0, z:0};
 let map;
 
 function initMap() {
-    // Start slightly zoomed out so a larger area is visible
-    map = L.map('map').setView([0, 0], 5);
+    // Show the entire world but focus roughly on Houten, NL
+    map = L.map('map').setView([52.028, 5.168], 3);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -34,6 +44,18 @@ function addLog(msg) {
     const div = document.getElementById('log');
     div.textContent += msg + '\n';
     div.scrollTop = div.scrollHeight;
+}
+
+function updateStatus() {
+    const el = document.getElementById('status');
+    el.textContent =
+        `Lat: ${lastLat.toFixed(5)}, Lon: ${lastLon.toFixed(5)} | ` +
+        `Speed: ${lastSpeed.toFixed(1)} km/h | ` +
+        `Dir: ${lastDir.toFixed(0)}\u00B0 | ` +
+        `AccX: ${lastAcc.x.toFixed(2)} ` +
+        `Y: ${lastAcc.y.toFixed(2)} ` +
+        `Z: ${lastAcc.z.toFixed(2)} | ` +
+        `Roughness: ${lastRoughness.toFixed(2)}`;
 }
 
 function colorForRoughness(r) {
@@ -79,7 +101,12 @@ function addDebug(msg) {
 if (window.DeviceMotionEvent) {
     window.addEventListener('devicemotion', (event) => {
         if (event.accelerationIncludingGravity) {
-            zValues.push(event.accelerationIncludingGravity.z || 0);
+            const acc = event.accelerationIncludingGravity;
+            xValues.push(acc.x || 0);
+            yValues.push(acc.y || 0);
+            zValues.push(acc.z || 0);
+            lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
+            updateStatus();
         }
     });
 }
@@ -87,7 +114,12 @@ if (window.DeviceMotionEvent) {
 if (navigator.geolocation) {
     navigator.geolocation.watchPosition((pos) => {
         const { latitude, longitude, speed, heading } = pos.coords;
-        addLog(`Location: ${latitude}, ${longitude} speed: ${speed}`);
+        lastLat = latitude;
+        lastLon = longitude;
+        lastSpeed = (speed || 0) * 3.6; // convert to km/h
+        lastDir = heading || 0;
+        updateStatus();
+        addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
         if (zValues.length > 0) {
             fetch('/log', {
                 method: 'POST',
@@ -95,15 +127,19 @@ if (navigator.geolocation) {
                 body: JSON.stringify({
                     latitude,
                     longitude,
-                    speed: speed || 0,
-                    direction: heading || 0,
+                    speed: lastSpeed,
+                    direction: lastDir,
                     z_values: zValues
                 })
             }).then(r => r.json()).then(data => {
                 if (data.roughness !== undefined) {
+                    lastRoughness = data.roughness;
                     addLog('Roughness: ' + data.roughness.toFixed(2));
+                    updateStatus();
                 }
             }).catch(err => addDebug('Error: ' + err));
+            xValues = [];
+            yValues = [];
             zValues = [];
         }
     }, err => addDebug('Geolocation error: ' + err.message));
@@ -115,6 +151,7 @@ function pollDebug() {
     }).catch(console.error).finally(() => setTimeout(pollDebug, 2000));
 }
 
+updateStatus();
 initMap();
 loadLogs();
 pollDebug();

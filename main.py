@@ -96,9 +96,6 @@ class LogEntry(BaseModel):
 @app.post("/log")
 def post_log(entry: LogEntry):
     log_debug(f"Received log entry: {entry}")
-    if entry.speed <= 7.0:
-        log_debug("Speed below threshold; entry ignored")
-        raise HTTPException(status_code=400, detail="Speed must be > 7.0")
     roughness = float(np.std(entry.z_values))
     log_debug(f"Calculated roughness: {roughness}")
     try:
