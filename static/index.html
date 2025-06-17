@@ -51,6 +51,8 @@
             <th>Speed (km/h)</th>
             <th>Direction</th>
             <th>Roughness</th>
+            <th>Device ID</th>
+            <th>User Agent</th>
         </tr>
     </thead>
     <tbody></tbody>
@@ -152,7 +154,7 @@ function loadLogs() {
             });
         }
         data.reverse().forEach(row => {
-            const { latitude, longitude, speed, direction, roughness, timestamp } = row;
+            const { latitude, longitude, speed, direction, roughness, timestamp, device_id, user_agent } = row;
             const timeStr = new Date(timestamp).toLocaleString();
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -161,7 +163,9 @@ function loadLogs() {
                 <td>${longitude.toFixed(5)}</td>
                 <td>${speed.toFixed(1)}</td>
                 <td>${directionToCompass(direction)}</td>
-                <td>${roughnessLabel(roughness)}</td>`;
+                <td>${roughnessLabel(roughness)}</td>
+                <td>${device_id}</td>
+                <td>${user_agent}</td>`;
             tbody.appendChild(tr);
             addMarker(latitude, longitude, roughness);
         });
@@ -213,7 +217,7 @@ function handlePosition(pos) {
         }).then(r => r.json()).then(data => {
             if (data.roughness !== undefined) {
                 lastRoughness = data.roughness;
-                addLog('Roughness: ' + data.roughness.toFixed(2));
+                addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent}`);
                 updateStatus();
                 addMarker(latitude, longitude, data.roughness);
                 recordCount += 1;
