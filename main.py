@@ -90,7 +90,9 @@ def init_db() -> None:
                 longitude FLOAT,
                 speed FLOAT,
                 direction FLOAT,
-                roughness FLOAT
+                roughness FLOAT,
+                device_id NVARCHAR(100),
+                user_agent NVARCHAR(256)
             )
             """
         )
@@ -110,12 +112,14 @@ class LogEntry(BaseModel):
     longitude: float
     speed: float
     direction: float
+    device_id: str
+    user_agent: str
     z_values: List[float] = Field(..., alias="z_values")
 
 
 @app.post("/log")
 def post_log(entry: LogEntry):
-    log_debug(f"Received log entry: {entry}")
+    log_debug(f"Received log entry from {entry.device_id} UA {entry.user_agent}: {entry}")
     if entry.speed <= 7:
         log_debug(f"Ignored log entry with low speed: {entry.speed} km/h")
         return {"status": "ignored", "reason": "low speed"}
@@ -130,13 +134,15 @@ def post_log(entry: LogEntry):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, device_id, user_agent)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             entry.latitude,
             entry.longitude,
             entry.speed,
             entry.direction,
             roughness,
+            entry.device_id,
+            entry.user_agent,
         )
         if cursor.rowcount != 1:
             log_debug(f"Insert affected {cursor.rowcount} rows")
