@@ -1,4 +1,4 @@
-name: Auto Merge
+name: Auto Merge to Main
 
 on:
   pull_request:
@@ -10,15 +10,18 @@ permissions:
 
 jobs:
   automerge:
-    if: github.event.pull_request.mergeable_state != 'dirty' && github.event.pull_request.draft == false
+    if: >
+      github.event.pull_request.mergeable_state != 'dirty' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Auto merge PR
+      - name: Auto merge PR into Main
         uses: pascalgn/automerge-action@v0.15.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          mergeMethod: squash           # or 'merge' / 'rebase'
-          mergeLabel: ''                # empty disables label requirement
+          mergeMethod: squash
+          mergeLabel: ''
           mergeCommitMessage: pull-request-title
-          deleteBranchAfterMerge: true # optional
+          deleteBranchAfterMerge: true
