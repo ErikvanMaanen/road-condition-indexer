@@ -22,18 +22,22 @@
         }
         #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
         #status { margin-bottom: 1rem; font-weight: bold; }
+        #button-bar { margin-bottom: 1rem; }
+        button { padding: 0.5rem 1rem; font-size: 1rem; }
     </style>
 </head>
 <body>
 <h1>Road Condition Indexer</h1>
 <div id="status"></div>
-<button id="toggle">Start</button>
+<div id="button-bar">
+    <button id="toggle">Start</button>
+    <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
+    <button id="update-button" style="margin-left:1rem;">Update Records</button>
+    <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
+</div>
+<div id="map"></div>
 <h3>Activity Log</h3>
 <div id="log"></div>
-<div id="map"></div>
-<button id="gpx-button">Generate GPX</button>
-<button id="update-button" style="margin-left:1rem;">Update Records</button>
-<a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 <h3>Debug Messages</h3>
 <textarea id="debug" readonly></textarea>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
