@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -110,7 +110,9 @@ def init_db() -> None:
                     direction FLOAT,
                     roughness FLOAT,
                     device_id NVARCHAR(100),
-                    user_agent NVARCHAR(256)
+                    user_agent NVARCHAR(256),
+                    ip_address NVARCHAR(45),
+                    device_fp NVARCHAR(256)
                 )
             END
             """
@@ -127,6 +129,18 @@ def init_db() -> None:
                     message NVARCHAR(4000)
                 )
             END
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('bike_data', 'ip_address') IS NULL
+                ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('bike_data', 'device_fp') IS NULL
+                ALTER TABLE bike_data ADD device_fp NVARCHAR(256)
             """
         )
         conn.commit()
@@ -147,11 +161,12 @@ class LogEntry(BaseModel):
     direction: float
     device_id: str
     user_agent: str
+    device_fp: str
     z_values: List[float] = Field(..., alias="z_values")
 
 
 @app.post("/log")
-def post_log(entry: LogEntry):
+def post_log(entry: LogEntry, request: Request):
     log_debug(f"Received log entry from {entry.device_id} UA {entry.user_agent}: {entry}")
     if entry.speed <= 7:
         log_debug(f"Ignored log entry with low speed: {entry.speed} km/h")
@@ -165,12 +180,13 @@ def post_log(entry: LogEntry):
     if entry.speed > 0:
         roughness /= entry.speed
     log_debug(f"Calculated roughness: {roughness}")
+    ip_address = request.client.host if request.client else None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, device_id, user_agent)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, device_id, user_agent, ip_address, device_fp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             entry.latitude,
             entry.longitude,
             entry.speed,
@@ -178,6 +194,8 @@ def post_log(entry: LogEntry):
             roughness,
             entry.device_id,
             entry.user_agent,
+            ip_address,
+            entry.device_fp,
         )
         if cursor.rowcount != 1:
             log_debug(f"Insert affected {cursor.rowcount} rows")
