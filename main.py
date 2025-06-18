@@ -25,6 +25,12 @@ def read_welcome():
     """Serve the welcome page."""
     return FileResponse("static/welcome.html")
 
+
+@app.get("/device.html")
+def read_device():
+    """Serve the device filter page."""
+    return FileResponse("static/device.html")
+
 # In-memory debug log
 DEBUG_LOG: List[str] = []
 
@@ -237,6 +243,59 @@ def get_logs(limit: Optional[int] = None):
         log_debug("Fetched logs from database")
     except Exception as exc:
         log_debug(f"Database error on fetch: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"rows": rows, "average": rough_avg}
+
+
+@app.get("/filteredlogs")
+def get_filtered_logs(device_id: Optional[str] = None,
+                      start: Optional[str] = None,
+                      end: Optional[str] = None):
+    """Return log entries filtered by device ID and date range."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "SELECT * FROM bike_data WHERE 1=1"
+        params = []
+        if device_id:
+            query += " AND device_id = ?"
+            params.append(device_id)
+        start_dt = None
+        end_dt = None
+        if start:
+            start_dt = datetime.fromisoformat(start)
+            query += " AND timestamp >= ?"
+            params.append(start_dt)
+        if end:
+            end_dt = datetime.fromisoformat(end)
+            query += " AND timestamp <= ?"
+            params.append(end_dt)
+        query += " ORDER BY id DESC"
+        cursor.execute(query, params)
+        columns = [column[0] for column in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        avg_query = "SELECT AVG(roughness) FROM bike_data WHERE 1=1"
+        avg_params = []
+        if device_id:
+            avg_query += " AND device_id = ?"
+            avg_params.append(device_id)
+        if start:
+            avg_query += " AND timestamp >= ?"
+            avg_params.append(start_dt)
+        if end:
+            avg_query += " AND timestamp <= ?"
+            avg_params.append(end_dt)
+        cursor.execute(avg_query, avg_params)
+        avg_row = cursor.fetchone()
+        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
+        log_debug("Fetched filtered logs from database")
+    except Exception as exc:
+        log_debug(f"Database error on filtered fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
     finally:
         try:
