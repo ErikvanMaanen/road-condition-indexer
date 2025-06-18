@@ -15,30 +15,6 @@
             margin-bottom: 1rem;
             white-space: pre;
         }
-        #records {
-            width: 100%;
-            border: 1px solid #ccc;
-            margin-bottom: 1rem;
-        }
-        #records thead {
-            display: table;
-            width: 100%;
-            table-layout: fixed;
-        }
-        #records tbody {
-            display: block;
-            height: 150px;
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-        #records tbody tr {
-            display: table;
-            width: 100%;
-            table-layout: fixed;
-        }
-        #records th, #records td {
-            padding: 0 0.5rem;
-        }
         #debug {
             width: 100%;
             height: 150px;
@@ -55,29 +31,11 @@
 <h3>Activity Log</h3>
 <div id="log"></div>
 <div id="map"></div>
-<h3>Debug Messages</h3>
-<textarea id="debug" readonly></textarea>
-<h3>Records</h3>
-<table id="records">
-    <thead>
-        <tr>
-            <th>Timestamp</th>
-            <th>Latitude</th>
-            <th>Longitude</th>
-            <th>Speed (km/h)</th>
-            <th>Direction</th>
-            <th>Roughness</th>
-            <th>Device ID</th>
-            <th>User Agent</th>
-            <th>IP</th>
-            <th>Device FP</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
-</table>
 <button id="gpx-button">Generate GPX</button>
 <button id="update-button" style="margin-left:1rem;">Update Records</button>
 <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
+<h3>Debug Messages</h3>
+<textarea id="debug" readonly></textarea>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
@@ -112,12 +70,32 @@ let map;
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
 let roughMax = 10;
+let roughAvg = 0;
+let motionDataReceived = false;
+let motionPermissionTimer = null;
 if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', (event) => {
         if (event.beta !== null && event.gamma !== null) {
             orientationData = { alpha: event.alpha || 0, beta: event.beta, gamma: event.gamma };
         }
     });
+}
+
+function requestMotionPermission() {
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(res => addDebug('Motion permission: ' + res))
+            .catch(err => addDebug('Motion permission error: ' + err));
+    }
+}
+
+function checkMotionPermission() {
+    if (!motionDataReceived) {
+        addDebug('No acceleration data received, requesting permission');
+        requestMotionPermission();
+        motionPermissionTimer = setTimeout(checkMotionPermission, 5000);
+    }
 }
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
@@ -162,7 +140,10 @@ function updateStatus() {
 
 function colorForRoughness(r) {
     let ratio = 0;
-    if (roughMax !== roughMin) {
+    if (roughAvg > 0) {
+        ratio = r / (roughAvg * 2);
+        ratio = Math.min(Math.max(ratio, 0), 1);
+    } else if (roughMax !== roughMin) {
         ratio = (r - roughMin) / (roughMax - roughMin);
         ratio = Math.min(Math.max(ratio, 0), 1);
     }
@@ -179,6 +160,13 @@ function directionToCompass(deg) {
 }
 
 function roughnessLabel(r) {
+    if (roughAvg > 0) {
+        if (r < roughAvg * 0.5) return 'Very smooth';
+        if (r < roughAvg * 0.8) return 'Smooth';
+        if (r < roughAvg * 1.2) return 'Moderate';
+        if (r < roughAvg * 1.5) return 'Rough';
+        return 'Very rough';
+    }
     if (roughMax !== roughMin) {
         const step = (roughMax - roughMin) / 5;
         if (r < roughMin + step) return 'Very smooth';
@@ -187,7 +175,6 @@ function roughnessLabel(r) {
         if (r < roughMin + step * 4) return 'Rough';
         return 'Very rough';
     }
-    // Fallback when no range information is available
     if (r < 1) return 'Very smooth';
     if (r < 2) return 'Smooth';
     if (r < 3) return 'Moderate';
@@ -217,21 +204,21 @@ function addMarker(lat, lon, roughness, info = null) {
         fillOpacity: 0.8
     };
     const marker = L.circleMarker([lat, lon], opts).addTo(map);
-    let popup = `Roughness: ${roughnessLabel(roughness)}`;
+    let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
     if (info) {
         const timeStr = new Date(info.timestamp).toLocaleString();
         popup = `Time: ${timeStr}<br>` +
                 `Speed: ${info.speed.toFixed(1)} km/h<br>` +
                 `Dir: ${directionToCompass(info.direction)}<br>` +
-                `Roughness: ${roughnessLabel(info.roughness)}`;
+                `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
     }
     marker.bindPopup(popup);
 }
 
 function loadLogs() {
     fetch('/logs').then(r => r.json()).then(data => {
-        const tbody = document.querySelector('#records tbody');
-        tbody.innerHTML = '';
+        const rows = Array.isArray(data) ? data : data.rows;
+        roughAvg = data.average || 0;
         if (map) {
             map.eachLayer(layer => {
                 if (layer instanceof L.CircleMarker) {
@@ -239,34 +226,14 @@ function loadLogs() {
                 }
             });
         }
-        roughMin = Infinity;
-        roughMax = -Infinity;
-        data.forEach(row => {
-            if (row.roughness < roughMin) roughMin = row.roughness;
-            if (row.roughness > roughMax) roughMax = row.roughness;
-        });
-        if (!isFinite(roughMin)) { roughMin = 0; }
-        if (!isFinite(roughMax)) { roughMax = 1; }
-        data.reverse().forEach(row => {
-            const { latitude, longitude, speed, direction, roughness, timestamp, device_id, user_agent, ip_address, device_fp } = row;
-            const timeStr = new Date(timestamp).toLocaleString();
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${timeStr}</td>
-                <td>${latitude.toFixed(5)}</td>
-                <td>${longitude.toFixed(5)}</td>
-                <td>${speed.toFixed(1)}</td>
-                <td>${directionToCompass(direction)}</td>
-                <td>${roughnessLabel(roughness)}</td>
-                <td>${device_id}</td>
-                <td>${user_agent}</td>
-                <td>${ip_address || ''}</td>
-                <td>${device_fp || ''}</td>`;
-            tbody.appendChild(tr);
+        roughMin = 0;
+        roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
+        rows.reverse().forEach(row => {
+            const { latitude, longitude, roughness } = row;
             addMarker(latitude, longitude, roughness, row);
         });
-        addLog(`Total records loaded: ${data.length}`);
-        recordCount = data.length;
+        addLog(`Total records loaded: ${rows.length}`);
+        recordCount = rows.length;
     }).catch(err => console.error(err));
 }
 
@@ -280,6 +247,7 @@ if (window.DeviceMotionEvent) {
     window.addEventListener('devicemotion', (event) => {
         if (event.accelerationIncludingGravity) {
             const acc = event.accelerationIncludingGravity;
+            motionDataReceived = true;
             xValues.push(acc.x || 0);
             yValues.push(acc.y || 0);
             const zUpVal = zUp(acc);
@@ -342,6 +310,12 @@ function startGeolocation() {
         addDebug('Geolocation not supported');
         return;
     }
+    motionDataReceived = false;
+    if (motionPermissionTimer !== null) {
+        clearTimeout(motionPermissionTimer);
+    }
+    requestMotionPermission();
+    motionPermissionTimer = setTimeout(checkMotionPermission, 5000);
     if (geoWatchId === null) {
         geoWatchId = navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTIONS);
     }
@@ -355,6 +329,10 @@ function startGeolocation() {
 
 function stopGeolocation() {
     loggingEnabled = false;
+    if (motionPermissionTimer !== null) {
+        clearTimeout(motionPermissionTimer);
+        motionPermissionTimer = null;
+    }
     if (geoWatchId !== null) {
         navigator.geolocation.clearWatch(geoWatchId);
         geoWatchId = null;
