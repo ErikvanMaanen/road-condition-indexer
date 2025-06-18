@@ -231,6 +231,9 @@ def get_logs(limit: Optional[int] = None):
             cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.execute("SELECT AVG(roughness) FROM bike_data")
+        avg_row = cursor.fetchone()
+        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
         log_debug("Fetched logs from database")
     except Exception as exc:
         log_debug(f"Database error on fetch: {exc}")
@@ -240,7 +243,7 @@ def get_logs(limit: Optional[int] = None):
             conn.close()
         except Exception:
             pass
-    return rows
+    return {"rows": rows, "average": rough_avg}
 
 
 @app.get("/gpx")
