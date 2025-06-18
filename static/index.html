@@ -69,6 +69,8 @@
             <th>Roughness</th>
             <th>Device ID</th>
             <th>User Agent</th>
+            <th>IP</th>
+            <th>Device FP</th>
         </tr>
     </thead>
     <tbody></tbody>
@@ -79,11 +81,24 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
+function setCookie(name, value, days) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
+}
 if (!deviceId) {
     deviceId = crypto.randomUUID();
     localStorage.setItem('deviceId', deviceId);
+    setCookie('deviceId', deviceId, 365);
 }
 const userAgent = navigator.userAgent;
+const fingerprint = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width,
+    screen.height,
+    navigator.platform,
+    new Date().getTimezoneOffset()
+].join('|');
 let xValues = [];
 let yValues = [];
 let zValues = [];
@@ -110,6 +125,14 @@ let geoPollId = null;
 let geoWatchId = null;
 let loggingEnabled = false;
 let recordCount = 0;
+
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        () => addDebug('Geolocation permission granted'),
+        err => addDebug('Geolocation permission denied: ' + err.message),
+        GEO_OPTIONS
+    );
+}
 
 function initMap() {
     // Show roughly a 10km area around Houten, NL
@@ -225,7 +248,7 @@ function loadLogs() {
         if (!isFinite(roughMin)) { roughMin = 0; }
         if (!isFinite(roughMax)) { roughMax = 1; }
         data.reverse().forEach(row => {
-            const { latitude, longitude, speed, direction, roughness, timestamp, device_id, user_agent } = row;
+            const { latitude, longitude, speed, direction, roughness, timestamp, device_id, user_agent, ip_address, device_fp } = row;
             const timeStr = new Date(timestamp).toLocaleString();
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -236,7 +259,9 @@ function loadLogs() {
                 <td>${directionToCompass(direction)}</td>
                 <td>${roughnessLabel(roughness)}</td>
                 <td>${device_id}</td>
-                <td>${user_agent}</td>`;
+                <td>${user_agent}</td>
+                <td>${ip_address || ''}</td>
+                <td>${device_fp || ''}</td>`;
             tbody.appendChild(tr);
             addMarker(latitude, longitude, roughness, row);
         });
@@ -284,12 +309,13 @@ function handlePosition(pos) {
                 direction: lastDir,
                 z_values: zValues,
                 device_id: deviceId,
-                user_agent: userAgent
+                user_agent: userAgent,
+                device_fp: fingerprint
             })
         }).then(r => r.json()).then(data => {
             if (data.roughness !== undefined) {
                 lastRoughness = data.roughness;
-                addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent}`);
+                addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent} FP: ${fingerprint}`);
                 updateStatus();
                 addMarker(latitude, longitude, data.roughness, {
                     timestamp: new Date().toISOString(),
