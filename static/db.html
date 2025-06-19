@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin:1rem; }
+        table { border-collapse: collapse; margin-bottom:1rem; }
+        th, td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; }
+        caption { font-weight:bold; margin-bottom:0.25rem; }
+    </style>
+</head>
+<body>
+<h1>Database Management</h1>
+<div>
+    <button onclick="loadTables()">Refresh Tables</button>
+    <button onclick="insertTest()">Insert Test Data</button>
+    <select id="table-select"></select>
+    <button onclick="deleteRecords()">Delete All Records</button>
+</div>
+<div id="output"></div>
+<script>
+async function loadTables() {
+    const res = await fetch('/manage/tables');
+    const data = await res.json();
+    const select = document.getElementById('table-select');
+    select.innerHTML = '';
+    const out = document.getElementById('output');
+    out.innerHTML = '';
+    for (const [name, rows] of Object.entries(data.tables)) {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name; select.appendChild(opt);
+        const table = document.createElement('table');
+        const caption = document.createElement('caption');
+        caption.textContent = name; table.appendChild(caption);
+        if (rows.length > 0) {
+            const head = document.createElement('tr');
+            for (const col of Object.keys(rows[0])) {
+                const th = document.createElement('th'); th.textContent = col; head.appendChild(th);
+            }
+            table.appendChild(head);
+            for (const row of rows) {
+                const tr = document.createElement('tr');
+                for (const val of Object.values(row)) {
+                    const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
+                }
+                table.appendChild(tr);
+            }
+        } else {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td'); td.textContent = '(no rows)'; td.colSpan = 1; tr.appendChild(td); table.appendChild(tr);
+        }
+        out.appendChild(table);
+    }
+}
+async function insertTest() {
+    const t = document.getElementById('table-select').value; if(!t) return;
+    await fetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
+    loadTables();
+}
+async function deleteRecords() {
+    const t = document.getElementById('table-select').value; if(!t) return;
+    await fetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
+    loadTables();
+}
+loadTables();
+</script>
+</body>
+</html>
