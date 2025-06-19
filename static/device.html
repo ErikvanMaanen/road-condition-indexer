@@ -17,7 +17,7 @@
 <body>
 <h1>Device Records</h1>
 <div id="controls">
-    <input id="deviceId" placeholder="Device UUID">
+    <select id="deviceId"></select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
     <button id="load">Load</button>
@@ -27,6 +27,32 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let map;
+
+function populateDeviceIds() {
+    fetch('/device_ids').then(r => r.json()).then(data => {
+        const sel = document.getElementById('deviceId');
+        sel.innerHTML = '';
+        const optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = 'All Devices';
+        sel.appendChild(optAll);
+        data.ids.forEach(id => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = id;
+            sel.appendChild(opt);
+        });
+    }).then(() => setDateRange()).catch(console.error);
+}
+
+function setDateRange() {
+    const device = document.getElementById('deviceId').value;
+    const url = device ? `/date_range?device_id=${encodeURIComponent(device)}` : '/date_range';
+    fetch(url).then(r => r.json()).then(data => {
+        if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
+        if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
+    }).catch(console.error);
+}
 
 function initMap() {
     map = L.map('map').setView([52.028, 5.168], 12);
@@ -71,7 +97,9 @@ function loadData() {
 }
 
 initMap();
+populateDeviceIds();
 document.getElementById('load').addEventListener('click', loadData);
+document.getElementById('deviceId').addEventListener('change', setDateRange);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {
