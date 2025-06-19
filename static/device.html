@@ -18,6 +18,11 @@
 <h1>Device Records</h1>
 <div id="controls">
     <select id="deviceId"></select>
+    <select id="version">
+        <option value="">All Versions</option>
+        <option value="0.1">V0.1</option>
+        <option value="0.2">V0.2</option>
+    </select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
     <button id="load">Load</button>
@@ -36,10 +41,10 @@ function populateDeviceIds() {
         optAll.value = '';
         optAll.textContent = 'All Devices';
         sel.appendChild(optAll);
-        data.ids.forEach(id => {
+        data.ids.forEach(item => {
             const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = id;
+            opt.value = item.id;
+            opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             sel.appendChild(opt);
         });
     }).then(() => setDateRange()).catch(console.error);
@@ -80,10 +85,12 @@ function loadData() {
     const device = document.getElementById('deviceId').value;
     const start = document.getElementById('startDate').value;
     const end = document.getElementById('endDate').value;
+    const version = document.getElementById('version').value;
     const params = new URLSearchParams();
     if (device) params.append('device_id', device);
     if (start) params.append('start', start);
     if (end) params.append('end', end);
+    if (version) params.append('version', version);
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(data => {
@@ -100,6 +107,7 @@ initMap();
 populateDeviceIds();
 document.getElementById('load').addEventListener('click', loadData);
 document.getElementById('deviceId').addEventListener('change', setDateRange);
+document.getElementById('version').addEventListener('change', loadData);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {

@@ -52,12 +52,20 @@ CREATE TABLE bike_data (
   direction FLOAT,
   roughness FLOAT,
   device_id NVARCHAR(100),
-  user_agent NVARCHAR(256)
+  user_agent NVARCHAR(256),
+  ip_address NVARCHAR(45),
+  device_fp NVARCHAR(256),
+  version NVARCHAR(10) DEFAULT '0.2'
 );
 
 CREATE TABLE debug_log (
   id INT IDENTITY PRIMARY KEY,
   timestamp DATETIME DEFAULT GETDATE(),
   message NVARCHAR(4000)
+);
+
+CREATE TABLE device_nicknames (
+  device_id NVARCHAR(100) PRIMARY KEY,
+  nickname NVARCHAR(100)
 );
 ```

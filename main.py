@@ -205,6 +205,28 @@ def init_db() -> None:
                 ALTER TABLE bike_data ADD device_fp NVARCHAR(256)
             """
         )
+        cursor.execute(
+            """
+            IF COL_LENGTH('bike_data', 'version') IS NULL
+                ALTER TABLE bike_data ADD version NVARCHAR(10) CONSTRAINT DF_bike_data_version DEFAULT '0.2'
+            """
+        )
+        cursor.execute(
+            "UPDATE bike_data SET version = '0.1' WHERE version IS NULL"
+        )
+        cursor.execute(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = 'device_nicknames'
+            )
+            BEGIN
+                CREATE TABLE device_nicknames (
+                    device_id NVARCHAR(100) PRIMARY KEY,
+                    nickname NVARCHAR(100)
+                )
+            END
+            """
+        )
         conn.commit()
         log_debug("Ensured database tables exist")
     except Exception as exc:
@@ -336,8 +358,9 @@ def get_logs(limit: Optional[int] = None):
 @app.get("/filteredlogs")
 def get_filtered_logs(device_id: Optional[str] = None,
                       start: Optional[str] = None,
-                      end: Optional[str] = None):
-    """Return log entries filtered by device ID and date range."""
+                      end: Optional[str] = None,
+                      version: Optional[str] = None):
+    """Return log entries filtered by device ID, date range and version."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -356,6 +379,9 @@ def get_filtered_logs(device_id: Optional[str] = None,
             end_dt = datetime.fromisoformat(end)
             query += " AND timestamp <= ?"
             params.append(end_dt)
+        if version:
+            query += " AND version = ?"
+            params.append(version)
         query += " ORDER BY id DESC"
         cursor.execute(query, params)
         columns = [column[0] for column in cursor.description]
@@ -371,6 +397,9 @@ def get_filtered_logs(device_id: Optional[str] = None,
         if end:
             avg_query += " AND timestamp <= ?"
             avg_params.append(end_dt)
+        if version:
+            avg_query += " AND version = ?"
+            avg_params.append(version)
         cursor.execute(avg_query, avg_params)
         avg_row = cursor.fetchone()
         rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
@@ -388,12 +417,20 @@ def get_filtered_logs(device_id: Optional[str] = None,
 
 @app.get("/device_ids")
 def get_device_ids():
-    """Return list of unique device IDs."""
+    """Return list of unique device IDs with optional nicknames."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT device_id FROM bike_data")
-        ids = [row[0] for row in cursor.fetchall() if row[0]]
+        cursor.execute(
+            """
+            SELECT DISTINCT bd.device_id, dn.nickname
+            FROM bike_data bd
+            LEFT JOIN device_nicknames dn ON bd.device_id = dn.device_id
+            """
+        )
+        ids = [
+            {"id": row[0], "nickname": row[1]} for row in cursor.fetchall() if row[0]
+        ]
         log_debug("Fetched unique device ids")
     except Exception as exc:
         log_debug(f"Database error on id fetch: {exc}")
@@ -432,6 +469,66 @@ def get_date_range(device_id: Optional[str] = None):
     start_str = start.isoformat() if start else None
     end_str = end.isoformat() if end else None
     return {"start": start_str, "end": end_str}
+
+
+class NicknameEntry(BaseModel):
+    device_id: str
+    nickname: str
+
+
+@app.post("/nickname")
+def set_nickname(entry: NicknameEntry):
+    """Set or update a nickname for a device."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            MERGE device_nicknames AS target
+            USING (SELECT ? AS device_id, ? AS nickname) AS src
+            ON target.device_id = src.device_id
+            WHEN MATCHED THEN UPDATE SET nickname = src.nickname
+            WHEN NOT MATCHED THEN INSERT (device_id, nickname)
+            VALUES (src.device_id, src.nickname);
+            """,
+            entry.device_id,
+            entry.nickname,
+        )
+        conn.commit()
+        log_debug("Nickname stored")
+    except Exception as exc:
+        log_debug(f"Nickname store error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@app.get("/nickname")
+def get_nickname(device_id: str):
+    """Get nickname for a device id."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT nickname FROM device_nicknames WHERE device_id = ?",
+            device_id,
+        )
+        row = cursor.fetchone()
+        nickname = row[0] if row else None
+        log_debug("Fetched nickname")
+    except Exception as exc:
+        log_debug(f"Nickname fetch error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"nickname": nickname}
 
 
 @app.get("/gpx")
