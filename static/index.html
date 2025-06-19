@@ -35,6 +35,8 @@
     <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
     <button id="update-button" style="margin-left:1rem;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
+    <select id="device-filter" style="margin-left:1rem;"></select>
+    <a href="device.html" style="margin-left:1rem;">Device View</a>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="map"></div>
@@ -63,6 +65,27 @@ const fingerprint = [
     navigator.platform,
     new Date().getTimezoneOffset()
 ].join('|');
+
+function populateDeviceFilter() {
+    fetch('/device_ids').then(r => r.json()).then(data => {
+        const select = document.getElementById('device-filter');
+        select.innerHTML = '';
+        data.ids.forEach(id => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = id;
+            select.appendChild(opt);
+        });
+        if (deviceId && !data.ids.includes(deviceId)) {
+            const opt = document.createElement('option');
+            opt.value = deviceId;
+            opt.textContent = deviceId;
+            select.appendChild(opt);
+        }
+        select.value = deviceId;
+    }).then(() => loadLogs())
+      .catch(console.error);
+}
 let xValues = [];
 let yValues = [];
 let zValues = [];
@@ -222,7 +245,9 @@ function addMarker(lat, lon, roughness, info = null) {
 }
 
 function loadLogs() {
-    fetch('/logs').then(r => r.json()).then(data => {
+    const filterId = document.getElementById('device-filter').value;
+    const url = filterId ? `/filteredlogs?device_id=${encodeURIComponent(filterId)}` : '/logs';
+    fetch(url).then(r => r.json()).then(data => {
         const rows = Array.isArray(data) ? data : data.rows;
         roughAvg = data.average || 0;
         if (map) {
@@ -368,7 +393,7 @@ function generateGpx() {
 
 updateStatus();
 initMap();
-loadLogs();
+populateDeviceFilter();
 pollDebug();
 
 document.getElementById('toggle').addEventListener('click', () => {

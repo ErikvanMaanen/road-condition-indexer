@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import List, Optional
+
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
+from typing import List, Optional
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -303,6 +304,54 @@ def get_filtered_logs(device_id: Optional[str] = None,
         except Exception:
             pass
     return {"rows": rows, "average": rough_avg}
+
+
+@app.get("/device_ids")
+def get_device_ids():
+    """Return list of unique device IDs."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT device_id FROM bike_data")
+        ids = [row[0] for row in cursor.fetchall() if row[0]]
+        log_debug("Fetched unique device ids")
+    except Exception as exc:
+        log_debug(f"Database error on id fetch: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"ids": ids}
+
+
+@app.get("/date_range")
+def get_date_range(device_id: Optional[str] = None):
+    """Return the oldest and newest timestamps, optionally filtered by device."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "SELECT MIN(timestamp), MAX(timestamp) FROM bike_data"
+        params = []
+        if device_id:
+            query += " WHERE device_id = ?"
+            params.append(device_id)
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        start, end = row if row else (None, None)
+        log_debug("Fetched date range")
+    except Exception as exc:
+        log_debug(f"Database error on range fetch: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    start_str = start.isoformat() if start else None
+    end_str = end.isoformat() if end else None
+    return {"start": start_str, "end": end_str}
 
 
 @app.get("/gpx")
