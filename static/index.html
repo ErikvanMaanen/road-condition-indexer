@@ -21,6 +21,7 @@
             margin-top: 1rem;
         }
         #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
+        #map:fullscreen { width: 100%; height: 100%; }
         #status { margin-bottom: 1rem; font-weight: bold; }
         #button-bar { margin-bottom: 1rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
@@ -33,6 +34,7 @@
     <button id="toggle">Start</button>
     <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
     <button id="update-button" style="margin-left:1rem;">Update Records</button>
+    <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="map"></div>
@@ -381,6 +383,24 @@ document.getElementById('toggle').addEventListener('click', () => {
 
 document.getElementById('gpx-button').addEventListener('click', generateGpx);
 document.getElementById('update-button').addEventListener('click', loadLogs);
+document.getElementById('fullscreen-button').addEventListener('click', () => {
+    const el = document.getElementById('map');
+    if (!document.fullscreenElement) {
+        if (el.requestFullscreen) {
+            el.requestFullscreen();
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+});
+
+document.addEventListener('fullscreenchange', () => {
+    if (map) {
+        map.invalidateSize();
+    }
+});
 
 let wakeLock = null;
 async function requestWakeLock() {

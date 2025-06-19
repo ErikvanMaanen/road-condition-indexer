@@ -10,6 +10,7 @@
         #controls { margin-bottom: 1rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
         #map { width: 100%; height: 60vh; margin-top: 1rem; }
+        #map:fullscreen { width: 100%; height: 100%; }
         #controls input { margin-right: 0.5rem; }
     </style>
 </head>
@@ -20,6 +21,7 @@
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
     <button id="load">Load</button>
+    <button id="fullscreen-button">Fullscreen</button>
 </div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -70,6 +72,24 @@ function loadData() {
 
 initMap();
 document.getElementById('load').addEventListener('click', loadData);
+document.getElementById('fullscreen-button').addEventListener('click', () => {
+    const el = document.getElementById('map');
+    if (!document.fullscreenElement) {
+        if (el.requestFullscreen) {
+            el.requestFullscreen();
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+});
+
+document.addEventListener('fullscreenchange', () => {
+    if (map) {
+        map.invalidateSize();
+    }
+});
 </script>
 </body>
 </html>
