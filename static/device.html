@@ -34,6 +34,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let map;
+let deviceNicknames = {};
+let currentNickname = '';
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -43,9 +45,11 @@ function populateDeviceIds() {
         optAll.value = '';
         optAll.textContent = 'All Devices';
         sel.appendChild(optAll);
+        deviceNicknames = {};
         data.ids.forEach(item => {
             const opt = document.createElement('option');
             opt.value = item.id;
+            if (item.nickname) deviceNicknames[item.id] = item.nickname;
             opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             sel.appendChild(opt);
         });
@@ -65,12 +69,14 @@ function loadNickname() {
     const device = document.getElementById('deviceId').value;
     if (!device) {
         document.getElementById('nickname').value = '';
+        currentNickname = '';
         return;
     }
     fetch(`/nickname?device_id=${encodeURIComponent(device)}`)
         .then(r => r.json())
         .then(data => {
-            document.getElementById('nickname').value = data.nickname || '';
+            currentNickname = data.nickname || '';
+            document.getElementById('nickname').value = currentNickname;
         })
         .catch(console.error);
 }
@@ -100,13 +106,16 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
-function addMarker(lat, lon, roughness) {
-    L.circleMarker([lat, lon], {
-        radius: 6,
+function addSegment(lat1, lon1, lat2, lon2, roughness, nickname = '') {
+    if (!map || lat1 === 0 && lon1 === 0) return;
+    const line = L.polyline([[lat1, lon1], [lat2, lon2]], {
         color: colorForRoughness(roughness),
-        fillColor: colorForRoughness(roughness),
-        fillOpacity: 0.8
-    }).addTo(map).bindPopup('Roughness: ' + roughness.toFixed(2));
+        weight: 5,
+        opacity: 0.8
+    }).addTo(map);
+    let popup = `Roughness: ${roughness.toFixed(2)}`;
+    if (nickname) popup = `Device: ${nickname}<br>` + popup;
+    line.bindPopup(popup);
 }
 
 function loadData() {
@@ -123,10 +132,19 @@ function loadData() {
         .then(r => r.json())
         .then(data => {
             map.eachLayer(layer => {
-                if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+                if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                    map.removeLayer(layer);
+                }
             });
-            data.rows.reverse().forEach(row =>
-                addMarker(row.latitude, row.longitude, row.roughness));
+            const lastPoints = {};
+            data.rows.reverse().forEach(row => {
+                const prev = lastPoints[row.device_id];
+                if (prev) {
+                    const name = deviceNicknames[row.device_id] || '';
+                    addSegment(prev.lat, prev.lon, row.latitude, row.longitude, row.roughness, name);
+                }
+                lastPoints[row.device_id] = { lat: row.latitude, lon: row.longitude };
+            });
         })
         .catch(console.error);
 }
