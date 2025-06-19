@@ -166,8 +166,7 @@ function checkMotionPermission() {
     }
 }
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
-const POLL_INTERVAL_MS = 1000; // poll every second
-let geoPollId = null;
+let geoWatchId = null;
 let loggingEnabled = false;
 let recordCount = 0;
 
@@ -395,10 +394,12 @@ function startGeolocation() {
     }
     requestMotionPermission();
     motionPermissionTimer = setTimeout(checkMotionPermission, 5000);
-    if (geoPollId === null) {
-        geoPollId = setInterval(() => {
-            navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, GEO_OPTIONS);
-        }, POLL_INTERVAL_MS);
+    if (geoWatchId === null) {
+        geoWatchId = navigator.geolocation.watchPosition(
+            handlePosition,
+            handleGeoError,
+            GEO_OPTIONS
+        );
     }
     loggingEnabled = true;
 }
@@ -409,9 +410,9 @@ function stopGeolocation() {
         clearTimeout(motionPermissionTimer);
         motionPermissionTimer = null;
     }
-    if (geoPollId !== null) {
-        clearInterval(geoPollId);
-        geoPollId = null;
+    if (geoWatchId !== null) {
+        navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = null;
     }
 }
 
