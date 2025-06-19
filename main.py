@@ -171,6 +171,7 @@ def init_db() -> None:
                     speed FLOAT,
                     direction FLOAT,
                     roughness FLOAT,
+                    distance_m FLOAT,
                     device_id NVARCHAR(100),
                     user_agent NVARCHAR(256),
                     ip_address NVARCHAR(45),
@@ -203,6 +204,12 @@ def init_db() -> None:
             """
             IF COL_LENGTH('bike_data', 'device_fp') IS NULL
                 ALTER TABLE bike_data ADD device_fp NVARCHAR(256)
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('bike_data', 'distance_m') IS NULL
+                ALTER TABLE bike_data ADD distance_m FLOAT
             """
         )
         cursor.execute(
@@ -256,6 +263,7 @@ def post_log(entry: LogEntry, request: Request):
     )
 
     avg_speed = entry.speed
+    dist_km = 0.0
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -288,19 +296,21 @@ def post_log(entry: LogEntry, request: Request):
     else:
         log_debug("Elevation not available")
     roughness = compute_roughness(entry.z_values, avg_speed)
+    distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, device_id, user_agent, ip_address, device_fp)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             entry.latitude,
             entry.longitude,
             entry.speed,
             entry.direction,
             roughness,
+            distance_m,
             entry.device_id,
             entry.user_agent,
             ip_address,

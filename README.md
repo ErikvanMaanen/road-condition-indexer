@@ -51,6 +51,7 @@ CREATE TABLE bike_data (
   speed FLOAT,
   direction FLOAT,
   roughness FLOAT,
+  distance_m FLOAT,
   device_id NVARCHAR(100),
   user_agent NVARCHAR(256),
   ip_address NVARCHAR(45),
