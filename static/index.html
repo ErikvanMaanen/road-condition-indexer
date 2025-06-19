@@ -77,12 +77,14 @@ const fingerprint = [
 function loadNickname() {
     if (!selectedId) {
         document.getElementById('nickname').value = '';
+        currentNickname = '';
         return;
     }
     fetch(`/nickname?device_id=${encodeURIComponent(selectedId)}`)
         .then(r => r.json())
         .then(data => {
-            document.getElementById('nickname').value = data.nickname || '';
+            currentNickname = data.nickname || '';
+            document.getElementById('nickname').value = currentNickname;
         })
         .catch(console.error);
 }
@@ -102,9 +104,11 @@ function populateDeviceFilter() {
     fetch('/device_ids').then(r => r.json()).then(data => {
         const select = document.getElementById('device-filter');
         select.innerHTML = '';
+        deviceNicknames = {};
         data.ids.forEach(item => {
             const opt = document.createElement('option');
             opt.value = item.id;
+            if (item.nickname) deviceNicknames[item.id] = item.nickname;
             opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             select.appendChild(opt);
         });
@@ -133,6 +137,8 @@ let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
 let roughMax = 10;
 let roughAvg = 0;
+let deviceNicknames = {};
+let currentNickname = '';
 let motionDataReceived = false;
 let motionPermissionTimer = null;
 if (window.DeviceOrientationEvent) {
@@ -257,24 +263,25 @@ function zUp(acc) {
     return (acc.x * upX + acc.y * upY + acc.z * upZ) / mag;
 }
 
-function addMarker(lat, lon, roughness, info = null) {
-    if (!map) return;
+function addSegment(lat1, lon1, lat2, lon2, roughness, info = null, nickname = '') {
+    if (!map || lat1 === 0 && lon1 === 0) return;
     const opts = {
-        radius: 6,
         color: colorForRoughness(roughness),
-        fillColor: colorForRoughness(roughness),
-        fillOpacity: 0.8
+        weight: 5,
+        opacity: 0.8
     };
-    const marker = L.circleMarker([lat, lon], opts).addTo(map);
+    const line = L.polyline([[lat1, lon1], [lat2, lon2]], opts).addTo(map);
     let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
+    if (nickname) popup = `Device: ${nickname}<br>` + popup;
     if (info) {
         const timeStr = new Date(info.timestamp).toLocaleString();
         popup = `Time: ${timeStr}<br>` +
                 `Speed: ${info.speed.toFixed(1)} km/h<br>` +
                 `Dir: ${directionToCompass(info.direction)}<br>` +
                 `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
+        if (nickname) popup = `Device: ${nickname}<br>` + popup;
     }
-    marker.bindPopup(popup);
+    line.bindPopup(popup);
 }
 
 function loadLogs() {
@@ -292,16 +299,21 @@ function loadLogs() {
         roughAvg = data.average || 0;
         if (map) {
             map.eachLayer(layer => {
-                if (layer instanceof L.CircleMarker) {
+                if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
                     map.removeLayer(layer);
                 }
             });
         }
         roughMin = 0;
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
+        const lastPoints = {};
         rows.reverse().forEach(row => {
-            const { latitude, longitude, roughness } = row;
-            addMarker(latitude, longitude, roughness, row);
+            const prev = lastPoints[row.device_id];
+            if (prev) {
+                const name = deviceNicknames[row.device_id] || '';
+                addSegment(prev.lat, prev.lon, row.latitude, row.longitude, row.roughness, row, name);
+            }
+            lastPoints[row.device_id] = { lat: row.latitude, lon: row.longitude };
         });
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
@@ -331,6 +343,8 @@ if (window.DeviceMotionEvent) {
 
 function handlePosition(pos) {
     const { latitude, longitude, speed, heading } = pos.coords;
+    const prevLat = lastLat;
+    const prevLon = lastLon;
     lastLat = latitude;
     lastLon = longitude;
     lastSpeed = (speed || 0) * 3.6; // convert to km/h
@@ -356,12 +370,12 @@ function handlePosition(pos) {
                 lastRoughness = data.roughness;
                 addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent} FP: ${fingerprint}`);
                 updateStatus();
-                addMarker(latitude, longitude, data.roughness, {
+                addSegment(prevLat, prevLon, latitude, longitude, data.roughness, {
                     timestamp: new Date().toISOString(),
                     speed: lastSpeed,
                     direction: lastDir,
                     roughness: data.roughness
-                });
+                }, currentNickname);
                 recordCount += 1;
                 loadLogs();
             }
