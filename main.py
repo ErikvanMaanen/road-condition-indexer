@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import math
 
 
 import requests
@@ -96,6 +97,60 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
         return None
 
 
+def compute_roughness(z_values: List[float], speed_kmh: float) -> float:
+    """Calculate roughness from vertical acceleration samples.
+
+    The samples are filtered to only keep vibrations between 1 and 20 Hz using
+    a basic FFT band-pass filter. The root mean square of the filtered signal is
+    then normalised by the average speed over the interval. If the speed is less
+    than 5 km/h the roughness score is forced to zero to avoid noise at low
+    speeds.
+    """
+
+    if not z_values:
+        return 0.0
+
+    samples = np.asarray(z_values, dtype=float)
+
+    # assume a 2 second interval when calculating the sampling rate
+    sample_rate = len(samples) / 2.0
+    if sample_rate <= 0:
+        return 0.0
+
+    freqs = np.fft.rfftfreq(len(samples), d=1 / sample_rate)
+    fft_vals = np.fft.rfft(samples)
+    mask = (freqs >= 1.0) & (freqs <= 20.0)
+    fft_vals[~mask] = 0
+    filtered = np.fft.irfft(fft_vals, n=len(samples))
+
+    rms = float(np.sqrt(np.mean(np.square(filtered))))
+
+    if speed_kmh <= 0:
+        normalised = rms
+    else:
+        normalised = rms / speed_kmh
+
+    if speed_kmh < 5.0:
+        return 0.0
+
+    return normalised
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return distance in kilometers between two lat/lon points."""
+    r = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
+
+
 @app.on_event("startup")
 def init_db() -> None:
     """Ensure that required tables exist."""
@@ -174,18 +229,43 @@ class LogEntry(BaseModel):
 
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
-    log_debug(f"Received log entry from {entry.device_id} UA {entry.user_agent}: {entry}")
-    if entry.speed <= 7:
-        log_debug(f"Ignored log entry with low speed: {entry.speed} km/h")
+    log_debug(
+        f"Received log entry from {entry.device_id} UA {entry.user_agent}: {entry}"
+    )
+
+    avg_speed = entry.speed
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+            entry.device_id,
+        )
+        row = cursor.fetchone()
+        if row:
+            prev_lat, prev_lon, prev_ts = row
+            dt_sec = (datetime.utcnow() - prev_ts).total_seconds()
+            if dt_sec > 0:
+                dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
+                avg_speed = dist_km / (dt_sec / 3600)
+    except Exception as exc:
+        log_debug(f"Avg speed fetch error: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if avg_speed < 5.0:
+        log_debug(f"Ignored log entry with low avg speed: {avg_speed} km/h")
         return {"status": "ignored", "reason": "low speed"}
+
     elevation = get_elevation(entry.latitude, entry.longitude)
     if elevation is not None:
         log_debug(f"Elevation: {elevation} m")
     else:
         log_debug("Elevation not available")
-    roughness = float(np.std(entry.z_values))
-    if entry.speed > 0:
-        roughness /= entry.speed
+    roughness = compute_roughness(entry.z_values, avg_speed)
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
     try:
