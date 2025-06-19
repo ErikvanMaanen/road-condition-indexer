@@ -166,9 +166,8 @@ function checkMotionPermission() {
     }
 }
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
-const POLL_INTERVAL_MS = 1000; // attempt ~1m updates when moving
+const POLL_INTERVAL_MS = 1000; // poll every second
 let geoPollId = null;
-let geoWatchId = null;
 let loggingEnabled = false;
 let recordCount = 0;
 
@@ -263,14 +262,16 @@ function zUp(acc) {
     return (acc.x * upX + acc.y * upY + acc.z * upZ) / mag;
 }
 
-function addSegment(lat1, lon1, lat2, lon2, roughness, info = null, nickname = '') {
-    if (!map || lat1 === 0 && lon1 === 0) return;
+function addPoint(lat, lon, roughness, info = null, nickname = '') {
+    if (!map || (lat === 0 && lon === 0)) return;
     const opts = {
         color: colorForRoughness(roughness),
-        weight: 5,
-        opacity: 0.8
+        radius: 4,
+        weight: 1,
+        opacity: 0.9,
+        fillOpacity: 0.9
     };
-    const line = L.polyline([[lat1, lon1], [lat2, lon2]], opts).addTo(map);
+    const marker = L.circleMarker([lat, lon], opts).addTo(map);
     let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
     if (nickname) popup = `Device: ${nickname}<br>` + popup;
     if (info) {
@@ -281,7 +282,7 @@ function addSegment(lat1, lon1, lat2, lon2, roughness, info = null, nickname = '
                 `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
         if (nickname) popup = `Device: ${nickname}<br>` + popup;
     }
-    line.bindPopup(popup);
+    marker.bindPopup(popup);
 }
 
 function loadLogs() {
@@ -306,14 +307,9 @@ function loadLogs() {
         }
         roughMin = 0;
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
-        const lastPoints = {};
         rows.reverse().forEach(row => {
-            const prev = lastPoints[row.device_id];
-            if (prev) {
-                const name = deviceNicknames[row.device_id] || '';
-                addSegment(prev.lat, prev.lon, row.latitude, row.longitude, row.roughness, row, name);
-            }
-            lastPoints[row.device_id] = { lat: row.latitude, lon: row.longitude };
+            const name = deviceNicknames[row.device_id] || '';
+            addPoint(row.latitude, row.longitude, row.roughness, row, name);
         });
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
@@ -343,15 +339,13 @@ if (window.DeviceMotionEvent) {
 
 function handlePosition(pos) {
     const { latitude, longitude, speed, heading } = pos.coords;
-    const prevLat = lastLat;
-    const prevLon = lastLon;
     lastLat = latitude;
     lastLon = longitude;
     lastSpeed = (speed || 0) * 3.6; // convert to km/h
     lastDir = heading || 0;
     updateStatus();
     addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
-    if (loggingEnabled && zValues.length > 0 && lastSpeed > 0 && lastDir > 0) {
+    if (loggingEnabled && zValues.length > 0) {
         fetch('/log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -370,7 +364,7 @@ function handlePosition(pos) {
                 lastRoughness = data.roughness;
                 addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent} FP: ${fingerprint}`);
                 updateStatus();
-                addSegment(prevLat, prevLon, latitude, longitude, data.roughness, {
+                addPoint(latitude, longitude, data.roughness, {
                     timestamp: new Date().toISOString(),
                     speed: lastSpeed,
                     direction: lastDir,
@@ -401,9 +395,6 @@ function startGeolocation() {
     }
     requestMotionPermission();
     motionPermissionTimer = setTimeout(checkMotionPermission, 5000);
-    if (geoWatchId === null) {
-        geoWatchId = navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTIONS);
-    }
     if (geoPollId === null) {
         geoPollId = setInterval(() => {
             navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, GEO_OPTIONS);
@@ -417,10 +408,6 @@ function stopGeolocation() {
     if (motionPermissionTimer !== null) {
         clearTimeout(motionPermissionTimer);
         motionPermissionTimer = null;
-    }
-    if (geoWatchId !== null) {
-        navigator.geolocation.clearWatch(geoWatchId);
-        geoWatchId = null;
     }
     if (geoPollId !== null) {
         clearInterval(geoPollId);
