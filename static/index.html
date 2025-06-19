@@ -36,6 +36,13 @@
     <button id="update-button" style="margin-left:1rem;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
     <select id="device-filter" style="margin-left:1rem;"></select>
+    <select id="version-filter" style="margin-left:1rem;">
+        <option value="">All Versions</option>
+        <option value="0.1">V0.1</option>
+        <option value="0.2">V0.2</option>
+    </select>
+    <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
+    <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
     <a href="device.html" style="margin-left:1rem;">Device View</a>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
@@ -66,17 +73,36 @@ const fingerprint = [
     new Date().getTimezoneOffset()
 ].join('|');
 
+function loadNickname() {
+    fetch(`/nickname?device_id=${encodeURIComponent(deviceId)}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('nickname').value = data.nickname || '';
+        })
+        .catch(console.error);
+}
+
+function saveNickname() {
+    const name = document.getElementById('nickname').value;
+    fetch('/nickname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, nickname: name })
+    }).then(() => populateDeviceFilter())
+      .catch(console.error);
+}
+
 function populateDeviceFilter() {
     fetch('/device_ids').then(r => r.json()).then(data => {
         const select = document.getElementById('device-filter');
         select.innerHTML = '';
-        data.ids.forEach(id => {
+        data.ids.forEach(item => {
             const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = id;
+            opt.value = item.id;
+            opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             select.appendChild(opt);
         });
-        if (deviceId && !data.ids.includes(deviceId)) {
+        if (deviceId && !data.ids.some(i => i.id === deviceId)) {
             const opt = document.createElement('option');
             opt.value = deviceId;
             opt.textContent = deviceId;
@@ -246,7 +272,14 @@ function addMarker(lat, lon, roughness, info = null) {
 
 function loadLogs() {
     const filterId = document.getElementById('device-filter').value;
-    const url = filterId ? `/filteredlogs?device_id=${encodeURIComponent(filterId)}` : '/logs';
+    const version = document.getElementById('version-filter').value;
+    let url = '/logs';
+    if (filterId || version) {
+        const params = new URLSearchParams();
+        if (filterId) params.append('device_id', filterId);
+        if (version) params.append('version', version);
+        url = '/filteredlogs?' + params.toString();
+    }
     fetch(url).then(r => r.json()).then(data => {
         const rows = Array.isArray(data) ? data : data.rows;
         roughAvg = data.average || 0;
@@ -394,6 +427,7 @@ function generateGpx() {
 updateStatus();
 initMap();
 populateDeviceFilter();
+loadNickname();
 pollDebug();
 
 document.getElementById('toggle').addEventListener('click', () => {
@@ -408,6 +442,8 @@ document.getElementById('toggle').addEventListener('click', () => {
 
 document.getElementById('gpx-button').addEventListener('click', generateGpx);
 document.getElementById('update-button').addEventListener('click', loadLogs);
+document.getElementById('version-filter').addEventListener('change', loadLogs);
+document.getElementById('save-nickname').addEventListener('click', saveNickname);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {
