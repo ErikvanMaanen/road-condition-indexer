@@ -25,6 +25,8 @@
     </select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
+    <input id="nickname" placeholder="Nickname">
+    <button id="save-nickname">Save</button>
     <button id="load">Load</button>
     <button id="fullscreen-button">Fullscreen</button>
 </div>
@@ -47,7 +49,7 @@ function populateDeviceIds() {
             opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             sel.appendChild(opt);
         });
-    }).then(() => setDateRange()).catch(console.error);
+    }).then(() => { setDateRange(); loadNickname(); }).catch(console.error);
 }
 
 function setDateRange() {
@@ -57,6 +59,32 @@ function setDateRange() {
         if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
         if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
     }).catch(console.error);
+}
+
+function loadNickname() {
+    const device = document.getElementById('deviceId').value;
+    if (!device) {
+        document.getElementById('nickname').value = '';
+        return;
+    }
+    fetch(`/nickname?device_id=${encodeURIComponent(device)}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('nickname').value = data.nickname || '';
+        })
+        .catch(console.error);
+}
+
+function saveNickname() {
+    const device = document.getElementById('deviceId').value;
+    const name = document.getElementById('nickname').value;
+    if (!device) return;
+    fetch('/nickname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: device, nickname: name })
+    }).then(() => populateDeviceIds())
+      .catch(console.error);
 }
 
 function initMap() {
@@ -106,8 +134,12 @@ function loadData() {
 initMap();
 populateDeviceIds();
 document.getElementById('load').addEventListener('click', loadData);
-document.getElementById('deviceId').addEventListener('change', setDateRange);
+document.getElementById('deviceId').addEventListener('change', () => {
+    setDateRange();
+    loadNickname();
+});
 document.getElementById('version').addEventListener('change', loadData);
+document.getElementById('save-nickname').addEventListener('click', saveNickname);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {

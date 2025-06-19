@@ -54,6 +54,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
+let selectedId = deviceId;
 function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
     document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
@@ -74,7 +75,11 @@ const fingerprint = [
 ].join('|');
 
 function loadNickname() {
-    fetch(`/nickname?device_id=${encodeURIComponent(deviceId)}`)
+    if (!selectedId) {
+        document.getElementById('nickname').value = '';
+        return;
+    }
+    fetch(`/nickname?device_id=${encodeURIComponent(selectedId)}`)
         .then(r => r.json())
         .then(data => {
             document.getElementById('nickname').value = data.nickname || '';
@@ -84,10 +89,11 @@ function loadNickname() {
 
 function saveNickname() {
     const name = document.getElementById('nickname').value;
+    if (!selectedId) return;
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, nickname: name })
+        body: JSON.stringify({ device_id: selectedId, nickname: name })
     }).then(() => populateDeviceFilter())
       .catch(console.error);
 }
@@ -108,8 +114,9 @@ function populateDeviceFilter() {
             opt.textContent = deviceId;
             select.appendChild(opt);
         }
-        select.value = deviceId;
-    }).then(() => loadLogs())
+        select.value = selectedId || deviceId;
+        selectedId = select.value;
+    }).then(() => { loadNickname(); loadLogs(); })
       .catch(console.error);
 }
 let xValues = [];
@@ -427,7 +434,6 @@ function generateGpx() {
 updateStatus();
 initMap();
 populateDeviceFilter();
-loadNickname();
 pollDebug();
 
 document.getElementById('toggle').addEventListener('click', () => {
@@ -444,6 +450,11 @@ document.getElementById('gpx-button').addEventListener('click', generateGpx);
 document.getElementById('update-button').addEventListener('click', loadLogs);
 document.getElementById('version-filter').addEventListener('change', loadLogs);
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
+document.getElementById('device-filter').addEventListener('change', () => {
+    selectedId = document.getElementById('device-filter').value;
+    loadNickname();
+    loadLogs();
+});
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {
