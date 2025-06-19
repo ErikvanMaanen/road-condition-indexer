@@ -6,7 +6,9 @@ This project collects road roughness data from mobile devices and stores it in a
 
 - `POST /log` – Submit a new measurement. Requires JSON payload with latitude,
   longitude, **speed in km/h**, direction, a device identifier, the browser
-  user agent and a list of Z-axis acceleration values.
+  user agent and a list of Z-axis acceleration values. The server computes the
+  average speed since the previous update and ignores submissions when that
+  speed is below **5 km/h**.
 - `GET /logs` – Fetch recent measurements. Accepts an optional `limit` query
   parameter (default 100).
 - `GET /debuglog` – Retrieve backend debug messages.
