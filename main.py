@@ -18,7 +18,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def read_index():
-    """Serve the main application page."""
+    """Serve the main application page and ensure DB is ready."""
+    init_db()
     return FileResponse("static/index.html")
 
 
@@ -32,6 +33,12 @@ def read_welcome():
 def read_device():
     """Serve the device filter page."""
     return FileResponse("static/device.html")
+
+
+@app.get("/db.html")
+def read_db_page():
+    """Serve the database management page."""
+    return FileResponse("static/db.html")
 
 # In-memory debug log
 DEBUG_LOG: List[str] = []
@@ -215,7 +222,18 @@ def init_db() -> None:
         cursor.execute(
             """
             IF COL_LENGTH('bike_data', 'version') IS NULL
-                ALTER TABLE bike_data ADD version NVARCHAR(10) CONSTRAINT DF_bike_data_version DEFAULT '0.2'
+                ALTER TABLE bike_data ADD version NVARCHAR(10)
+            """
+        )
+        cursor.execute(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.default_constraints
+                WHERE parent_object_id = OBJECT_ID('bike_data')
+                  AND name = 'DF_bike_data_version'
+            )
+                ALTER TABLE bike_data
+                    ADD CONSTRAINT DF_bike_data_version DEFAULT '0.2' FOR version
             """
         )
         cursor.execute(
@@ -587,3 +605,91 @@ def get_gpx(limit: Optional[int] = None):
 @app.get("/debuglog")
 def get_debuglog():
     return {"log": DEBUG_LOG}
+
+
+@app.get("/manage/tables")
+def manage_tables():
+    """Return table contents for management page."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sys.tables")
+        names = [row[0] for row in cursor.fetchall()]
+        tables = {}
+        for name in names:
+            cursor.execute(f"SELECT TOP 20 * FROM {name}")
+            cols = [c[0] for c in cursor.description]
+            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            tables[name] = rows
+        log_debug("Fetched table info")
+    except Exception as exc:
+        log_debug(f"Database info error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"tables": tables}
+
+
+class TestdataRequest(BaseModel):
+    table: str
+
+
+@app.post("/manage/insert_testdata")
+def insert_testdata(req: TestdataRequest):
+    """Insert a simple test record into a table."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if req.table == "bike_data":
+            cursor.execute(
+                """
+                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp, version)
+                VALUES (0, 0, 10, 0, 0, 0, 'test_device', 'test_agent', '0.0.0.0', 'test_fp', '0.2')
+                """
+            )
+        elif req.table == "debug_log":
+            cursor.execute(
+                "INSERT INTO debug_log (message) VALUES ('test log message')"
+            )
+        elif req.table == "device_nicknames":
+            cursor.execute(
+                "INSERT INTO device_nicknames (device_id, nickname) VALUES ('test_device', 'Test Device')"
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unknown table")
+        conn.commit()
+        log_debug("Inserted test data")
+    except Exception as exc:
+        log_debug(f"Testdata insert error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@app.delete("/manage/delete_all")
+def delete_all(table: str):
+    """Delete all rows from the specified table."""
+    if table not in ("bike_data", "debug_log", "device_nicknames"):
+        raise HTTPException(status_code=400, detail="Unknown table")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM {table}")
+        conn.commit()
+        log_debug(f"Deleted rows from {table}")
+    except Exception as exc:
+        log_debug(f"Delete error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
