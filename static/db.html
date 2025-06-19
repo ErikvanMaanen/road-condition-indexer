@@ -18,51 +18,82 @@
     <button onclick="insertTest()">Insert Test Data</button>
     <select id="table-select"></select>
     <button onclick="deleteRecords()">Delete All Records</button>
+    <button onclick="backupTable()">Backup Table</button>
+    <button onclick="renameTable()">Rename Table</button>
 </div>
 <div id="output"></div>
 <script>
-async function loadTables() {
+async function loadTables(selected) {
     const res = await fetch('/manage/tables');
     const data = await res.json();
     const select = document.getElementById('table-select');
+    const current = selected || select.value;
     select.innerHTML = '';
-    const out = document.getElementById('output');
-    out.innerHTML = '';
-    for (const [name, rows] of Object.entries(data.tables)) {
+    for (const name of Object.keys(data.tables)) {
         const opt = document.createElement('option');
         opt.value = name; opt.textContent = name; select.appendChild(opt);
-        const table = document.createElement('table');
-        const caption = document.createElement('caption');
-        caption.textContent = name; table.appendChild(caption);
-        if (rows.length > 0) {
-            const head = document.createElement('tr');
-            for (const col of Object.keys(rows[0])) {
-                const th = document.createElement('th'); th.textContent = col; head.appendChild(th);
-            }
-            table.appendChild(head);
-            for (const row of rows) {
-                const tr = document.createElement('tr');
-                for (const val of Object.values(row)) {
-                    const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
-                }
-                table.appendChild(tr);
-            }
-        } else {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td'); td.textContent = '(no rows)'; td.colSpan = 1; tr.appendChild(td); table.appendChild(tr);
-        }
-        out.appendChild(table);
     }
+    if (current) select.value = current;
+    if (!select.value && select.options.length > 0)
+        select.value = select.options[0].value;
+    const tableName = select.value;
+    const out = document.getElementById('output');
+    out.innerHTML = '';
+    const rows = data.tables[tableName] || [];
+    if (!tableName) return;
+    const table = document.createElement('table');
+    const caption = document.createElement('caption');
+    caption.textContent = tableName; table.appendChild(caption);
+    if (rows.length > 0) {
+        const head = document.createElement('tr');
+        for (const col of Object.keys(rows[0])) {
+            const th = document.createElement('th'); th.textContent = col; head.appendChild(th);
+        }
+        table.appendChild(head);
+        for (const row of rows) {
+            const tr = document.createElement('tr');
+            for (const val of Object.values(row)) {
+                const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
+            }
+            table.appendChild(tr);
+        }
+    } else {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td'); td.textContent = '(no rows)'; td.colSpan = 1; tr.appendChild(td); table.appendChild(tr);
+    }
+    out.appendChild(table);
 }
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
     await fetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
-    loadTables();
+    loadTables(t);
 }
 async function deleteRecords() {
     const t = document.getElementById('table-select').value; if(!t) return;
     await fetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
-    loadTables();
+    loadTables(t);
+}
+async function backupTable() {
+    const t = document.getElementById('table-select').value; if(!t) return;
+    const res = await fetch('/manage/backup_table', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({table:t})
+    });
+    const data = await res.json();
+    alert('Backup created: '+data.new_table);
+    loadTables(data.new_table);
+}
+async function renameTable() {
+    const t = document.getElementById('table-select').value; if(!t) return;
+    const newName = prompt('New table name', t);
+    if(!newName || newName === t) return;
+    await fetch('/manage/rename_table', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({old_name:t, new_name:newName})
+    });
+    loadTables(newName);
 }
 loadTables();
 </script>

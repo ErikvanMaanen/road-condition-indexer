@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import math
+import re
 
 
 import requests
@@ -686,6 +687,73 @@ def delete_all(table: str):
         log_debug(f"Deleted rows from {table}")
     except Exception as exc:
         log_debug(f"Delete error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+class BackupRequest(BaseModel):
+    table: str
+
+
+@app.post("/manage/backup_table")
+def backup_table(req: BackupRequest):
+    """Create a backup copy of the given table."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    if not name_re.match(req.table):
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    new_table = f"{req.table}_backup_{timestamp}"
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.table)
+        if not cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Unknown table")
+        cursor.execute(f"SELECT * INTO {new_table} FROM {req.table}")
+        conn.commit()
+        log_debug(f"Backed up {req.table} to {new_table}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Backup error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok", "new_table": new_table}
+
+
+class RenameRequest(BaseModel):
+    old_name: str
+    new_name: str
+
+
+@app.post("/manage/rename_table")
+def rename_table(req: RenameRequest):
+    """Rename a table."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    if not name_re.match(req.old_name) or not name_re.match(req.new_name):
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.old_name)
+        if not cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Unknown table")
+        cursor.execute(f"EXEC sp_rename '{req.old_name}', '{req.new_name}'")
+        conn.commit()
+        log_debug(f"Renamed table {req.old_name} to {req.new_name}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Rename error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
     finally:
         try:
