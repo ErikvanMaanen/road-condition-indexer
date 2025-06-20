@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -43,6 +43,10 @@ def read_db_page():
 
 # In-memory debug log
 DEBUG_LOG: List[str] = []
+
+# Track last received location for each device
+# Maps device_id -> (timestamp, latitude, longitude)
+LAST_POINT: Dict[str, Tuple[datetime, float, float]] = {}
 
 
 def log_debug(message: str) -> None:
@@ -327,40 +331,49 @@ def post_log(entry: LogEntry, request: Request):
         f"Received log entry from {entry.device_id}: {entry}"
     )
 
+    now = datetime.utcnow()
     avg_speed = entry.speed
     dist_km = 0.0
     dt_sec = 2.0
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
-            entry.device_id,
-        )
-        row = cursor.fetchone()
-        if row:
-            prev_lat, prev_lon, prev_ts = row
-            dt_sec = (datetime.utcnow() - prev_ts).total_seconds()
-            if dt_sec <= 0:
-                dt_sec = 2.0
-            dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
-            avg_speed = dist_km / (dt_sec / 3600)
-    except Exception as exc:
-        log_debug(f"Avg speed fetch error: {exc}")
-    finally:
+    prev_info = LAST_POINT.get(entry.device_id)
+    if not prev_info:
         try:
-            conn.close()
-        except Exception:
-            pass
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+                entry.device_id,
+            )
+            row = cursor.fetchone()
+            if row:
+                prev_lat, prev_lon, prev_ts = row
+                prev_info = (prev_ts, prev_lat, prev_lon)
+        except Exception as exc:
+            log_debug(f"Avg speed fetch error: {exc}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    if prev_info:
+        prev_ts, prev_lat, prev_lon = prev_info
+        dt_sec = (now - prev_ts).total_seconds()
+        if dt_sec <= 0:
+            dt_sec = 2.0
+        dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
+        avg_speed = dist_km / (dt_sec / 3600)
 
     if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
         log_debug(
             f"Ignored log entry with interval {dt_sec:.1f}s and distance {dist_km * 1000.0:.1f}m"
         )
+        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < 5.0:
         log_debug(f"Ignored log entry with low avg speed: {avg_speed} km/h")
+        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "low speed"}
 
     elevation = get_elevation(entry.latitude, entry.longitude)
@@ -412,6 +425,7 @@ def post_log(entry: LogEntry, request: Request):
             conn.close()
         except Exception:
             pass
+    LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
     return {"status": "ok", "roughness": roughness}
 
 
