@@ -55,8 +55,7 @@ CREATE TABLE bike_data (
   device_id NVARCHAR(100),
   user_agent NVARCHAR(256),
   ip_address NVARCHAR(45),
-  device_fp NVARCHAR(256),
-  version NVARCHAR(10) DEFAULT '0.2'
+  device_fp NVARCHAR(256)
 );
 
 CREATE TABLE debug_log (

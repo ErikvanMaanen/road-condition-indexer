@@ -6,7 +6,7 @@
     <title>Road Condition Indexer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 1rem; }
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
         #log {
             width: 100%;
             height: 150px;
@@ -23,7 +23,7 @@
         #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
         #map:fullscreen { width: 100%; height: 100%; }
         #status { margin-bottom: 1rem; font-weight: bold; }
-        #button-bar { margin-bottom: 1rem; }
+        #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
     </style>
 </head>
@@ -36,11 +36,6 @@
     <button id="update-button" style="margin-left:1rem;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
     <select id="device-filter" style="margin-left:1rem;"></select>
-    <select id="version-filter" style="margin-left:1rem;">
-        <option value="">All Versions</option>
-        <option value="0.1">V0.1</option>
-        <option value="0.2">V0.2</option>
-    </select>
     <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
     <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
     <a href="device.html" style="margin-left:1rem;">Device View</a>
@@ -287,12 +282,10 @@ function addPoint(lat, lon, roughness, info = null, nickname = '') {
 
 function loadLogs() {
     const filterId = document.getElementById('device-filter').value;
-    const version = document.getElementById('version-filter').value;
     let url = '/logs';
-    if (filterId || version) {
+    if (filterId) {
         const params = new URLSearchParams();
-        if (filterId) params.append('device_id', filterId);
-        if (version) params.append('version', version);
+        params.append('device_id', filterId);
         url = '/filteredlogs?' + params.toString();
     }
     fetch(url).then(r => r.json()).then(data => {
@@ -451,7 +444,6 @@ document.getElementById('toggle').addEventListener('click', () => {
 
 document.getElementById('gpx-button').addEventListener('click', generateGpx);
 document.getElementById('update-button').addEventListener('click', loadLogs);
-document.getElementById('version-filter').addEventListener('change', loadLogs);
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedId = document.getElementById('device-filter').value;

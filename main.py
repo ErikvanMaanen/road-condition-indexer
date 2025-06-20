@@ -251,19 +251,20 @@ def init_db() -> None:
         )
         cursor.execute(
             """
-            IF COL_LENGTH('bike_data', 'version') IS NULL
-                ALTER TABLE bike_data ADD version NVARCHAR(10)
+            IF COL_LENGTH('bike_data', 'version') IS NOT NULL
+            BEGIN
+                DECLARE @cons nvarchar(200);
+                SELECT @cons = dc.name
+                FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id
+                        AND dc.parent_column_id = c.column_id
+                WHERE dc.parent_object_id = OBJECT_ID('bike_data')
+                      AND c.name = 'version';
+                IF @cons IS NOT NULL
+                    EXEC('ALTER TABLE bike_data DROP CONSTRAINT ' + @cons);
+                ALTER TABLE bike_data DROP COLUMN version;
+            END
             """
-        )
-        cursor.execute(
-            """
-            IF OBJECT_ID('DF_bike_data_version', 'D') IS NULL
-                ALTER TABLE bike_data
-                    ADD CONSTRAINT DF_bike_data_version DEFAULT '0.2' FOR version
-            """
-        )
-        cursor.execute(
-            "UPDATE bike_data SET version = '0.1' WHERE version IS NULL"
         )
         cursor.execute(
             """
@@ -412,9 +413,8 @@ def get_logs(limit: Optional[int] = None):
 @app.get("/filteredlogs")
 def get_filtered_logs(device_id: Optional[str] = None,
                       start: Optional[str] = None,
-                      end: Optional[str] = None,
-                      version: Optional[str] = None):
-    """Return log entries filtered by device ID, date range and version."""
+                      end: Optional[str] = None):
+    """Return log entries filtered by device ID and date range."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -433,9 +433,6 @@ def get_filtered_logs(device_id: Optional[str] = None,
             end_dt = datetime.fromisoformat(end)
             query += " AND timestamp <= ?"
             params.append(end_dt)
-        if version:
-            query += " AND version = ?"
-            params.append(version)
         query += " ORDER BY id DESC"
         cursor.execute(query, params)
         columns = [column[0] for column in cursor.description]
@@ -451,9 +448,6 @@ def get_filtered_logs(device_id: Optional[str] = None,
         if end:
             avg_query += " AND timestamp <= ?"
             avg_params.append(end_dt)
-        if version:
-            avg_query += " AND version = ?"
-            avg_params.append(version)
         cursor.execute(avg_query, avg_params)
         avg_row = cursor.fetchone()
         rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
@@ -672,8 +666,8 @@ def insert_testdata(req: TestdataRequest):
         if req.table == "bike_data":
             cursor.execute(
                 """
-                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp, version)
-                VALUES (0, 0, 10, 0, 0, 0, 'test_device', 'test_agent', '0.0.0.0', 'test_fp', '0.2')
+                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp)
+                VALUES (0, 0, 10, 0, 0, 0, 'test_device', 'test_agent', '0.0.0.0', 'test_fp')
                 """
             )
         elif req.table == "debug_log":
