@@ -69,24 +69,52 @@ def log_debug(message: str) -> None:
             pass
 
 
-def get_db_connection():
+def get_db_connection(database: Optional[str] = None):
     """Create a new database connection using env vars."""
-    server = os.getenv('AZURE_SQL_SERVER')
-    port = os.getenv('AZURE_SQL_PORT')
-    user = os.getenv('AZURE_SQL_USER')
-    password = os.getenv('AZURE_SQL_PASSWORD')
-    database = os.getenv('AZURE_SQL_DATABASE')
-    if not all([server, port, user, password, database]):
-        raise RuntimeError('Database environment variables not set')
+    server = os.getenv("AZURE_SQL_SERVER")
+    port = os.getenv("AZURE_SQL_PORT")
+    user = os.getenv("AZURE_SQL_USER")
+    password = os.getenv("AZURE_SQL_PASSWORD")
+    db_name = database or os.getenv("AZURE_SQL_DATABASE")
+    if not all([server, port, user, password, db_name]):
+        raise RuntimeError("Database environment variables not set")
 
     conn_str = (
         f"DRIVER={{ODBC Driver 17 for SQL Server}};"
         f"SERVER={server},{port};"
-        f"DATABASE={database};"
+        f"DATABASE={db_name};"
         f"UID={user};"
         f"PWD={password}"
     )
     return pyodbc.connect(conn_str)
+
+
+def ensure_database_exists() -> None:
+    """Create the configured database if it does not already exist."""
+    server = os.getenv("AZURE_SQL_SERVER")
+    port = os.getenv("AZURE_SQL_PORT")
+    user = os.getenv("AZURE_SQL_USER")
+    password = os.getenv("AZURE_SQL_PASSWORD")
+    database = os.getenv("AZURE_SQL_DATABASE")
+
+    if not all([server, port, user, password, database]):
+        raise RuntimeError("Database environment variables not set")
+
+    conn = get_db_connection("master")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT database_id FROM sys.databases WHERE name = ?",
+            database,
+        )
+        if not cursor.fetchone():
+            cursor.execute(f"CREATE DATABASE [{database}]")
+            conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -163,6 +191,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 def init_db() -> None:
     """Ensure that required tables exist."""
     try:
+        ensure_database_exists()
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -228,11 +257,7 @@ def init_db() -> None:
         )
         cursor.execute(
             """
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.default_constraints
-                WHERE parent_object_id = OBJECT_ID('bike_data')
-                  AND name = 'DF_bike_data_version'
-            )
+            IF OBJECT_ID('DF_bike_data_version', 'D') IS NULL
                 ALTER TABLE bike_data
                     ADD CONSTRAINT DF_bike_data_version DEFAULT '0.2' FOR version
             """
