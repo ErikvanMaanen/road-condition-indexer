@@ -212,9 +212,7 @@ def init_db() -> None:
                     roughness FLOAT,
                     distance_m FLOAT,
                     device_id NVARCHAR(100),
-                    user_agent NVARCHAR(256),
-                    ip_address NVARCHAR(45),
-                    device_fp NVARCHAR(256)
+                    ip_address NVARCHAR(45)
                 )
             END
             """
@@ -241,8 +239,14 @@ def init_db() -> None:
         )
         cursor.execute(
             """
-            IF COL_LENGTH('bike_data', 'device_fp') IS NULL
-                ALTER TABLE bike_data ADD device_fp NVARCHAR(256)
+            IF COL_LENGTH('bike_data', 'user_agent') IS NOT NULL
+                ALTER TABLE bike_data DROP COLUMN user_agent
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('bike_data', 'device_fp') IS NOT NULL
+                ALTER TABLE bike_data DROP COLUMN device_fp
             """
         )
         cursor.execute(
@@ -276,9 +280,23 @@ def init_db() -> None:
             BEGIN
                 CREATE TABLE device_nicknames (
                     device_id NVARCHAR(100) PRIMARY KEY,
-                    nickname NVARCHAR(100)
+                    nickname NVARCHAR(100),
+                    user_agent NVARCHAR(256),
+                    device_fp NVARCHAR(256)
                 )
             END
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('device_nicknames', 'user_agent') IS NULL
+                ALTER TABLE device_nicknames ADD user_agent NVARCHAR(256)
+            """
+        )
+        cursor.execute(
+            """
+            IF COL_LENGTH('device_nicknames', 'device_fp') IS NULL
+                ALTER TABLE device_nicknames ADD device_fp NVARCHAR(256)
             """
         )
         conn.commit()
@@ -298,15 +316,15 @@ class LogEntry(BaseModel):
     speed: float
     direction: float
     device_id: str
-    user_agent: str
-    device_fp: str
+    user_agent: Optional[str] = None
+    device_fp: Optional[str] = None
     z_values: List[float] = Field(..., alias="z_values")
 
 
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
     log_debug(
-        f"Received log entry from {entry.device_id} UA {entry.user_agent}: {entry}"
+        f"Received log entry from {entry.device_id}: {entry}"
     )
 
     avg_speed = entry.speed
@@ -358,8 +376,8 @@ def post_log(entry: LogEntry, request: Request):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             entry.latitude,
             entry.longitude,
             entry.speed,
@@ -367,13 +385,23 @@ def post_log(entry: LogEntry, request: Request):
             roughness,
             distance_m,
             entry.device_id,
-            entry.user_agent,
             ip_address,
-            entry.device_fp,
         )
         if cursor.rowcount != 1:
             log_debug(f"Insert affected {cursor.rowcount} rows")
             raise HTTPException(status_code=500, detail="Insert failed")
+        cursor.execute(
+            """
+            MERGE device_nicknames AS target
+            USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
+            ON target.device_id = src.device_id
+            WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
+            WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
+            """,
+            entry.device_id,
+            entry.user_agent,
+            entry.device_fp,
+        )
         conn.commit()
         log_debug("Data inserted into database")
     except Exception as exc:
@@ -676,8 +704,8 @@ def insert_testdata(req: TestdataRequest):
         if req.table == "bike_data":
             cursor.execute(
                 """
-                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, user_agent, ip_address, device_fp)
-                VALUES (0, 0, 10, 0, 0, 0, 'test_device', 'test_agent', '0.0.0.0', 'test_fp')
+                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                VALUES (0, 0, 10, 0, 0, 0, 'test_device', '0.0.0.0')
                 """
             )
         elif req.table == "debug_log":
@@ -686,7 +714,10 @@ def insert_testdata(req: TestdataRequest):
             )
         elif req.table == "device_nicknames":
             cursor.execute(
-                "INSERT INTO device_nicknames (device_id, nickname) VALUES ('test_device', 'Test Device')"
+                """
+                INSERT INTO device_nicknames (device_id, nickname, user_agent, device_fp)
+                VALUES ('test_device', 'Test Device', 'test_agent', 'test_fp')
+                """
             )
         else:
             raise HTTPException(status_code=400, detail="Unknown table")

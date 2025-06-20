@@ -32,6 +32,9 @@
 let map;
 let deviceNicknames = {};
 let currentNickname = '';
+let roughMin = 0;
+let roughMax = 10;
+let roughAvg = 0;
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -39,7 +42,7 @@ function populateDeviceIds() {
         sel.innerHTML = '';
         const optAll = document.createElement('option');
         optAll.value = '';
-        optAll.textContent = 'All Devices';
+        optAll.textContent = '[All Devices]';
         sel.appendChild(optAll);
         deviceNicknames = {};
         data.ids.forEach(item => {
@@ -96,22 +99,70 @@ function initMap() {
 }
 
 function colorForRoughness(r) {
-    const ratio = Math.min(Math.max((r - 0) / (5 - 0), 0), 1);
+    let ratio = 0;
+    if (roughAvg > 0) {
+        ratio = r / (roughAvg * 2);
+        ratio = Math.min(Math.max(ratio, 0), 1);
+    } else if (roughMax !== roughMin) {
+        ratio = (r - roughMin) / (roughMax - roughMin);
+        ratio = Math.min(Math.max(ratio, 0), 1);
+    }
     const red = Math.floor(255 * ratio);
     const green = Math.floor(255 * (1 - ratio));
     return `rgb(${red},${green},0)`;
 }
 
-function addSegment(lat1, lon1, lat2, lon2, roughness, nickname = '') {
-    if (!map || lat1 === 0 && lon1 === 0) return;
-    const line = L.polyline([[lat1, lon1], [lat2, lon2]], {
+function directionToCompass(deg) {
+    if (deg === null || isNaN(deg)) return 'N/A';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round((deg % 360) / 45) % 8;
+    return directions[idx];
+}
+
+function roughnessLabel(r) {
+    if (roughAvg > 0) {
+        if (r < roughAvg * 0.5) return 'Very smooth';
+        if (r < roughAvg * 0.8) return 'Smooth';
+        if (r < roughAvg * 1.2) return 'Moderate';
+        if (r < roughAvg * 1.5) return 'Rough';
+        return 'Very rough';
+    }
+    if (roughMax !== roughMin) {
+        const step = (roughMax - roughMin) / 5;
+        if (r < roughMin + step) return 'Very smooth';
+        if (r < roughMin + step * 2) return 'Smooth';
+        if (r < roughMin + step * 3) return 'Moderate';
+        if (r < roughMin + step * 4) return 'Rough';
+        return 'Very rough';
+    }
+    if (r < 1) return 'Very smooth';
+    if (r < 2) return 'Smooth';
+    if (r < 3) return 'Moderate';
+    if (r < 4) return 'Rough';
+    return 'Very rough';
+}
+
+function addPoint(lat, lon, roughness, info = null, nickname = '') {
+    if (!map || (lat === 0 && lon === 0)) return;
+    const opts = {
         color: colorForRoughness(roughness),
-        weight: 5,
-        opacity: 0.8
-    }).addTo(map);
-    let popup = `Roughness: ${roughness.toFixed(2)}`;
+        radius: 4,
+        weight: 1,
+        opacity: 0.9,
+        fillOpacity: 0.9
+    };
+    const marker = L.circleMarker([lat, lon], opts).addTo(map);
+    let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
     if (nickname) popup = `Device: ${nickname}<br>` + popup;
-    line.bindPopup(popup);
+    if (info) {
+        const timeStr = new Date(info.timestamp).toLocaleString();
+        popup = `Time: ${timeStr}<br>` +
+                `Speed: ${info.speed.toFixed(1)} km/h<br>` +
+                `Dir: ${directionToCompass(info.direction)}<br>` +
+                `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
+        if (nickname) popup = `Device: ${nickname}<br>` + popup;
+    }
+    marker.bindPopup(popup);
 }
 
 function loadData() {
@@ -130,14 +181,12 @@ function loadData() {
                     map.removeLayer(layer);
                 }
             });
-            const lastPoints = {};
+            roughAvg = data.average || 0;
+            roughMin = 0;
+            roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
             data.rows.reverse().forEach(row => {
-                const prev = lastPoints[row.device_id];
-                if (prev) {
-                    const name = deviceNicknames[row.device_id] || '';
-                    addSegment(prev.lat, prev.lon, row.latitude, row.longitude, row.roughness, name);
-                }
-                lastPoints[row.device_id] = { lat: row.latitude, lon: row.longitude };
+                const name = deviceNicknames[row.device_id] || '';
+                addPoint(row.latitude, row.longitude, row.roughness, row, name);
             });
         })
         .catch(console.error);
