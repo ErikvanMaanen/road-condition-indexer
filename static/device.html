@@ -6,8 +6,8 @@
     <title>Device Records</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 1rem; }
-        #controls { margin-bottom: 1rem; }
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
+        #controls { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
         #map { width: 100%; height: 60vh; margin-top: 1rem; }
         #map:fullscreen { width: 100%; height: 100%; }
@@ -16,13 +16,9 @@
 </head>
 <body>
 <h1>Device Records</h1>
+<p><a href="index.html">Back to Main</a></p>
 <div id="controls">
     <select id="deviceId"></select>
-    <select id="version">
-        <option value="">All Versions</option>
-        <option value="0.1">V0.1</option>
-        <option value="0.2">V0.2</option>
-    </select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
     <input id="nickname" placeholder="Nickname">
@@ -122,12 +118,10 @@ function loadData() {
     const device = document.getElementById('deviceId').value;
     const start = document.getElementById('startDate').value;
     const end = document.getElementById('endDate').value;
-    const version = document.getElementById('version').value;
     const params = new URLSearchParams();
     if (device) params.append('device_id', device);
     if (start) params.append('start', start);
     if (end) params.append('end', end);
-    if (version) params.append('version', version);
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(data => {
@@ -156,7 +150,6 @@ document.getElementById('deviceId').addEventListener('change', () => {
     setDateRange();
     loadNickname();
 });
-document.getElementById('version').addEventListener('change', loadData);
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
