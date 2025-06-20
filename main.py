@@ -133,23 +133,25 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
         return None
 
 
-def compute_roughness(z_values: List[float], speed_kmh: float) -> float:
+def compute_roughness(
+    z_values: List[float], speed_kmh: float, interval_s: float
+) -> float:
     """Calculate roughness from vertical acceleration samples.
 
-    The samples are filtered to only keep vibrations between 1 and 20 Hz using
+    ``interval_s`` is the time span in seconds covered by ``z_values``. The
+    samples are filtered to only keep vibrations between 1 and 20 Hz using
     a basic FFT band-pass filter. The root mean square of the filtered signal is
     then normalised by the average speed over the interval. If the speed is less
     than 5 km/h the roughness score is forced to zero to avoid noise at low
     speeds.
     """
 
-    if not z_values:
+    if not z_values or interval_s <= 0:
         return 0.0
 
     samples = np.asarray(z_values, dtype=float)
 
-    # assume a 2 second interval when calculating the sampling rate
-    sample_rate = len(samples) / 2.0
+    sample_rate = len(samples) / interval_s
     if sample_rate <= 0:
         return 0.0
 
@@ -309,6 +311,7 @@ def post_log(entry: LogEntry, request: Request):
 
     avg_speed = entry.speed
     dist_km = 0.0
+    dt_sec = 2.0
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -320,9 +323,10 @@ def post_log(entry: LogEntry, request: Request):
         if row:
             prev_lat, prev_lon, prev_ts = row
             dt_sec = (datetime.utcnow() - prev_ts).total_seconds()
-            if dt_sec > 0:
-                dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
-                avg_speed = dist_km / (dt_sec / 3600)
+            if dt_sec <= 0:
+                dt_sec = 2.0
+            dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
+            avg_speed = dist_km / (dt_sec / 3600)
     except Exception as exc:
         log_debug(f"Avg speed fetch error: {exc}")
     finally:
@@ -330,6 +334,12 @@ def post_log(entry: LogEntry, request: Request):
             conn.close()
         except Exception:
             pass
+
+    if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
+        log_debug(
+            f"Ignored log entry with interval {dt_sec:.1f}s and distance {dist_km * 1000.0:.1f}m"
+        )
+        return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < 5.0:
         log_debug(f"Ignored log entry with low avg speed: {avg_speed} km/h")
@@ -340,7 +350,7 @@ def post_log(entry: LogEntry, request: Request):
         log_debug(f"Elevation: {elevation} m")
     else:
         log_debug("Elevation not available")
-    roughness = compute_roughness(entry.z_values, avg_speed)
+    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec)
     distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
