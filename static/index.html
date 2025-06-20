@@ -100,6 +100,10 @@ function populateDeviceFilter() {
     fetch('/device_ids').then(r => r.json()).then(data => {
         const select = document.getElementById('device-filter');
         select.innerHTML = '';
+        const optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = '[All Devices]';
+        select.appendChild(optAll);
         deviceNicknames = {};
         data.ids.forEach(item => {
             const opt = document.createElement('option');
@@ -355,7 +359,7 @@ function handlePosition(pos) {
         }).then(r => r.json()).then(data => {
             if (data.roughness !== undefined) {
                 lastRoughness = data.roughness;
-                addLog(`Roughness: ${data.roughness.toFixed(2)} Device: ${deviceId} UA: ${userAgent} FP: ${fingerprint}`);
+                addLog(`Record inserted, roughness: ${data.roughness.toFixed(2)}`);
                 updateStatus();
                 addPoint(latitude, longitude, data.roughness, {
                     timestamp: new Date().toISOString(),
@@ -436,15 +440,26 @@ document.getElementById('toggle').addEventListener('click', () => {
     if (loggingEnabled) {
         stopGeolocation();
         document.getElementById('toggle').textContent = 'Start';
+        addLog('Logging stopped');
     } else {
         startGeolocation();
         document.getElementById('toggle').textContent = 'Stop';
+        addLog('Logging started');
     }
 });
 
-document.getElementById('gpx-button').addEventListener('click', generateGpx);
-document.getElementById('update-button').addEventListener('click', loadLogs);
-document.getElementById('save-nickname').addEventListener('click', saveNickname);
+document.getElementById('gpx-button').addEventListener('click', () => {
+    addLog('Generate GPX pressed');
+    generateGpx();
+});
+document.getElementById('update-button').addEventListener('click', () => {
+    addLog('Update Records pressed');
+    loadLogs();
+});
+document.getElementById('save-nickname').addEventListener('click', () => {
+    addLog('Save Nickname pressed');
+    saveNickname();
+});
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedId = document.getElementById('device-filter').value;
     loadNickname();
@@ -452,6 +467,7 @@ document.getElementById('device-filter').addEventListener('change', () => {
 });
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
+    addLog('Fullscreen button pressed');
     if (!document.fullscreenElement) {
         if (el.requestFullscreen) {
             el.requestFullscreen();
