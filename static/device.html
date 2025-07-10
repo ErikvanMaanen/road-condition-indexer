@@ -93,9 +93,21 @@ function saveNickname() {
 }
 
 function initMap() {
-    map = L.map('map').setView([52.028, 5.168], 12);
+    const defaultPos = [52.028, 5.168]; // Houten, NL
+    const zoom = 12;
+    map = L.map('map');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    const setView = coords => map.setView(coords, zoom);
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => setView([pos.coords.latitude, pos.coords.longitude]),
+            () => setView(defaultPos),
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
+    } else {
+        setView(defaultPos);
+    }
 }
 
 function colorForRoughness(r) {
