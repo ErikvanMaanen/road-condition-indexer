@@ -50,7 +50,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
-let selectedId = deviceId;
+let selectedId = '';
 function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
     document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
@@ -118,7 +118,7 @@ function populateDeviceFilter() {
             opt.textContent = deviceId;
             select.appendChild(opt);
         }
-        select.value = selectedId || deviceId;
+        select.value = selectedId || '';
         selectedId = select.value;
     }).then(() => { loadNickname(); loadLogs(); })
       .catch(console.error);
@@ -137,6 +137,7 @@ let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
 let roughMax = 10;
 let roughAvg = 0;
+let roughScales = {};
 let deviceNicknames = {};
 let currentNickname = '';
 let motionDataReceived = false;
@@ -215,15 +216,16 @@ function updateStatus() {
         `Roughness: ${lastRoughness.toFixed(2)}`;
 }
 
-function colorForRoughness(r) {
+function colorForRoughness(r, min, max) {
     let ratio = 0;
-    if (roughAvg > 0) {
+    if (typeof min === 'number' && typeof max === 'number' && max !== min) {
+        ratio = (r - min) / (max - min);
+    } else if (roughAvg > 0) {
         ratio = r / (roughAvg * 2);
-        ratio = Math.min(Math.max(ratio, 0), 1);
     } else if (roughMax !== roughMin) {
         ratio = (r - roughMin) / (roughMax - roughMin);
-        ratio = Math.min(Math.max(ratio, 0), 1);
     }
+    ratio = Math.min(Math.max(ratio, 0), 1);
     const red = Math.floor(255 * ratio);
     const green = Math.floor(255 * (1 - ratio));
     return `rgb(${red},${green},0)`;
@@ -272,10 +274,10 @@ function zUp(acc) {
     return (acc.x * upX + acc.y * upY + acc.z * upZ) / mag;
 }
 
-function addPoint(lat, lon, roughness, info = null, nickname = '') {
+function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
     if (!map || (lat === 0 && lon === 0)) return;
     const opts = {
-        color: colorForRoughness(roughness),
+        color: colorForRoughness(roughness, min, max),
         radius: 4,
         weight: 1,
         opacity: 0.9,
@@ -315,9 +317,17 @@ function loadLogs() {
         }
         roughMin = 0;
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
+        roughScales = {};
+        rows.forEach(row => {
+            const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
+            s.min = Math.min(s.min, row.roughness);
+            s.max = Math.max(s.max, row.roughness);
+            roughScales[row.device_id] = s;
+        });
         rows.reverse().forEach(row => {
             const name = deviceNicknames[row.device_id] || '';
-            addPoint(row.latitude, row.longitude, row.roughness, row, name);
+            const scale = roughScales[row.device_id] || {min:0,max:1};
+            addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
         });
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
@@ -372,12 +382,16 @@ function handlePosition(pos) {
                 lastRoughness = data.roughness;
                 addLog(`Record inserted, roughness: ${data.roughness.toFixed(2)}`);
                 updateStatus();
+                const scale = roughScales[deviceId] || {min: data.roughness, max: data.roughness};
                 addPoint(latitude, longitude, data.roughness, {
                     timestamp: new Date().toISOString(),
                     speed: lastSpeed,
                     direction: lastDir,
                     roughness: data.roughness
-                }, currentNickname);
+                }, currentNickname, scale.min, scale.max);
+                scale.min = Math.min(scale.min, data.roughness);
+                scale.max = Math.max(scale.max, data.roughness);
+                roughScales[deviceId] = scale;
                 recordCount += 1;
                 loadLogs();
             }
