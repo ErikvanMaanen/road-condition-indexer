@@ -25,6 +25,18 @@
         #status { margin-bottom: 1rem; font-weight: bold; }
         #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
+        #scale-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 0.5rem;
+        }
+        #scale-bar {
+            flex: 1;
+            height: 12px;
+            background: linear-gradient(to right, green, yellow, red);
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
@@ -43,6 +55,11 @@
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="map"></div>
+<div id="scale-container">
+    <span>Smooth</span>
+    <div id="scale-bar"></div>
+    <span>Rough</span>
+</div>
 <h3>Activity Log</h3>
 <div id="log"></div>
 <h3>Debug Messages</h3>
@@ -530,5 +547,10 @@ if ('wakeLock' in navigator) {
     });
 }
 </script>
+<div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
+    <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between 1&nbsp;and&nbsp;20&nbsp;Hz,
+    the RMS of the filtered signal is normalised by average speed, and values recorded below
+    5&nbsp;km/h are ignored.
+</div>
 </body>
 </html>
