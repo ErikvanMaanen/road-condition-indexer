@@ -312,6 +312,11 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
         if (nickname) popup = `Device: ${nickname}<br>` + popup;
     }
     marker.bindPopup(popup);
+    if (info && info.id) {
+        marker.on('click', () => {
+            localStorage.setItem('selectedRecordId', info.id);
+        });
+    }
 }
 
 function loadLogs() {
