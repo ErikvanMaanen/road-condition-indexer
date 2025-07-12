@@ -24,6 +24,22 @@
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
 </div>
+<div id="record-editor" style="display:none; border:1px solid #ccc; padding:0.5rem; margin-bottom:1rem;">
+    <h3>Selected Record</h3>
+    <form id="record-form">
+        <div>ID <input id="rec-id" readonly></div>
+        <div>Latitude <input id="rec-lat"></div>
+        <div>Longitude <input id="rec-lon"></div>
+        <div>Speed <input id="rec-speed"></div>
+        <div>Direction <input id="rec-dir"></div>
+        <div>Roughness <input id="rec-rough"></div>
+        <div>Distance <input id="rec-dist"></div>
+        <div>Device ID <input id="rec-dev"></div>
+        <div>IP <input id="rec-ip"></div>
+        <button type="button" onclick="saveRecord()">Save Changes</button>
+        <button type="button" onclick="removeRecord()">Delete</button>
+    </form>
+</div>
 <div id="output"></div>
 <script>
 async function loadTables(selected) {
@@ -98,7 +114,56 @@ async function renameTable() {
     });
     loadTables(newName);
 }
+
+function loadSelected() {
+    const id = localStorage.getItem('selectedRecordId');
+    if(!id) return;
+    fetch('/manage/record?record_id='+encodeURIComponent(id))
+        .then(r=>r.json()).then(row=>{
+            document.getElementById('record-editor').style.display='block';
+            document.getElementById('rec-id').value=row.id;
+            document.getElementById('rec-lat').value=row.latitude;
+            document.getElementById('rec-lon').value=row.longitude;
+            document.getElementById('rec-speed').value=row.speed;
+            document.getElementById('rec-dir').value=row.direction;
+            document.getElementById('rec-rough').value=row.roughness;
+            document.getElementById('rec-dist').value=row.distance_m;
+            document.getElementById('rec-dev').value=row.device_id;
+            document.getElementById('rec-ip').value=row.ip_address || '';
+        }).catch(console.error);
+}
+
+async function saveRecord() {
+    const id = document.getElementById('rec-id').value;
+    const body = {
+        id: parseInt(id,10),
+        latitude: parseFloat(document.getElementById('rec-lat').value),
+        longitude: parseFloat(document.getElementById('rec-lon').value),
+        speed: parseFloat(document.getElementById('rec-speed').value),
+        direction: parseFloat(document.getElementById('rec-dir').value),
+        roughness: parseFloat(document.getElementById('rec-rough').value),
+        distance_m: parseFloat(document.getElementById('rec-dist').value),
+        device_id: document.getElementById('rec-dev').value,
+        ip_address: document.getElementById('rec-ip').value
+    };
+    await fetch('/manage/update_record', {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    loadTables('bike_data');
+}
+
+async function removeRecord() {
+    const id = document.getElementById('rec-id').value;
+    if(!id) return;
+    await fetch('/manage/delete_record?record_id='+encodeURIComponent(id), {method:'DELETE'});
+    document.getElementById('record-editor').style.display='none';
+    localStorage.removeItem('selectedRecordId');
+    loadTables('bike_data');
+}
 loadTables();
+loadSelected();
 </script>
 </body>
 </html>

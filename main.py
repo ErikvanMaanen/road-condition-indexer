@@ -835,3 +835,113 @@ def rename_table(req: RenameRequest):
         except Exception:
             pass
     return {"status": "ok"}
+
+
+class RecordUpdate(BaseModel):
+    """Data model for updating a bike_data row."""
+    id: int
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    speed: Optional[float] = None
+    direction: Optional[float] = None
+    roughness: Optional[float] = None
+    distance_m: Optional[float] = None
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+
+
+@app.get("/manage/record")
+def get_record(record_id: int):
+    """Return a single bike_data record by id."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM bike_data WHERE id = ?",
+            record_id,
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Record not found")
+        columns = [c[0] for c in cursor.description]
+        result = dict(zip(columns, row))
+        log_debug(f"Fetched record {record_id}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Fetch record error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return result
+
+
+@app.put("/manage/update_record")
+def update_record(update: RecordUpdate):
+    """Update fields of a bike_data row."""
+    fields = []
+    params = []
+    for column in (
+        "latitude",
+        "longitude",
+        "speed",
+        "direction",
+        "roughness",
+        "distance_m",
+        "device_id",
+        "ip_address",
+    ):
+        value = getattr(update, column)
+        if value is not None:
+            fields.append(f"{column} = ?")
+            params.append(value)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    params.append(update.id)
+    query = "UPDATE bike_data SET " + ", ".join(fields) + " WHERE id = ?"
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Record not found")
+        conn.commit()
+        log_debug(f"Updated record {update.id}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Update record error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@app.delete("/manage/delete_record")
+def delete_record(record_id: int):
+    """Delete a bike_data row by id."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM bike_data WHERE id = ?", record_id)
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Record not found")
+        conn.commit()
+        log_debug(f"Deleted record {record_id}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Delete record error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
