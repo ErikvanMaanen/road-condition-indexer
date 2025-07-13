@@ -12,6 +12,10 @@
         #map { width: 100%; height: 60vh; margin-top: 1rem; }
         #map:fullscreen { width: 100%; height: 100%; }
         #controls input { margin-right: 0.5rem; }
+        #range-container { position:relative; height:30px; }
+        #range-container input { position:absolute; left:0; right:0; width:100%; }
+        #startRange { z-index:2; }
+        #endRange { z-index:1; }
         #scale-container {
             display: flex;
             align-items: center;
@@ -37,6 +41,10 @@
     <select id="deviceId"></select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
+    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
+        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+    </div>
     <input id="nickname" placeholder="Nickname">
     <button id="save-nickname">Save</button>
     <button id="load">Load</button>
@@ -58,6 +66,8 @@ let roughMin = 0;
 let roughMax = 10;
 let roughAvg = 0;
 let roughScales = {};
+let sliderMin = 0;
+let sliderMax = 0;
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -91,6 +101,9 @@ function setDateRange() {
     fetch(url).then(r => r.json()).then(data => {
         if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
         if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
+        sliderMin = Date.parse(data.start);
+        sliderMax = Date.parse(data.end);
+        syncRanges();
     }).catch(console.error);
 }
 
@@ -108,6 +121,18 @@ function loadNickname() {
             document.getElementById('nickname').value = currentNickname;
         })
         .catch(console.error);
+}
+
+function syncRanges() {
+    const startVal = Date.parse(document.getElementById('startDate').value);
+    const endVal = Date.parse(document.getElementById('endDate').value);
+    if (!isNaN(startVal) && !isNaN(endVal)) {
+        const startR = document.getElementById('startRange');
+        const endR = document.getElementById('endRange');
+        startR.min = sliderMin; startR.max = sliderMax;
+        endR.min = sliderMin; endR.max = sliderMax;
+        startR.value = startVal; endR.value = endVal;
+    }
 }
 
 function saveNickname() {
@@ -245,12 +270,25 @@ function loadData() {
 
 initMap();
 populateDeviceIds();
+syncRanges();
 document.getElementById('load').addEventListener('click', loadData);
 document.getElementById('deviceId').addEventListener('change', () => {
     setDateRange();
     loadNickname();
 });
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
+document.getElementById('startDate').addEventListener('change', syncRanges);
+document.getElementById('endDate').addEventListener('change', syncRanges);
+document.getElementById('startRange').addEventListener('input', () => {
+    const v = parseInt(document.getElementById('startRange').value, 10);
+    document.getElementById('startDate').value = new Date(v).toISOString().slice(0,16);
+    syncRanges();
+});
+document.getElementById('endRange').addEventListener('input', () => {
+    const v = parseInt(document.getElementById('endRange').value, 10);
+    document.getElementById('endDate').value = new Date(v).toISOString().slice(0,16);
+    syncRanges();
+});
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     if (!document.fullscreenElement) {

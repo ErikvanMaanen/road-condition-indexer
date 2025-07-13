@@ -38,6 +38,7 @@
     <button onclick="loadTables()">Refresh Tables</button>
     <button onclick="insertTest()">Insert Test Data</button>
     <select id="table-select"></select>
+    <button onclick="loadSelectedTable()">Load Selected</button>
     <button onclick="deleteRecords()">Delete All Records</button>
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
@@ -71,6 +72,8 @@ let map;
 let roughMin = 0;
 let roughMax = 10;
 let roughAvg = 0;
+let currentTable = '';
+let currentColumns = [];
 
 async function authFetch(url, options) {
     let res = await fetch(url, options);
@@ -120,31 +123,48 @@ function colorForRoughness(r) {
 
 function addPoint(lat, lon, info) {
     if (!map) return;
+    const rough = info && typeof info.roughness === 'number' ? info.roughness : 0;
     const marker = L.circleMarker(
         [lat, lon],
-        { radius:4, weight:1, opacity:0.9, fillOpacity:0.9, color: colorForRoughness(info ? info.roughness : 0) }
+        { radius:4, weight:1, opacity:0.9, fillOpacity:0.9, color: colorForRoughness(rough) }
     ).addTo(map);
     if (info) {
-        marker.bindPopup('ID: ' + info.id + '<br>Roughness: ' + info.roughness.toFixed(2));
-        marker.on('click', () => { localStorage.setItem('selectedRecordId', info.id); loadSelected(); });
+        let popup = '';
+        if ('id' in info) popup = 'ID: ' + info.id;
+        if ('roughness' in info && info.roughness !== null && info.roughness !== undefined) {
+            popup += (popup ? '<br>' : '') + 'Roughness: ' + Number(info.roughness).toFixed(2);
+        }
+        if (popup) marker.bindPopup(popup);
+        if ('id' in info) {
+            marker.on('click', () => { localStorage.setItem('selectedRecordId', info.id); loadSelected(); });
+        }
     }
+}
+
+function updateMap(rows) {
+    if (!map) return;
+    map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
+    roughAvg = 0;
+    roughMin = 0;
+    roughMax = 1;
+    if (!rows || rows.length === 0) return;
+    if ('roughness' in rows[0]) {
+        roughMin = Math.min(...rows.map(r => parseFloat(r.roughness || 0)));
+        roughMax = Math.max(...rows.map(r => parseFloat(r.roughness || 0)));
+        roughAvg = rows.reduce((a,r)=>a+parseFloat(r.roughness||0),0)/rows.length;
+    }
+    rows.slice().reverse().forEach(r => {
+        if ('latitude' in r && 'longitude' in r) {
+            addPoint(parseFloat(r.latitude), parseFloat(r.longitude), r);
+        }
+    });
 }
 
 async function loadLogs() {
     const res = await authFetch('/logs');
     const data = await res.json();
     const rows = Array.isArray(data) ? data : data.rows;
-    roughAvg = data.average || 0;
-    roughMin = 0;
-    roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
-    if (rows.length > 0) {
-        roughMin = Math.min(...rows.map(r => r.roughness));
-        roughMax = Math.max(...rows.map(r => r.roughness));
-    }
-    if (map) {
-        map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
-    }
-    rows.reverse().forEach(r => addPoint(r.latitude, r.longitude, r));
+    updateMap(rows);
 }
 
 async function loadTables(selected) {
@@ -160,42 +180,18 @@ async function loadTables(selected) {
     if (current) select.value = current;
     if (!select.value && select.options.length > 0)
         select.value = select.options[0].value;
-    const tableName = select.value;
-    const out = document.getElementById('output');
-    out.innerHTML = '';
-    const rows = data.tables[tableName] || [];
-    if (!tableName) return;
-    const table = document.createElement('table');
-    const caption = document.createElement('caption');
-    caption.textContent = tableName; table.appendChild(caption);
-    if (rows.length > 0) {
-        const head = document.createElement('tr');
-        for (const col of Object.keys(rows[0])) {
-            const th = document.createElement('th'); th.textContent = col; head.appendChild(th);
-        }
-        table.appendChild(head);
-        for (const row of rows) {
-            const tr = document.createElement('tr');
-            for (const val of Object.values(row)) {
-                const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
-            }
-            table.appendChild(tr);
-        }
-    } else {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td'); td.textContent = '(no rows)'; td.colSpan = 1; tr.appendChild(td); table.appendChild(tr);
-    }
-    out.appendChild(table);
 }
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
     await authFetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
-    loadTables(t);
+    await loadTables(t);
+    loadSelectedTable();
 }
 async function deleteRecords() {
     const t = document.getElementById('table-select').value; if(!t) return;
     await authFetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
-    loadTables(t);
+    await loadTables(t);
+    loadSelectedTable();
 }
 async function backupTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
@@ -206,7 +202,96 @@ async function backupTable() {
     });
     const data = await res.json();
     alert('Backup created: '+data.new_table);
-    loadTables(data.new_table);
+    await loadTables(data.new_table);
+    loadSelectedTable();
+}
+
+function setCurrentColumns(cols) {
+    currentColumns = cols;
+    buildRecordEditor();
+}
+
+function buildRecordEditor() {
+    const form = document.getElementById('record-form');
+    form.innerHTML = '';
+    currentColumns.forEach(col => {
+        const div = document.createElement('div');
+        div.textContent = col + ' ';
+        const input = document.createElement('input');
+        input.id = 'rec-' + col;
+        if (col === 'id') input.readOnly = true;
+        div.appendChild(input);
+        form.appendChild(div);
+    });
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.textContent = 'Save Changes';
+    save.onclick = saveRecord;
+    form.appendChild(save);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = 'Delete';
+    del.onclick = removeRecord;
+    form.appendChild(del);
+    document.getElementById('record-editor').style.display = 'none';
+}
+
+function renderTable(name, rows) {
+    const out = document.getElementById('output');
+    out.innerHTML = '';
+    const table = document.createElement('table');
+    const caption = document.createElement('caption');
+    caption.textContent = name;
+    table.appendChild(caption);
+    if (rows.length > 0) {
+        const head = document.createElement('tr');
+        for (const col of Object.keys(rows[0])) {
+            const th = document.createElement('th');
+            th.textContent = col;
+            head.appendChild(th);
+        }
+        table.appendChild(head);
+        for (const row of rows) {
+            const tr = document.createElement('tr');
+            tr.addEventListener('click', () => showRow(row));
+            for (const val of Object.values(row)) {
+                const td = document.createElement('td');
+                td.textContent = val;
+                tr.appendChild(td);
+            }
+            table.appendChild(tr);
+        }
+    } else {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.textContent = '(no rows)';
+        td.colSpan = 1;
+        tr.appendChild(td);
+        table.appendChild(tr);
+    }
+    out.appendChild(table);
+}
+
+function showRow(row) {
+    setCurrentColumns(Object.keys(row));
+    const editor = document.getElementById('record-editor');
+    editor.style.display = 'block';
+    currentColumns.forEach(col => {
+        const input = document.getElementById('rec-' + col);
+        if (input) input.value = row[col] != null ? row[col] : '';
+    });
+}
+
+async function loadSelectedTable() {
+    const tableName = document.getElementById('table-select').value;
+    if (!tableName) return;
+    const res = await authFetch('/manage/tables');
+    const data = await res.json();
+    const rows = data.tables[tableName] || [];
+    currentTable = tableName;
+    setCurrentColumns(rows.length > 0 ? Object.keys(rows[0]) : []);
+    renderTable(tableName, rows);
+    updateMap(rows);
 }
 async function renameTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
@@ -217,7 +302,8 @@ async function renameTable() {
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({old_name:t, new_name:newName})
     });
-    loadTables(newName);
+    await loadTables(newName);
+    loadSelectedTable();
 }
 
 function loadSelected() {
@@ -225,51 +311,42 @@ function loadSelected() {
     if(!id) return;
     authFetch('/manage/record?record_id='+encodeURIComponent(id))
         .then(r=>r.json()).then(row=>{
-            document.getElementById('record-editor').style.display='block';
-            document.getElementById('rec-id').value=row.id;
-            document.getElementById('rec-lat').value=row.latitude;
-            document.getElementById('rec-lon').value=row.longitude;
-            document.getElementById('rec-speed').value=row.speed;
-            document.getElementById('rec-dir').value=row.direction;
-            document.getElementById('rec-rough').value=row.roughness;
-            document.getElementById('rec-dist').value=row.distance_m;
-            document.getElementById('rec-dev').value=row.device_id;
-            document.getElementById('rec-ip').value=row.ip_address || '';
+            showRow(row);
         }).catch(console.error);
 }
 
 async function saveRecord() {
-    const id = document.getElementById('rec-id').value;
-    const body = {
-        id: parseInt(id,10),
-        latitude: parseFloat(document.getElementById('rec-lat').value),
-        longitude: parseFloat(document.getElementById('rec-lon').value),
-        speed: parseFloat(document.getElementById('rec-speed').value),
-        direction: parseFloat(document.getElementById('rec-dir').value),
-        roughness: parseFloat(document.getElementById('rec-rough').value),
-        distance_m: parseFloat(document.getElementById('rec-dist').value),
-        device_id: document.getElementById('rec-dev').value,
-        ip_address: document.getElementById('rec-ip').value
-    };
+    if(currentTable !== 'bike_data') return;
+    const body = { id: parseInt(document.getElementById('rec-id').value,10) };
+    currentColumns.forEach(col => {
+        if(col === 'id') return;
+        const input = document.getElementById('rec-' + col);
+        if(!input) return;
+        if(input.value === '') return;
+        body[col] = isNaN(parseFloat(input.value)) || col === 'device_id' || col === 'ip_address'
+            ? input.value
+            : parseFloat(input.value);
+    });
     await authFetch('/manage/update_record', {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(body)
     });
-    loadTables('bike_data');
+    loadSelectedTable();
 }
 
 async function removeRecord() {
+    if(currentTable !== 'bike_data') return;
     const id = document.getElementById('rec-id').value;
     if(!id) return;
     await authFetch('/manage/delete_record?record_id='+encodeURIComponent(id), {method:'DELETE'});
     document.getElementById('record-editor').style.display='none';
     localStorage.removeItem('selectedRecordId');
-    loadTables('bike_data');
+    loadSelectedTable();
 }
 initMap();
+loadTables().then(loadSelectedTable);
 loadLogs();
-loadTables();
 loadSelected();
 </script>
 </body>
