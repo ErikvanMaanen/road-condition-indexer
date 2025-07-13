@@ -6,7 +6,7 @@ import hashlib
 
 
 import requests
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -643,7 +643,7 @@ def get_logs(limit: Optional[int] = None):
 
 
 @app.get("/filteredlogs")
-def get_filtered_logs(device_id: Optional[str] = None,
+def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                       start: Optional[str] = None,
                       end: Optional[str] = None):
     """Return log entries filtered by device ID and date range."""
@@ -653,8 +653,9 @@ def get_filtered_logs(device_id: Optional[str] = None,
         query = "SELECT * FROM bike_data WHERE 1=1"
         params = []
         if device_id:
-            query += " AND device_id = ?"
-            params.append(device_id)
+            placeholders = ",".join("?" for _ in device_id)
+            query += f" AND device_id IN ({placeholders})"
+            params.extend(device_id)
         start_dt = None
         end_dt = None
         if start:
@@ -672,8 +673,9 @@ def get_filtered_logs(device_id: Optional[str] = None,
         avg_query = "SELECT AVG(roughness) FROM bike_data WHERE 1=1"
         avg_params = []
         if device_id:
-            avg_query += " AND device_id = ?"
-            avg_params.append(device_id)
+            placeholders = ",".join("?" for _ in device_id)
+            avg_query += f" AND device_id IN ({placeholders})"
+            avg_params.extend(device_id)
         if start:
             avg_query += " AND timestamp >= ?"
             avg_params.append(start_dt)
@@ -724,7 +726,7 @@ def get_device_ids():
 
 
 @app.get("/date_range")
-def get_date_range(device_id: Optional[str] = None):
+def get_date_range(device_id: Optional[List[str]] = Query(None)):
     """Return the oldest and newest timestamps, optionally filtered by device."""
     try:
         conn = get_db_connection()
@@ -732,8 +734,9 @@ def get_date_range(device_id: Optional[str] = None):
         query = "SELECT MIN(timestamp), MAX(timestamp) FROM bike_data"
         params = []
         if device_id:
-            query += " WHERE device_id = ?"
-            params.append(device_id)
+            placeholders = ",".join("?" for _ in device_id)
+            query += f" WHERE device_id IN ({placeholders})"
+            params.extend(device_id)
         cursor.execute(query, params)
         row = cursor.fetchone()
         start, end = row if row else (None, None)
