@@ -1030,6 +1030,12 @@ class RecordUpdate(BaseModel):
     ip_address: Optional[str] = None
 
 
+class MergeDeviceRequest(BaseModel):
+    """Data model for merging device IDs."""
+    old_id: str
+    new_id: str
+
+
 @app.get("/manage/record")
 def get_record(record_id: int, dep: None = Depends(password_dependency)):
     """Return a single bike_data record by id."""
@@ -1125,3 +1131,60 @@ def delete_record(record_id: int, dep: None = Depends(password_dependency)):
         except Exception:
             pass
     return {"status": "ok"}
+
+
+@app.post("/manage/merge_device_ids")
+def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_dependency)):
+    """Merge records from old device id into new id."""
+    if req.old_id == req.new_id:
+        raise HTTPException(status_code=400, detail="IDs must be different")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE bike_data SET device_id = ? WHERE device_id = ?",
+            req.new_id,
+            req.old_id,
+        )
+        updated_bike = cursor.rowcount
+        cursor.execute(
+            "UPDATE bike_data_experimental SET device_id = ? WHERE device_id = ?",
+            req.new_id,
+            req.old_id,
+        )
+        updated_exp = cursor.rowcount
+        cursor.execute(
+            "SELECT 1 FROM device_nicknames WHERE device_id = ?",
+            req.new_id,
+        )
+        new_exists = cursor.fetchone() is not None
+        cursor.execute(
+            "SELECT 1 FROM device_nicknames WHERE device_id = ?",
+            req.old_id,
+        )
+        old_exists = cursor.fetchone() is not None
+        if old_exists:
+            if not new_exists:
+                cursor.execute(
+                    "UPDATE device_nicknames SET device_id = ? WHERE device_id = ?",
+                    req.new_id,
+                    req.old_id,
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM device_nicknames WHERE device_id = ?",
+                    req.old_id,
+                )
+        conn.commit()
+        log_debug(f"Merged device id {req.old_id} into {req.new_id}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_debug(f"Merge device id error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}

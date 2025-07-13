@@ -42,6 +42,9 @@
     <button onclick="deleteRecords()">Delete All Records</button>
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
+    <input id="merge-old" placeholder="Old ID">
+    <input id="merge-new" placeholder="New ID">
+    <button onclick="mergeIds()">Merge IDs</button>
 </div>
 <div id="map"></div>
 <div id="scale-container">
@@ -304,6 +307,22 @@ async function renameTable() {
     });
     await loadTables(newName);
     loadSelectedTable();
+}
+
+async function mergeIds() {
+    const oldId = document.getElementById('merge-old').value.trim();
+    const newId = document.getElementById('merge-new').value.trim();
+    if(!oldId || !newId || oldId === newId) return;
+    await authFetch('/manage/merge_device_ids', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({old_id: oldId, new_id: newId})
+    });
+    alert('Merge completed');
+    document.getElementById('merge-old').value = '';
+    document.getElementById('merge-new').value = '';
+    loadTables();
+    if(currentTable === 'bike_data') loadSelectedTable();
 }
 
 function loadSelected() {
