@@ -12,6 +12,18 @@
         #map { width: 100%; height: 60vh; margin-top: 1rem; }
         #map:fullscreen { width: 100%; height: 100%; }
         #controls input { margin-right: 0.5rem; }
+        #scale-container {
+            display: flex;
+            align-items: center;
+            margin-top: 0.5rem;
+            gap: 0.5rem;
+        }
+        #scale-bar {
+            flex: 1;
+            height: 12px;
+            background: linear-gradient(to right, green, yellow, red);
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
@@ -31,6 +43,11 @@
     <button id="fullscreen-button">Fullscreen</button>
 </div>
 <div id="map"></div>
+<div id="scale-container">
+    <span>Smooth</span>
+    <div id="scale-bar"></div>
+    <span>Rough</span>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const currentDeviceId = localStorage.getItem('deviceId');
