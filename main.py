@@ -14,6 +14,9 @@ import numpy as np
 import pyodbc
 from typing import Dict, List, Optional, Tuple
 
+app = FastAPI(title="Road Condition Indexer")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 
 def verify_password(pw: str) -> bool:
@@ -43,10 +46,6 @@ def login(req: LoginRequest):
         resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
         return resp
     raise HTTPException(status_code=401, detail="Unauthorized")
-
-app = FastAPI(title="Road Condition Indexer")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 @app.get("/")
 def read_index():
