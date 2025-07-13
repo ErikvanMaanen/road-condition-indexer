@@ -8,7 +8,7 @@ import hashlib
 import requests
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
@@ -22,6 +22,10 @@ PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 def verify_password(pw: str) -> bool:
     """Return True if the MD5 hash of ``pw`` matches PASSWORD_HASH."""
     return hashlib.md5(pw.encode()).hexdigest() == PASSWORD_HASH
+
+def is_authenticated(request: Request) -> bool:
+    """Return True if request has valid auth cookie."""
+    return request.cookies.get("auth") == PASSWORD_HASH
 
 def password_dependency(request: Request):
     """Authenticate using cookie or optional ``pw`` query parameter."""
@@ -47,34 +51,51 @@ def login(req: LoginRequest):
         return resp
     raise HTTPException(status_code=401, detail="Unauthorized")
 
+@app.get("/auth_check")
+def auth_check(request: Request):
+    """Return 204 if auth cookie valid else 401."""
+    if is_authenticated(request):
+        return Response(status_code=204)
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
 @app.get("/")
-def read_index():
+def read_index(request: Request):
     """Serve the main application page and ensure DB is ready."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/")
     init_db()
     return FileResponse("static/index.html")
 
 
 @app.get("/welcome.html")
-def read_welcome():
+def read_welcome(request: Request):
     """Serve the welcome page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/welcome.html")
     return FileResponse("static/welcome.html")
 
 
 @app.get("/device.html")
-def read_device():
+def read_device(request: Request):
     """Serve the device filter page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/device.html")
     return FileResponse("static/device.html")
 
 
 @app.get("/experimental.html")
-def read_experimental():
+def read_experimental(request: Request):
     """Serve the experimental page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/experimental.html")
     return FileResponse("static/experimental.html")
 
 
 @app.get("/db.html")
-def read_db_page():
+def read_db_page(request: Request):
     """Serve the database management page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/db.html")
     return FileResponse("static/db.html")
 
 # In-memory debug log
