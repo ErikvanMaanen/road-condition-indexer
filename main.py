@@ -66,6 +66,12 @@ def read_device():
     return FileResponse("static/device.html")
 
 
+@app.get("/experimental.html")
+def read_experimental():
+    """Serve the experimental page."""
+    return FileResponse("static/experimental.html")
+
+
 @app.get("/db.html")
 def read_db_page():
     """Serve the database management page."""
@@ -267,6 +273,30 @@ def init_db() -> None:
         )
         cursor.execute(
             """
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = 'bike_data_experimental'
+            )
+            BEGIN
+                CREATE TABLE bike_data_experimental (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME DEFAULT GETDATE(),
+                    latitude FLOAT,
+                    longitude FLOAT,
+                    speed FLOAT,
+                    direction FLOAT,
+                    roughness FLOAT,
+                    distance_m FLOAT,
+                    device_id NVARCHAR(100),
+                    ip_address NVARCHAR(45),
+                    z_values NVARCHAR(MAX),
+                    avg_speed FLOAT,
+                    interval_s FLOAT
+                )
+            END
+            """
+        )
+        cursor.execute(
+            """
             IF COL_LENGTH('bike_data', 'ip_address') IS NULL
                 ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
             """
@@ -447,6 +477,126 @@ def post_log(entry: LogEntry, request: Request):
         )
         conn.commit()
         log_debug("Data inserted into database")
+    except Exception as exc:
+        log_debug(f"Database error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+    return {"status": "ok", "roughness": roughness}
+
+
+@app.post("/experimental_log")
+def post_log_experimental(entry: LogEntry, request: Request):
+    """Handle logging for the experimental page."""
+    log_debug(
+        f"Received experimental log entry from {entry.device_id}: {entry}"
+    )
+
+    now = datetime.utcnow()
+    avg_speed = entry.speed
+    dist_km = 0.0
+    dt_sec = 2.0
+    prev_info = LAST_POINT.get(entry.device_id)
+    if not prev_info:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+                entry.device_id,
+            )
+            row = cursor.fetchone()
+            if row:
+                prev_lat, prev_lon, prev_ts = row
+                prev_info = (prev_ts, prev_lat, prev_lon)
+        except Exception as exc:
+            log_debug(f"Avg speed fetch error: {exc}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    if prev_info:
+        prev_ts, prev_lat, prev_lon = prev_info
+        dt_sec = (now - prev_ts).total_seconds()
+        if dt_sec <= 0:
+            dt_sec = 2.0
+        dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
+        avg_speed = dist_km / (dt_sec / 3600)
+
+    if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
+        log_debug(
+            f"Ignored experimental entry with interval {dt_sec:.1f}s and distance {dist_km * 1000.0:.1f}m"
+        )
+        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+        return {"status": "ignored", "reason": "interval too long"}
+
+    if avg_speed < 5.0:
+        log_debug(f"Ignored experimental entry with low avg speed: {avg_speed} km/h")
+        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+        return {"status": "ignored", "reason": "low speed"}
+
+    elevation = get_elevation(entry.latitude, entry.longitude)
+    if elevation is not None:
+        log_debug(f"Elevation: {elevation} m")
+    else:
+        log_debug("Elevation not available")
+    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec)
+    distance_m = dist_km * 1000.0
+    log_debug(f"Calculated roughness: {roughness}")
+    ip_address = request.client.host if request.client else None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            entry.latitude,
+            entry.longitude,
+            entry.speed,
+            entry.direction,
+            roughness,
+            distance_m,
+            entry.device_id,
+            ip_address,
+        )
+        if cursor.rowcount != 1:
+            log_debug(f"Insert affected {cursor.rowcount} rows")
+            raise HTTPException(status_code=500, detail="Insert failed")
+        cursor.execute(
+            """
+            MERGE device_nicknames AS target
+            USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
+            ON target.device_id = src.device_id
+            WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
+            WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
+            """,
+            entry.device_id,
+            entry.user_agent,
+            entry.device_fp,
+        )
+        cursor.execute(
+            "INSERT INTO bike_data_experimental (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address, z_values, avg_speed, interval_s)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            entry.latitude,
+            entry.longitude,
+            entry.speed,
+            entry.direction,
+            roughness,
+            distance_m,
+            entry.device_id,
+            ip_address,
+            ",".join(str(float(z)) for z in entry.z_values),
+            avg_speed,
+            dt_sec,
+        )
+        conn.commit()
+        log_debug("Experimental data inserted")
     except Exception as exc:
         log_debug(f"Database error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc

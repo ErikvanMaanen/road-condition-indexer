@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Road Condition Indexer</title>
+    <title>Road Condition Indexer - Experimental</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
@@ -40,7 +40,7 @@
     </style>
 </head>
 <body>
-<h1>Road Condition Indexer</h1>
+<h1>Road Condition Indexer - Experimental</h1>
 <div id="status"></div>
 <div id="button-bar">
     <button id="toggle">Start</button>
@@ -53,8 +53,8 @@
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a> |
     <a href="device.html">Device View</a> |
-    <a href="experimental.html">Experimental</a> |
     <a href="db.html">DB Page</a>
 </div>
 <div id="map"></div>
@@ -89,7 +89,7 @@ const fingerprint = [
     navigator.platform,
     new Date().getTimezoneOffset()
 ].join('|');
-const LOG_ENDPOINT = '/log';
+const LOG_ENDPOINT = '/experimental_log';
 
 function loadNickname() {
     if (!selectedId) {
