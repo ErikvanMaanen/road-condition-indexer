@@ -16,7 +16,11 @@
 </head>
 <body>
 <h1>Device Records</h1>
-<p><a href="/">Back to Main</a></p>
+<div id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a> |
+    <a href="experimental.html">Experimental</a> |
+    <a href="db.html">DB Page</a>
+</div>
 <div id="controls">
     <select id="deviceId"></select>
     <input id="startDate" type="datetime-local">
@@ -29,6 +33,7 @@
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+const currentDeviceId = localStorage.getItem('deviceId');
 let map;
 let deviceNicknames = {};
 let currentNickname = '';
@@ -53,6 +58,13 @@ function populateDeviceIds() {
             opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
             sel.appendChild(opt);
         });
+        if (currentDeviceId && !data.ids.some(i => i.id === currentDeviceId)) {
+            const opt = document.createElement('option');
+            opt.value = currentDeviceId;
+            opt.textContent = currentDeviceId;
+            sel.appendChild(opt);
+        }
+        sel.value = currentDeviceId || '';
     }).then(() => { setDateRange(); loadNickname(); }).catch(console.error);
 }
 
