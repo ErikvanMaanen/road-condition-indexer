@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        #login-box { max-width: 300px; margin: auto; }
+    </style>
+</head>
+<body>
+<div id="login-box">
+    <h2>Please enter password</h2>
+    <input type="password" id="pw" />
+    <button onclick="doLogin()">Login</button>
+</div>
+<script>
+async function doLogin() {
+    const pw = document.getElementById('pw').value;
+    const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+    });
+    if (res.ok) {
+        const params = new URLSearchParams(location.search);
+        const next = params.get('next') || '/';
+        location.href = next;
+    } else {
+        alert('Wrong password');
+        document.getElementById('pw').value = '';
+        document.getElementById('pw').focus();
+    }
+}
+</script>
+</body>
+</html>
