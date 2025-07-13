@@ -13,6 +13,18 @@
         th, td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; }
         caption { font-weight:bold; margin-bottom:0.25rem; }
         #map { width:100%; height:40vh; margin-bottom:1rem; }
+        #scale-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 0.5rem;
+        }
+        #scale-bar {
+            flex: 1;
+            height: 12px;
+            background: linear-gradient(to right, green, yellow, red);
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
@@ -31,6 +43,11 @@
     <button onclick="renameTable()">Rename Table</button>
 </div>
 <div id="map"></div>
+<div id="scale-container">
+    <span>Smooth</span>
+    <div id="scale-bar"></div>
+    <span>Rough</span>
+</div>
 <div id="record-editor" style="display:none; border:1px solid #ccc; padding:0.5rem; margin-bottom:1rem;">
     <h3>Selected Record</h3>
     <form id="record-form">
@@ -51,6 +68,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let map;
+let roughMin = 0;
+let roughMax = 10;
+let roughAvg = 0;
 
 async function authFetch(url, options) {
     let res = await fetch(url, options);
@@ -85,9 +105,25 @@ function initMap() {
     }
 }
 
+function colorForRoughness(r) {
+    let ratio = 0;
+    if (roughAvg > 0) {
+        ratio = r / (roughAvg * 2);
+    } else if (roughMax !== roughMin) {
+        ratio = (r - roughMin) / (roughMax - roughMin);
+    }
+    ratio = Math.min(Math.max(ratio, 0), 1);
+    const red = Math.floor(255 * ratio);
+    const green = Math.floor(255 * (1 - ratio));
+    return `rgb(${red},${green},0)`;
+}
+
 function addPoint(lat, lon, info) {
     if (!map) return;
-    const marker = L.circleMarker([lat, lon], { radius:4, weight:1, opacity:0.9, fillOpacity:0.9 }).addTo(map);
+    const marker = L.circleMarker(
+        [lat, lon],
+        { radius:4, weight:1, opacity:0.9, fillOpacity:0.9, color: colorForRoughness(info ? info.roughness : 0) }
+    ).addTo(map);
     if (info) {
         marker.bindPopup('ID: ' + info.id + '<br>Roughness: ' + info.roughness.toFixed(2));
         marker.on('click', () => { localStorage.setItem('selectedRecordId', info.id); loadSelected(); });
@@ -98,6 +134,13 @@ async function loadLogs() {
     const res = await authFetch('/logs');
     const data = await res.json();
     const rows = Array.isArray(data) ? data : data.rows;
+    roughAvg = data.average || 0;
+    roughMin = 0;
+    roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
+    if (rows.length > 0) {
+        roughMin = Math.min(...rows.map(r => r.roughness));
+        roughMax = Math.max(...rows.map(r => r.roughness));
+    }
     if (map) {
         map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
     }

@@ -557,8 +557,11 @@ if ('wakeLock' in navigator) {
 }
 </script>
 <div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
-    <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between 1&nbsp;and&nbsp;20&nbsp;Hz,
-    the RMS of the filtered signal is normalised by average speed, and values recorded below
+    <strong>Roughness Calculation</strong> - each acceleration sample is first rotated so that
+    the device's Z axis aligns with the real-world up direction derived from the orientation
+    angles. The resulting vertical values are filtered to keep vibrations between
+    1&nbsp;and&nbsp;20&nbsp;Hz. The root-mean-square of this signal is divided by the average
+    speed over the sample window. Records taken while travelling under
     5&nbsp;km/h are ignored.
 </div>
 </body>
