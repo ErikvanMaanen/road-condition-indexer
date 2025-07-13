@@ -38,7 +38,7 @@
     <a href="db.html">DB Page</a>
 </div>
 <div id="controls">
-    <select id="deviceId"></select>
+    <select id="deviceId" multiple></select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
     <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
@@ -59,6 +59,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const currentDeviceId = localStorage.getItem('deviceId');
+let selectedIds = currentDeviceId ? [currentDeviceId] : [];
 let map;
 let deviceNicknames = {};
 let currentNickname = '';
@@ -91,13 +92,22 @@ function populateDeviceIds() {
             opt.textContent = currentDeviceId;
             sel.appendChild(opt);
         }
-        sel.value = currentDeviceId || '';
+        Array.from(sel.options).forEach(o => {
+            if (selectedIds.includes(o.value)) o.selected = true;
+        });
+        selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
     }).then(() => { setDateRange(); loadNickname(); }).catch(console.error);
 }
 
 function setDateRange() {
-    const device = document.getElementById('deviceId').value;
-    const url = device ? `/date_range?device_id=${encodeURIComponent(device)}` : '/date_range';
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    let url = '/date_range';
+    if (ids.length > 0) {
+        const params = new URLSearchParams();
+        ids.forEach(id => params.append('device_id', id));
+        url = '/date_range?' + params.toString();
+    }
     fetch(url).then(r => r.json()).then(data => {
         if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
         if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
@@ -108,13 +118,15 @@ function setDateRange() {
 }
 
 function loadNickname() {
-    const device = document.getElementById('deviceId').value;
-    if (!device) {
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    if (ids.length !== 1) {
         document.getElementById('nickname').value = '';
         currentNickname = '';
         return;
     }
-    fetch(`/nickname?device_id=${encodeURIComponent(device)}`)
+    const id = ids[0];
+    fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
         .then(r => r.json())
         .then(data => {
             currentNickname = data.nickname || '';
@@ -136,13 +148,14 @@ function syncRanges() {
 }
 
 function saveNickname() {
-    const device = document.getElementById('deviceId').value;
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
     const name = document.getElementById('nickname').value;
-    if (!device) return;
+    if (ids.length !== 1) return;
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: device, nickname: name })
+        body: JSON.stringify({ device_id: ids[0], nickname: name })
     }).then(() => populateDeviceIds())
       .catch(console.error);
 }
@@ -234,11 +247,12 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
 }
 
 function loadData() {
-    const device = document.getElementById('deviceId').value;
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
     const start = document.getElementById('startDate').value;
     const end = document.getElementById('endDate').value;
     const params = new URLSearchParams();
-    if (device) params.append('device_id', device);
+    ids.forEach(id => params.append('device_id', id));
     if (start) params.append('start', start);
     if (end) params.append('end', end);
     fetch('/filteredlogs?' + params.toString())
@@ -273,6 +287,8 @@ populateDeviceIds();
 syncRanges();
 document.getElementById('load').addEventListener('click', loadData);
 document.getElementById('deviceId').addEventListener('change', () => {
+    selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
+        .map(o => o.value).filter(v => v);
     setDateRange();
     loadNickname();
 });

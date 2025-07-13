@@ -47,7 +47,7 @@
     <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
     <button id="update-button" style="margin-left:1rem;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
-    <select id="device-filter" style="margin-left:1rem;"></select>
+    <select id="device-filter" style="margin-left:1rem;" multiple></select>
     <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
     <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
@@ -70,7 +70,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
-let selectedId = deviceId || '';
+let selectedIds = deviceId ? [deviceId] : [];
 function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
     document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
@@ -92,12 +92,13 @@ const fingerprint = [
 const LOG_ENDPOINT = '/log';
 
 function loadNickname() {
-    if (!selectedId) {
+    if (selectedIds.length !== 1) {
         document.getElementById('nickname').value = '';
         currentNickname = '';
         return;
     }
-    fetch(`/nickname?device_id=${encodeURIComponent(selectedId)}`)
+    const id = selectedIds[0];
+    fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
         .then(r => r.json())
         .then(data => {
             currentNickname = data.nickname || '';
@@ -108,11 +109,11 @@ function loadNickname() {
 
 function saveNickname() {
     const name = document.getElementById('nickname').value;
-    if (!selectedId) return;
+    if (selectedIds.length !== 1) return;
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: selectedId, nickname: name })
+        body: JSON.stringify({ device_id: selectedIds[0], nickname: name })
     }).then(() => populateDeviceFilter())
       .catch(console.error);
 }
@@ -139,8 +140,10 @@ function populateDeviceFilter() {
             opt.textContent = deviceId;
             select.appendChild(opt);
         }
-        select.value = selectedId || '';
-        selectedId = select.value;
+        Array.from(select.options).forEach(o => {
+            if (selectedIds.includes(o.value)) o.selected = true;
+        });
+        selectedIds = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
     }).then(() => { loadNickname(); loadLogs(); })
       .catch(console.error);
 }
@@ -324,11 +327,12 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
 }
 
 function loadLogs() {
-    const filterId = document.getElementById('device-filter').value;
+    const select = document.getElementById('device-filter');
+    const ids = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
     let url = '/logs';
-    if (filterId) {
+    if (ids.length > 0) {
         const params = new URLSearchParams();
-        params.append('device_id', filterId);
+        ids.forEach(id => params.append('device_id', id));
         url = '/filteredlogs?' + params.toString();
     }
     fetch(url).then(r => r.json()).then(data => {
@@ -512,7 +516,8 @@ document.getElementById('save-nickname').addEventListener('click', () => {
     saveNickname();
 });
 document.getElementById('device-filter').addEventListener('change', () => {
-    selectedId = document.getElementById('device-filter').value;
+    selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
+        .map(o => o.value).filter(v => v);
     loadNickname();
     loadLogs();
 });
