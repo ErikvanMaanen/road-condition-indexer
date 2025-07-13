@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Database Management</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin:0 auto; padding:1rem; max-width:800px; }
         #controls { display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem; }
@@ -11,6 +12,7 @@
         table { border-collapse: collapse; margin-bottom:1rem; }
         th, td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; }
         caption { font-weight:bold; margin-bottom:0.25rem; }
+        #map { width:100%; height:40vh; margin-bottom:1rem; }
     </style>
 </head>
 <body>
@@ -24,6 +26,7 @@
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
 </div>
+<div id="map"></div>
 <div id="record-editor" style="display:none; border:1px solid #ccc; padding:0.5rem; margin-bottom:1rem;">
     <h3>Selected Record</h3>
     <form id="record-form">
@@ -41,9 +44,64 @@
     </form>
 </div>
 <div id="output"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+let map;
+
+async function authFetch(url, options) {
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+        const pw = prompt('Password:');
+        if (!pw) throw new Error('Password required');
+        const loginRes = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw })
+        });
+        if (!loginRes.ok) throw new Error('Login failed');
+        res = await fetch(url, options);
+    }
+    return res;
+}
+
+function initMap() {
+    const defaultPos = [52.028, 5.168];
+    const zoom = 12;
+    map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    const setView = c => map.setView(c, zoom);
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => setView([pos.coords.latitude, pos.coords.longitude]),
+            () => setView(defaultPos),
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
+    } else {
+        setView(defaultPos);
+    }
+}
+
+function addPoint(lat, lon, info) {
+    if (!map) return;
+    const marker = L.circleMarker([lat, lon], { radius:4, weight:1, opacity:0.9, fillOpacity:0.9 }).addTo(map);
+    if (info) {
+        marker.bindPopup('ID: ' + info.id + '<br>Roughness: ' + info.roughness.toFixed(2));
+        marker.on('click', () => { localStorage.setItem('selectedRecordId', info.id); loadSelected(); });
+    }
+}
+
+async function loadLogs() {
+    const res = await authFetch('/logs');
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : data.rows;
+    if (map) {
+        map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
+    }
+    rows.reverse().forEach(r => addPoint(r.latitude, r.longitude, r));
+}
+
 async function loadTables(selected) {
-    const res = await fetch('/manage/tables');
+    const res = await authFetch('/manage/tables');
     const data = await res.json();
     const select = document.getElementById('table-select');
     const current = selected || select.value;
@@ -84,17 +142,17 @@ async function loadTables(selected) {
 }
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
-    await fetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
+    await authFetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
     loadTables(t);
 }
 async function deleteRecords() {
     const t = document.getElementById('table-select').value; if(!t) return;
-    await fetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
+    await authFetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
     loadTables(t);
 }
 async function backupTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
-    const res = await fetch('/manage/backup_table', {
+    const res = await authFetch('/manage/backup_table', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({table:t})
@@ -107,7 +165,7 @@ async function renameTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
     const newName = prompt('New table name', t);
     if(!newName || newName === t) return;
-    await fetch('/manage/rename_table', {
+    await authFetch('/manage/rename_table', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({old_name:t, new_name:newName})
@@ -118,7 +176,7 @@ async function renameTable() {
 function loadSelected() {
     const id = localStorage.getItem('selectedRecordId');
     if(!id) return;
-    fetch('/manage/record?record_id='+encodeURIComponent(id))
+    authFetch('/manage/record?record_id='+encodeURIComponent(id))
         .then(r=>r.json()).then(row=>{
             document.getElementById('record-editor').style.display='block';
             document.getElementById('rec-id').value=row.id;
@@ -146,7 +204,7 @@ async function saveRecord() {
         device_id: document.getElementById('rec-dev').value,
         ip_address: document.getElementById('rec-ip').value
     };
-    await fetch('/manage/update_record', {
+    await authFetch('/manage/update_record', {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(body)
@@ -157,11 +215,13 @@ async function saveRecord() {
 async function removeRecord() {
     const id = document.getElementById('rec-id').value;
     if(!id) return;
-    await fetch('/manage/delete_record?record_id='+encodeURIComponent(id), {method:'DELETE'});
+    await authFetch('/manage/delete_record?record_id='+encodeURIComponent(id), {method:'DELETE'});
     document.getElementById('record-editor').style.display='none';
     localStorage.removeItem('selectedRecordId');
     loadTables('bike_data');
 }
+initMap();
+loadLogs();
 loadTables();
 loadSelected();
 </script>

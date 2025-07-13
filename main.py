@@ -2,16 +2,47 @@ import os
 from datetime import datetime
 import math
 import re
+import hashlib
 
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
 from typing import Dict, List, Optional, Tuple
+
+PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
+
+def verify_password(pw: str) -> bool:
+    """Return True if the MD5 hash of ``pw`` matches PASSWORD_HASH."""
+    return hashlib.md5(pw.encode()).hexdigest() == PASSWORD_HASH
+
+def password_dependency(request: Request):
+    """Authenticate using cookie or optional ``pw`` query parameter."""
+    cookie = request.cookies.get("auth")
+    if cookie == PASSWORD_HASH:
+        return
+    pw = request.query_params.get("pw")
+    if pw and verify_password(pw):
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+class LoginRequest(BaseModel):
+    password: str = Field(..., min_length=1)
+
+
+@app.post("/login")
+def login(req: LoginRequest):
+    """Set auth cookie if password is correct."""
+    if verify_password(req.password):
+        resp = Response(status_code=204)
+        resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
+        return resp
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -680,7 +711,7 @@ def get_debuglog():
 
 
 @app.get("/manage/tables")
-def manage_tables():
+def manage_tables(dep: None = Depends(password_dependency)):
     """Return table contents for management page."""
     try:
         conn = get_db_connection()
@@ -710,7 +741,7 @@ class TestdataRequest(BaseModel):
 
 
 @app.post("/manage/insert_testdata")
-def insert_testdata(req: TestdataRequest):
+def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependency)):
     """Insert a simple test record into a table."""
     try:
         conn = get_db_connection()
@@ -749,7 +780,7 @@ def insert_testdata(req: TestdataRequest):
 
 
 @app.delete("/manage/delete_all")
-def delete_all(table: str):
+def delete_all(table: str, dep: None = Depends(password_dependency)):
     """Delete all rows from the specified table."""
     if table not in ("bike_data", "debug_log", "device_nicknames"):
         raise HTTPException(status_code=400, detail="Unknown table")
@@ -775,7 +806,7 @@ class BackupRequest(BaseModel):
 
 
 @app.post("/manage/backup_table")
-def backup_table(req: BackupRequest):
+def backup_table(req: BackupRequest, dep: None = Depends(password_dependency)):
     """Create a backup copy of the given table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.table):
@@ -810,7 +841,7 @@ class RenameRequest(BaseModel):
 
 
 @app.post("/manage/rename_table")
-def rename_table(req: RenameRequest):
+def rename_table(req: RenameRequest, dep: None = Depends(password_dependency)):
     """Rename a table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.old_name) or not name_re.match(req.new_name):
@@ -851,7 +882,7 @@ class RecordUpdate(BaseModel):
 
 
 @app.get("/manage/record")
-def get_record(record_id: int):
+def get_record(record_id: int, dep: None = Depends(password_dependency)):
     """Return a single bike_data record by id."""
     try:
         conn = get_db_connection()
@@ -880,7 +911,7 @@ def get_record(record_id: int):
 
 
 @app.put("/manage/update_record")
-def update_record(update: RecordUpdate):
+def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)):
     """Update fields of a bike_data row."""
     fields = []
     params = []
@@ -924,7 +955,7 @@ def update_record(update: RecordUpdate):
 
 
 @app.delete("/manage/delete_record")
-def delete_record(record_id: int):
+def delete_record(record_id: int, dep: None = Depends(password_dependency)):
     """Delete a bike_data row by id."""
     try:
         conn = get_db_connection()
