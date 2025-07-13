@@ -5,24 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Condition Indexer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto&display=swap">
-    <link rel="stylesheet" href="style.css">
-    <meta name="theme-color" content="#6200ee">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
+        #log {
+            width: 100%;
+            height: 150px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+            white-space: pre;
+        }
+        #debug {
+            width: 100%;
+            height: 150px;
+            margin-top: 1rem;
+        }
+        #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
+        #map:fullscreen { width: 100%; height: 100%; }
+        #status { margin-bottom: 1rem; font-weight: bold; }
+        #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
+        button { padding: 0.5rem 1rem; font-size: 1rem; }
+        #scale-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 0.5rem;
+        }
+        #scale-bar {
+            flex: 1;
+            height: 12px;
+            background: linear-gradient(to right, green, yellow, red);
+            border: 1px solid #ccc;
+        }
+    </style>
 </head>
-<body class="index-page">
+<body>
 <h1>Road Condition Indexer</h1>
 <div id="status"></div>
 <div id="button-bar">
     <button id="toggle">Start</button>
-    <button id="gpx-button">Generate GPX</button>
-    <button id="update-button">Update Records</button>
-    <button id="fullscreen-button">Fullscreen</button>
-    <select id="device-filter"></select>
-    <input id="nickname" placeholder="Nickname" />
-    <button id="save-nickname">Save</button>
-    <a href="device.html">Device View</a>
-    <a href="db.html">DB Page</a>
-    <a id="gpx-link">Download GPX</a>
+    <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
+    <button id="update-button" style="margin-left:1rem;">Update Records</button>
+    <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
+    <select id="device-filter" style="margin-left:1rem;"></select>
+    <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
+    <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
+    <a href="device.html" style="margin-left:1rem;">Device View</a>
+    <a href="db.html" style="margin-left:1rem;">DB Page</a>
+    <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="map"></div>
 <div id="scale-container">
@@ -522,7 +552,7 @@ if ('wakeLock' in navigator) {
     });
 }
 </script>
-<div id="roughness-info">
+<div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
     <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between 1&nbsp;and&nbsp;20&nbsp;Hz,
     the RMS of the filtered signal is normalised by average speed, and values recorded below
     5&nbsp;km/h are ignored.
