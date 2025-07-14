@@ -28,7 +28,7 @@ This project collects road roughness data from mobile devices and stores it in a
 3. (Optional) Run `python setup_env.py` to verify environment variables and database connectivity.
 4. Start the API server:
    ```bash
-   uvicorn main:app --reload
+   uvicorn main:app --reload --host 0.0.0.0
    ```
 
 The built-in frontend is served from the `static/` directory under the
