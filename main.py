@@ -1304,6 +1304,94 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
     return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}
 
 
+@app.get("/manage/filtered_records")
+def get_filtered_records(
+    device_id: Optional[List[str]] = Query(None),
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    ids: Optional[List[int]] = Query(None),
+    dep: None = Depends(password_dependency),
+):
+    """Return bike_data rows filtered by id, device and time."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "SELECT * FROM bike_data WHERE 1=1"
+        params = []
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            query += f" AND id IN ({placeholders})"
+            params.extend(ids)
+        else:
+            if device_id:
+                placeholders = ",".join("?" for _ in device_id)
+                query += f" AND device_id IN ({placeholders})"
+                params.extend(device_id)
+            if start:
+                query += " AND timestamp >= ?"
+                params.append(datetime.fromisoformat(start))
+            if end:
+                query += " AND timestamp <= ?"
+                params.append(datetime.fromisoformat(end))
+        query += " ORDER BY id DESC"
+        cursor.execute(query, params)
+        cols = [c[0] for c in cursor.description]
+        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+    except Exception as exc:
+        log_debug(f"Filtered record fetch error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"rows": rows}
+
+
+@app.delete("/manage/delete_filtered_records")
+def delete_filtered_records(
+    device_id: Optional[List[str]] = Query(None),
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    ids: Optional[List[int]] = Query(None),
+    dep: None = Depends(password_dependency),
+):
+    """Delete bike_data rows matching the given filters."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "DELETE FROM bike_data WHERE 1=1"
+        params = []
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            query += f" AND id IN ({placeholders})"
+            params.extend(ids)
+        else:
+            if device_id:
+                placeholders = ",".join("?" for _ in device_id)
+                query += f" AND device_id IN ({placeholders})"
+                params.extend(device_id)
+            if start:
+                query += " AND timestamp >= ?"
+                params.append(datetime.fromisoformat(start))
+            if end:
+                query += " AND timestamp <= ?"
+                params.append(datetime.fromisoformat(end))
+        cursor.execute(query, params)
+        deleted = cursor.rowcount
+        conn.commit()
+        log_debug(f"Deleted {deleted} filtered records")
+    except Exception as exc:
+        log_debug(f"Delete filtered records error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok", "deleted": deleted}
+
+
 @app.get("/manage/db_size")
 def get_db_size(dep: None = Depends(password_dependency)):
     """Return current database size and max size in GB."""
