@@ -41,6 +41,9 @@ interface but sends data to `/experimental_log` so that all raw values
 used in the roughness calculation are stored in the `bike_data_experimental`
 table for further analysis.
 
+The `/maintenance.html` page provides controls to inspect the current SQL
+database size and Azure App Service plan and lets you modify these settings.
+
 Use the **Update Records** button in the interface to reload the latest
 roughness records from the database and refresh the map.
 

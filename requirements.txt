@@ -4,3 +4,5 @@ pyodbc
 numpy
 python-dotenv
 requests
+azure-identity
+azure-mgmt-web

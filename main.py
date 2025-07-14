@@ -13,11 +13,42 @@ from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
 from typing import Dict, List, Optional, Tuple
+try:
+    from azure.identity import ClientSecretCredential
+    from azure.mgmt.web import WebSiteManagementClient
+except Exception:  # pragma: no cover - optional deps
+    ClientSecretCredential = None
+    WebSiteManagementClient = None
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
+
+def get_azure_credential():
+    """Return an Azure credential if environment variables are set."""
+    if ClientSecretCredential is None:
+        return None
+    client_id = os.getenv("AZURE_CLIENT_ID")
+    client_secret = os.getenv("AZURE_CLIENT_SECRET")
+    tenant_id = os.getenv("AZURE_TENANT_ID")
+    if not all([client_id, client_secret, tenant_id]):
+        return None
+    return ClientSecretCredential(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+def get_web_client():
+    """Return a WebSiteManagementClient if configured."""
+    if WebSiteManagementClient is None:
+        return None
+    subscription = os.getenv("AZURE_SUBSCRIPTION_ID")
+    cred = get_azure_credential()
+    if not subscription or cred is None:
+        return None
+    return WebSiteManagementClient(cred, subscription)
 
 def verify_password(pw: str) -> bool:
     """Return True if the MD5 hash of ``pw`` matches PASSWORD_HASH."""
@@ -1060,6 +1091,17 @@ class MergeDeviceRequest(BaseModel):
     new_id: str
 
 
+class SetDbSizeRequest(BaseModel):
+    """Data model for setting database max size."""
+    max_size_gb: int = Field(..., gt=0)
+
+
+class SetPlanRequest(BaseModel):
+    """Data model for updating the app service plan."""
+    sku_name: Optional[str] = None
+    capacity: Optional[int] = Field(None, gt=0)
+
+
 @app.get("/manage/record")
 def get_record(record_id: int, dep: None = Depends(password_dependency)):
     """Return a single bike_data record by id."""
@@ -1212,3 +1254,95 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
         except Exception:
             pass
     return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}
+
+
+@app.get("/manage/db_size")
+def get_db_size(dep: None = Depends(password_dependency)):
+    """Return current database size and max size in GB."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(size) * 8.0 / 1024 FROM sys.database_files")
+        size_mb = float(cursor.fetchone()[0] or 0)
+        cursor.execute("SELECT DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes')")
+        max_bytes = cursor.fetchone()[0]
+        max_gb = None
+        if max_bytes not in (None, -1, 0):
+            max_gb = float(max_bytes) / (1024 ** 3)
+    except Exception as exc:
+        log_debug(f"DB size fetch error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"size_mb": size_mb, "max_size_gb": max_gb}
+
+
+@app.post("/manage/set_db_size")
+def set_db_size(req: SetDbSizeRequest, dep: None = Depends(password_dependency)):
+    """Change the database MAXSIZE value."""
+    db_name = os.getenv("AZURE_SQL_DATABASE")
+    if not db_name:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    try:
+        conn = get_db_connection("master")
+        cursor = conn.cursor()
+        cursor.execute(
+            f"ALTER DATABASE [{db_name}] MODIFY (MAXSIZE = {req.max_size_gb} GB)"
+        )
+        conn.commit()
+        log_debug(f"Set DB max size to {req.max_size_gb} GB")
+    except Exception as exc:
+        log_debug(f"Set DB size error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@app.get("/manage/app_plan")
+def get_app_plan(dep: None = Depends(password_dependency)):
+    """Return info about the App Service plan if configured."""
+    client = get_web_client()
+    group = os.getenv("AZURE_RESOURCE_GROUP")
+    plan_name = os.getenv("AZURE_APP_PLAN_NAME")
+    if not client or not group or not plan_name:
+        raise HTTPException(status_code=404, detail="Plan info unavailable")
+    try:
+        plan = client.app_service_plans.get(group, plan_name)
+        return {
+            "name": plan.name,
+            "sku": plan.sku.name if plan.sku else None,
+            "capacity": plan.sku.capacity if plan.sku else None,
+        }
+    except Exception as exc:
+        log_debug(f"App plan info error: {exc}")
+        raise HTTPException(status_code=500, detail="Azure error") from exc
+
+
+@app.post("/manage/set_app_plan")
+def set_app_plan(req: SetPlanRequest, dep: None = Depends(password_dependency)):
+    """Update the App Service plan SKU or capacity if configured."""
+    client = get_web_client()
+    group = os.getenv("AZURE_RESOURCE_GROUP")
+    plan_name = os.getenv("AZURE_APP_PLAN_NAME")
+    if not client or not group or not plan_name:
+        raise HTTPException(status_code=404, detail="Plan info unavailable")
+    try:
+        plan = client.app_service_plans.get(group, plan_name)
+        if req.sku_name:
+            plan.sku.name = req.sku_name
+        if req.capacity:
+            plan.sku.capacity = req.capacity
+        poller = client.app_service_plans.begin_create_or_update(group, plan_name, plan)
+        poller.result()
+        log_debug("Updated app service plan")
+    except Exception as exc:
+        log_debug(f"Set plan error: {exc}")
+        raise HTTPException(status_code=500, detail="Azure error") from exc
+    return {"status": "ok"}
