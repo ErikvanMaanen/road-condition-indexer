@@ -22,8 +22,6 @@
     <h2>Database Size</h2>
     <div id="db-info">Loading...</div>
     <label>SKU <select id="db-sku" onchange="setDbSku()"></select></label>
-    <label>New MAXSIZE (GB) <input id="db-size" type="number" min="1"></label>
-    <button onclick="setDbSize()">Update Size</button>
 </section>
 <section style="margin-top:1rem;">
     <h2>API Reference</h2>
@@ -265,30 +263,10 @@
                 <td>-</td>
             </tr>
             <tr>
-                <td>/manage/set_db_size</td>
-                <td>POST</td>
-                <td>JSON {max_size_gb}</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
-            </tr>
-            <tr>
                 <td>/manage/app_plan</td>
                 <td>GET</td>
                 <td>None</td>
                 <td>JSON {name, sku, capacity}</td>
-                <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>/manage/set_app_plan</td>
-                <td>POST</td>
-                <td>JSON {sku_name?, capacity?}</td>
-                <td>JSON {status}</td>
                 <td>Password</td>
                 <td>-</td>
                 <td>-</td>
@@ -300,9 +278,6 @@
 <section style="margin-top:1rem;">
     <h2>App Service Plan</h2>
     <div id="plan-info">Loading...</div>
-    <label>SKU <select id="plan-sku" onchange="setPlan()"></select></label>
-    <label>Capacity <input id="plan-cap" type="number" min="1"></label>
-    <button onclick="setPlan()">Update Plan</button>
 </section>
 <script>
 async function authFetch(url, options) {
@@ -334,16 +309,6 @@ async function loadDbInfo() {
         sel.value = skuData.current || '';
     }
 }
-async function setDbSize() {
-    const val = document.getElementById('db-size').value;
-    if(!val) return;
-    await authFetch('/manage/set_db_size', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({max_size_gb: parseInt(val,10)})
-    });
-    loadDbInfo();
-}
 async function setDbSku() {
     const sku = document.getElementById('db-sku').value;
     if(!sku) return;
@@ -359,28 +324,6 @@ async function loadPlan() {
     if(!res.ok){ document.getElementById('plan-info').textContent='Unavailable'; return; }
     const data = await res.json();
     document.getElementById('plan-info').textContent = `Name: ${data.name}, SKU: ${data.sku}, Capacity: ${data.capacity}`;
-    const skuRes = await authFetch('/manage/app_plan_skus');
-    if(skuRes.ok){
-        const skuData = await skuRes.json();
-        const sel = document.getElementById('plan-sku');
-        sel.innerHTML='';
-        skuData.options.forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
-        sel.value = skuData.current || '';
-    }
-}
-async function setPlan() {
-    const sku = document.getElementById('plan-sku').value.trim();
-    const cap = parseInt(document.getElementById('plan-cap').value,10);
-    if(!sku && !cap) return;
-    const body = {};
-    if(sku) body.sku_name = sku;
-    if(cap) body.capacity = cap;
-    await authFetch('/manage/set_app_plan', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(body)
-    });
-    loadPlan();
 }
 loadDbInfo();
 loadPlan();
