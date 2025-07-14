@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from datetime import datetime
 import math
 import re
@@ -23,8 +24,10 @@ except Exception:  # pragma: no cover - optional deps
     WebSiteManagementClient = None
     SqlManagementClient = None
 
+BASE_DIR = Path(__file__).resolve().parent
+
 app = FastAPI(title="Road Condition Indexer")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 
@@ -108,7 +111,7 @@ def read_index(request: Request):
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/")
     init_db()
-    return FileResponse("static/index.html")
+    return FileResponse(BASE_DIR / "static" / "index.html")
 
 
 @app.get("/welcome.html")
@@ -116,7 +119,7 @@ def read_welcome(request: Request):
     """Serve the welcome page."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/welcome.html")
-    return FileResponse("static/welcome.html")
+    return FileResponse(BASE_DIR / "static" / "welcome.html")
 
 
 @app.get("/device.html")
@@ -124,7 +127,7 @@ def read_device(request: Request):
     """Serve the device filter page."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/device.html")
-    return FileResponse("static/device.html")
+    return FileResponse(BASE_DIR / "static" / "device.html")
 
 
 @app.get("/experimental.html")
@@ -132,7 +135,7 @@ def read_experimental(request: Request):
     """Serve the experimental page."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/experimental.html")
-    return FileResponse("static/experimental.html")
+    return FileResponse(BASE_DIR / "static" / "experimental.html")
 
 
 @app.get("/db.html")
@@ -140,7 +143,7 @@ def read_db_page(request: Request):
     """Serve the database management page."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/db.html")
-    return FileResponse("static/db.html")
+    return FileResponse(BASE_DIR / "static" / "db.html")
 
 
 @app.get("/maintenance.html")
@@ -148,7 +151,7 @@ def read_maintenance(request: Request):
     """Serve the maintenance page."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/maintenance.html")
-    return FileResponse("static/maintenance.html")
+    return FileResponse(BASE_DIR / "static" / "maintenance.html")
 
 # In-memory debug log
 DEBUG_LOG: List[str] = []
