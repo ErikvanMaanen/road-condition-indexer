@@ -52,16 +52,31 @@
     <input id="filter-ids" placeholder="IDs (comma)">
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
-        <option>1</option>
-        <option>2</option>
-        <option>3</option>
-        <option>4</option>
-        <option>5</option>
-        <option>6</option>
-        <option>7</option>
-        <option>8</option>
-        <option>9</option>
-        <option>10</option>
+        <option value="1">1 - Glass-smooth</option>
+        <option value="2">2 - Polished</option>
+        <option value="3">3 - Smooth concrete</option>
+        <option value="4">4 - New asphalt</option>
+        <option value="5">5 - Good asphalt</option>
+        <option value="6">6 - Worn asphalt</option>
+        <option value="7">7 - Coarse asphalt</option>
+        <option value="8">8 - Light chip seal</option>
+        <option value="9">9 - Medium chip seal</option>
+        <option value="10">10 - Heavy chip seal</option>
+        <option value="11">11 - Smooth cobbles</option>
+        <option value="12">12 - Worn cobbles</option>
+        <option value="13">13 - Rough cobbles</option>
+        <option value="14">14 - Packed dirt</option>
+        <option value="15">15 - Loose dirt</option>
+        <option value="16">16 - Fine gravel</option>
+        <option value="17">17 - Medium gravel</option>
+        <option value="18">18 - Coarse gravel</option>
+        <option value="19">19 - Rough gravel</option>
+        <option value="20">20 - Broken pavement</option>
+        <option value="21">21 - Small potholes</option>
+        <option value="22">22 - Large potholes</option>
+        <option value="23">23 - Very rough potholes</option>
+        <option value="24">24 - Severe ruts</option>
+        <option value="25">25 - Impassable</option>
     </select>
     <button onclick="loadFiltered()">Load Filter</button>
     <button onclick="deleteFiltered()">Delete Filter</button>
@@ -94,7 +109,8 @@
 <script>
 let map;
 let roughMin = 0;
-let roughMax = 10;
+const LABEL_COUNT = 25;
+let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let currentTable = '';
 let currentColumns = [];
@@ -176,12 +192,12 @@ function roughnessLabel(r) {
             min = 0;
             max = roughAvg * 2;
         } else {
-            max = min + 10;
+            max = min + LABEL_COUNT;
         }
     }
-    const step = (max - min) / 10;
+    const step = (max - min) / LABEL_COUNT;
     if (step <= 0) return '1';
-    const idx = Math.max(0, Math.min(9, Math.floor((r - min) / step)));
+    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor((r - min) / step)));
     return String(idx + 1);
 }
 

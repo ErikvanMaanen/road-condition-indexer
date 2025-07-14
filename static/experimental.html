@@ -52,16 +52,31 @@
     <button id="save-nickname" style="margin-left:0.5rem; display:none;">Save</button>
     <select id="roughness-filter" style="margin-left:1rem;" multiple>
         <option value="">[All Roughness]</option>
-        <option>1</option>
-        <option>2</option>
-        <option>3</option>
-        <option>4</option>
-        <option>5</option>
-        <option>6</option>
-        <option>7</option>
-        <option>8</option>
-        <option>9</option>
-        <option>10</option>
+        <option value="1">1 - Glass-smooth</option>
+        <option value="2">2 - Polished</option>
+        <option value="3">3 - Smooth concrete</option>
+        <option value="4">4 - New asphalt</option>
+        <option value="5">5 - Good asphalt</option>
+        <option value="6">6 - Worn asphalt</option>
+        <option value="7">7 - Coarse asphalt</option>
+        <option value="8">8 - Light chip seal</option>
+        <option value="9">9 - Medium chip seal</option>
+        <option value="10">10 - Heavy chip seal</option>
+        <option value="11">11 - Smooth cobbles</option>
+        <option value="12">12 - Worn cobbles</option>
+        <option value="13">13 - Rough cobbles</option>
+        <option value="14">14 - Packed dirt</option>
+        <option value="15">15 - Loose dirt</option>
+        <option value="16">16 - Fine gravel</option>
+        <option value="17">17 - Medium gravel</option>
+        <option value="18">18 - Coarse gravel</option>
+        <option value="19">19 - Rough gravel</option>
+        <option value="20">20 - Broken pavement</option>
+        <option value="21">21 - Small potholes</option>
+        <option value="22">22 - Large potholes</option>
+        <option value="23">23 - Very rough potholes</option>
+        <option value="24">24 - Severe ruts</option>
+        <option value="25">25 - Impassable</option>
     </select>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
@@ -70,6 +85,10 @@
     <a href="device.html">Device View</a> |
     <a href="db.html">DB Page</a> |
     <a href="maintenance.html">Maintenance</a>
+</div>
+<div id="loading" style="display:none;margin-bottom:1rem;">
+    <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+    <span id="load-label"></span>
 </div>
 <div id="freq-controls" style="margin-bottom:1rem;">
     Filter Hz:
@@ -204,7 +223,8 @@ let lastAcc = {x:0, y:0, z:0};
 let map;
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
-let roughMax = 10;
+const LABEL_COUNT = 25;
+let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
 let deviceNicknames = {};
@@ -315,12 +335,12 @@ function roughnessLabel(r) {
             min = 0;
             max = roughAvg * 2;
         } else {
-            max = min + 10;
+            max = min + LABEL_COUNT;
         }
     }
-    const step = (max - min) / 10;
+    const step = (max - min) / LABEL_COUNT;
     if (step <= 0) return '1';
-    const idx = Math.max(0, Math.min(9, Math.floor((r - min) / step)));
+    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor((r - min) / step)));
     return String(idx + 1);
 }
 
@@ -382,15 +402,23 @@ function loadLogs() {
         ids.forEach(id => params.append('device_id', id));
         url = '/filteredlogs?' + params.toString();
     }
-    fetch(url).then(r => r.json()).then(data => {
+    fetch(url).then(r => r.json()).then(async data => {
         const rows = Array.isArray(data) ? data : data.rows;
         roughAvg = data.average || 0;
+        const loadBox = document.getElementById('loading');
+        const prog = document.getElementById('load-progress');
+        const label = document.getElementById('load-label');
+        prog.max = rows.length;
+        prog.value = 0;
+        label.textContent = `0 / ${rows.length}`;
+        loadBox.style.display = 'block';
         if (map) {
             map.eachLayer(layer => {
                 if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
                     map.removeLayer(layer);
                 }
             });
+            map.invalidateSize();
         }
         roughMin = 0;
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
@@ -401,12 +429,17 @@ function loadLogs() {
             s.max = Math.max(s.max, row.roughness);
             roughScales[row.device_id] = s;
         });
-        rows.reverse().forEach(row => {
-            if (!filterRoughness(row.roughness)) return;
+        for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i];
+            if (!filterRoughness(row.roughness)) continue;
             const name = deviceNicknames[row.device_id] || '';
             const scale = roughScales[row.device_id] || {min:0,max:1};
             addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
-        });
+            prog.value = rows.length - i;
+            label.textContent = `${rows.length - i} / ${rows.length}`;
+            if ((rows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
+        }
+        loadBox.style.display = 'none';
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
     }).catch(err => console.error(err));
@@ -551,6 +584,13 @@ function updateFreqInputs() {
 
 async function recalcAll() {
     addLog(`Recalculating roughness using ${freqMin}-${freqMax} Hz`);
+    const loadBox = document.getElementById('loading');
+    const label = document.getElementById('load-label');
+    const prog = document.getElementById('load-progress');
+    prog.max = 0;
+    prog.value = 0;
+    label.textContent = 'Updating...';
+    loadBox.style.display = 'block';
     try {
         const res = await authFetch('/manage/recalculate_experimental', {
             method: 'POST',
@@ -562,6 +602,8 @@ async function recalcAll() {
         loadLogs();
     } catch (err) {
         addLog('Recalc error: ' + err);
+    } finally {
+        loadBox.style.display = 'none';
     }
 }
 
@@ -657,6 +699,36 @@ if ('wakeLock' in navigator) {
     <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between
     <span id="freq-display">0-20</span>&nbsp;Hz, the RMS of the filtered signal is normalised by average speed,
     and values recorded below 5&nbsp;km/h are ignored.
+</div>
+<div id="roughness-scale" style="margin-top:1rem; font-size:0.9rem;">
+    <strong>Roughness Scale Reference</strong>
+    <ol style="column-count:2; padding-left:1.25rem;">
+        <li>Glass-smooth</li>
+        <li>Polished</li>
+        <li>Smooth concrete</li>
+        <li>New asphalt</li>
+        <li>Good asphalt</li>
+        <li>Worn asphalt</li>
+        <li>Coarse asphalt</li>
+        <li>Light chip seal</li>
+        <li>Medium chip seal</li>
+        <li>Heavy chip seal</li>
+        <li>Smooth cobbles</li>
+        <li>Worn cobbles</li>
+        <li>Rough cobbles</li>
+        <li>Packed dirt</li>
+        <li>Loose dirt</li>
+        <li>Fine gravel</li>
+        <li>Medium gravel</li>
+        <li>Coarse gravel</li>
+        <li>Rough gravel</li>
+        <li>Broken pavement</li>
+        <li>Small potholes</li>
+        <li>Large potholes</li>
+        <li>Very rough potholes</li>
+        <li>Severe ruts</li>
+        <li>Impassable</li>
+    </ol>
 </div>
 </body>
 </html>
