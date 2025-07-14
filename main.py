@@ -1136,11 +1136,6 @@ class MergeDeviceRequest(BaseModel):
     new_id: str
 
 
-class SetDbSizeRequest(BaseModel):
-    """Data model for setting database max size."""
-    max_size_gb: int = Field(..., gt=0)
-
-
 class SetPlanRequest(BaseModel):
     """Data model for updating the app service plan."""
     sku_name: Optional[str] = None
@@ -1330,30 +1325,6 @@ def get_db_size(dep: None = Depends(password_dependency)):
     return {"size_mb": size_mb, "max_size_gb": max_gb}
 
 
-@app.post("/manage/set_db_size")
-def set_db_size(req: SetDbSizeRequest, dep: None = Depends(password_dependency)):
-    """Change the database MAXSIZE value."""
-    db_name = os.getenv("AZURE_SQL_DATABASE")
-    if not db_name:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    try:
-        conn = get_db_connection("master")
-        cursor = conn.cursor()
-        cursor.execute(
-            f"ALTER DATABASE [{db_name}] MODIFY (MAXSIZE = {req.max_size_gb} GB)"
-        )
-        conn.commit()
-        log_debug(f"Set DB max size to {req.max_size_gb} GB")
-    except Exception as exc:
-        log_debug(f"Set DB size error: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
-
 
 @app.get("/manage/db_sku")
 def get_db_sku(dep: None = Depends(password_dependency)):
@@ -1443,24 +1414,3 @@ def get_app_plan_skus(dep: None = Depends(password_dependency)):
         raise HTTPException(status_code=500, detail="Azure error") from exc
 
 
-@app.post("/manage/set_app_plan")
-def set_app_plan(req: SetPlanRequest, dep: None = Depends(password_dependency)):
-    """Update the App Service plan SKU or capacity if configured."""
-    client = get_web_client()
-    group = os.getenv("AZURE_RESOURCE_GROUP")
-    plan_name = os.getenv("AZURE_APP_PLAN_NAME")
-    if not client or not group or not plan_name:
-        raise HTTPException(status_code=404, detail="Plan info unavailable")
-    try:
-        plan = client.app_service_plans.get(group, plan_name)
-        if req.sku_name:
-            plan.sku.name = req.sku_name
-        if req.capacity:
-            plan.sku.capacity = req.capacity
-        poller = client.app_service_plans.begin_create_or_update(group, plan_name, plan)
-        poller.result()
-        log_debug("Updated app service plan")
-    except Exception as exc:
-        log_debug(f"Set plan error: {exc}")
-        raise HTTPException(status_code=500, detail="Azure error") from exc
-    return {"status": "ok"}
