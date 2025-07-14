@@ -33,41 +33,29 @@
                 <th>Input</th>
                 <th>Output</th>
                 <th>Auth</th>
-                <th>Sample Header</th>
-                <th>Sample Body</th>
-                <th>Sample Response</th>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <td>/login</td>
                 <td>POST</td>
-                <td>JSON {password}</td>
-                <td>204 No Content</td>
+                <td>JSON {"password": string}</td>
+                <td>204 No Content (sets auth cookie)</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/auth_check</td>
                 <td>GET</td>
-                <td>Cookie</td>
-                <td>204 or 401</td>
                 <td>Auth cookie</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
+                <td>204 if valid else 401</td>
+                <td>Auth cookie</td>
             </tr>
             <tr>
                 <td>/log</td>
                 <td>POST</td>
-                <td>JSON {latitude, longitude, speed, direction, device_id, z_values[]}</td>
+                <td>JSON {latitude, longitude, speed, direction, device_id, z_values[], user_agent?, device_fp?}</td>
                 <td>JSON {status, roughness}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/experimental_log</td>
@@ -75,49 +63,34 @@
                 <td>Same as /log</td>
                 <td>JSON {status, roughness}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/logs?limit=N</td>
                 <td>GET</td>
-                <td>Optional limit 1-1000</td>
-                <td>JSON {rows, average}</td>
+                <td>Query: limit=1-1000 (optional)</td>
+                <td>JSON {rows: [...], average}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/filteredlogs</td>
                 <td>GET</td>
-                <td>device_id, start, end</td>
-                <td>JSON {rows, average}</td>
+                <td>Query: device_id=id[,id], start, end</td>
+                <td>JSON {rows: [...], average}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/device_ids</td>
                 <td>GET</td>
                 <td>None</td>
-                <td>JSON {ids}</td>
+                <td>JSON {ids: [{id, nickname}]}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/date_range</td>
                 <td>GET</td>
-                <td>Optional device_id</td>
-                <td>JSON {start, end}</td>
+                <td>Query: device_id=id[,id] (optional)</td>
+                <td>JSON {start, end} ISO strings</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/nickname</td>
@@ -125,42 +98,30 @@
                 <td>JSON {device_id, nickname}</td>
                 <td>JSON {status}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/nickname?device_id=ID</td>
                 <td>GET</td>
-                <td>device_id</td>
+                <td>Query: device_id</td>
                 <td>JSON {nickname}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/gpx?limit=N</td>
                 <td>GET</td>
-                <td>Optional limit</td>
+                <td>Query: limit=1-1000 (optional)</td>
                 <td>GPX file</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/debuglog</td>
                 <td>GET</td>
                 <td>None</td>
-                <td>JSON {log}</td>
+                <td>JSON {log: [string]}</td>
                 <td>None</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
-                <td colspan="8" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
+                <td colspan="5" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
             </tr>
             <tr>
                 <td>/manage/tables</td>
@@ -168,9 +129,6 @@
                 <td>None</td>
                 <td>JSON {tables}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/insert_testdata</td>
@@ -178,19 +136,13 @@
                 <td>JSON {table}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/delete_all?table=NAME</td>
                 <td>DELETE</td>
-                <td>table</td>
+                <td>Query: table</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/backup_table</td>
@@ -198,9 +150,6 @@
                 <td>JSON {table}</td>
                 <td>JSON {status, new_table}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/rename_table</td>
@@ -208,39 +157,27 @@
                 <td>JSON {old_name, new_name}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/record?record_id=ID</td>
                 <td>GET</td>
-                <td>record_id</td>
+                <td>Query: record_id</td>
                 <td>JSON record</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/update_record</td>
                 <td>PUT</td>
-                <td>JSON RecordUpdate</td>
+                <td>JSON {id, fields...}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/delete_record?record_id=ID</td>
                 <td>DELETE</td>
-                <td>record_id</td>
+                <td>Query: record_id</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/merge_device_ids</td>
@@ -248,9 +185,6 @@
                 <td>JSON {old_id, new_id}</td>
                 <td>JSON {status, bike_rows, experimental_rows}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/db_size</td>
@@ -258,9 +192,6 @@
                 <td>None</td>
                 <td>JSON {size_mb, max_size_gb}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/app_plan</td>
@@ -268,9 +199,6 @@
                 <td>None</td>
                 <td>JSON {name, sku, capacity}</td>
                 <td>Password</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
             </tr>
         </tbody>
     </table>
