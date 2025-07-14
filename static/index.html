@@ -45,11 +45,8 @@
 <div id="button-bar">
     <button id="toggle">Start</button>
     <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
-    <button id="update-button" style="margin-left:1rem;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
     <select id="device-filter" style="margin-left:1rem;" multiple></select>
-    <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
-    <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="page-links" style="margin-bottom:1rem;">
@@ -98,8 +95,9 @@ const LOG_ENDPOINT = '/log';
 
 function loadNickname() {
     if (selectedIds.length !== 1) {
-        document.getElementById('nickname').value = '';
         currentNickname = '';
+        const input = document.getElementById('nickname');
+        if (input) input.value = '';
         return;
     }
     const id = selectedIds[0];
@@ -107,20 +105,10 @@ function loadNickname() {
         .then(r => r.json())
         .then(data => {
             currentNickname = data.nickname || '';
-            document.getElementById('nickname').value = currentNickname;
+            const input = document.getElementById('nickname');
+            if (input) input.value = currentNickname;
         })
         .catch(console.error);
-}
-
-function saveNickname() {
-    const name = document.getElementById('nickname').value;
-    if (selectedIds.length !== 1) return;
-    fetch('/nickname', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: selectedIds[0], nickname: name })
-    }).then(() => populateDeviceFilter())
-      .catch(console.error);
 }
 
 function populateDeviceFilter() {
@@ -523,14 +511,6 @@ document.getElementById('toggle').addEventListener('click', () => {
 document.getElementById('gpx-button').addEventListener('click', () => {
     addLog('Generate GPX pressed');
     generateGpx();
-});
-document.getElementById('update-button').addEventListener('click', () => {
-    addLog('Update Records pressed');
-    loadLogs();
-});
-document.getElementById('save-nickname').addEventListener('click', () => {
-    addLog('Save Nickname pressed');
-    saveNickname();
 });
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
