@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import numpy as np
 import pyodbc
+import sqlite3
 from typing import Dict, List, Optional, Tuple
 try:
     from azure.identity import ClientSecretCredential
@@ -25,6 +26,19 @@ except Exception:  # pragma: no cover - optional deps
     SqlManagementClient = None
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Use SQL Server when environment variables are provided, otherwise fall back
+# to a local SQLite database for development and testing.
+USE_SQLSERVER = all(
+    os.getenv(var)
+    for var in (
+        "AZURE_SQL_SERVER",
+        "AZURE_SQL_PORT",
+        "AZURE_SQL_USER",
+        "AZURE_SQL_PASSWORD",
+        "AZURE_SQL_DATABASE",
+    )
+) and bool(pyodbc.drivers())
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -186,51 +200,60 @@ def log_debug(message: str) -> None:
 
 
 def get_db_connection(database: Optional[str] = None):
-    """Create a new database connection using env vars."""
-    server = os.getenv("AZURE_SQL_SERVER")
-    port = os.getenv("AZURE_SQL_PORT")
-    user = os.getenv("AZURE_SQL_USER")
-    password = os.getenv("AZURE_SQL_PASSWORD")
-    db_name = database or os.getenv("AZURE_SQL_DATABASE")
-    if not all([server, port, user, password, db_name]):
-        raise RuntimeError("Database environment variables not set")
+    """Return a database connection.
 
-    conn_str = (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={server},{port};"
-        f"DATABASE={db_name};"
-        f"UID={user};"
-        f"PWD={password}"
-    )
-    return pyodbc.connect(conn_str)
+    When the required Azure SQL environment variables are present the
+    connection uses ``pyodbc``. Otherwise a local SQLite database named
+    ``local.db`` in the project directory is used. This makes the API usable
+    without any external dependencies.
+    """
+    if USE_SQLSERVER:
+        server = os.getenv("AZURE_SQL_SERVER")
+        port = os.getenv("AZURE_SQL_PORT")
+        user = os.getenv("AZURE_SQL_USER")
+        password = os.getenv("AZURE_SQL_PASSWORD")
+        db_name = database or os.getenv("AZURE_SQL_DATABASE")
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={server},{port};"
+            f"DATABASE={db_name};"
+            f"UID={user};"
+            f"PWD={password}"
+        )
+        return pyodbc.connect(conn_str)
+    # SQLite fallback
+    db_file = BASE_DIR / "local.db"
+    return sqlite3.connect(db_file)
 
 
 def ensure_database_exists() -> None:
-    """Create the configured database if it does not already exist."""
-    server = os.getenv("AZURE_SQL_SERVER")
-    port = os.getenv("AZURE_SQL_PORT")
-    user = os.getenv("AZURE_SQL_USER")
-    password = os.getenv("AZURE_SQL_PASSWORD")
-    database = os.getenv("AZURE_SQL_DATABASE")
+    """Ensure the configured database exists."""
+    if USE_SQLSERVER:
+        server = os.getenv("AZURE_SQL_SERVER")
+        port = os.getenv("AZURE_SQL_PORT")
+        user = os.getenv("AZURE_SQL_USER")
+        password = os.getenv("AZURE_SQL_PASSWORD")
+        database = os.getenv("AZURE_SQL_DATABASE")
 
-    if not all([server, port, user, password, database]):
-        raise RuntimeError("Database environment variables not set")
-
-    conn = get_db_connection("master")
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT database_id FROM sys.databases WHERE name = ?",
-            database,
-        )
-        if not cursor.fetchone():
-            cursor.execute(f"CREATE DATABASE [{database}]")
-            conn.commit()
-    finally:
+        conn = get_db_connection("master")
         try:
-            conn.close()
-        except Exception:
-            pass
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT database_id FROM sys.databases WHERE name = ?",
+                database,
+            )
+            if not cursor.fetchone():
+                cursor.execute(f"CREATE DATABASE [{database}]")
+                conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    else:
+        # SQLite creates the database file automatically
+        db_file = BASE_DIR / "local.db"
+        db_file.touch(exist_ok=True)
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -320,133 +343,189 @@ def init_db() -> None:
         ensure_database_exists()
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'bike_data'
-            )
-            BEGIN
-                CREATE TABLE bike_data (
-                    id INT IDENTITY PRIMARY KEY,
-                    timestamp DATETIME DEFAULT GETDATE(),
-                    latitude FLOAT,
-                    longitude FLOAT,
-                    speed FLOAT,
-                    direction FLOAT,
-                    roughness FLOAT,
-                    distance_m FLOAT,
-                    device_id NVARCHAR(100),
-                    ip_address NVARCHAR(45)
+        if USE_SQLSERVER:
+            cursor.execute(
+                """
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.tables WHERE name = 'bike_data'
                 )
-            END
-            """
-        )
-        cursor.execute(
-            """
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'debug_log'
+                BEGIN
+                    CREATE TABLE bike_data (
+                        id INT IDENTITY PRIMARY KEY,
+                        timestamp DATETIME DEFAULT GETDATE(),
+                        latitude FLOAT,
+                        longitude FLOAT,
+                        speed FLOAT,
+                        direction FLOAT,
+                        roughness FLOAT,
+                        distance_m FLOAT,
+                        device_id NVARCHAR(100),
+                        ip_address NVARCHAR(45)
+                    )
+                END
+                """
             )
-            BEGIN
-                CREATE TABLE debug_log (
-                    id INT IDENTITY PRIMARY KEY,
-                    timestamp DATETIME DEFAULT GETDATE(),
-                    message NVARCHAR(4000)
+            cursor.execute(
+                """
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.tables WHERE name = 'debug_log'
                 )
-            END
-            """
-        )
-        cursor.execute(
-            """
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'bike_data_experimental'
+                BEGIN
+                    CREATE TABLE debug_log (
+                        id INT IDENTITY PRIMARY KEY,
+                        timestamp DATETIME DEFAULT GETDATE(),
+                        message NVARCHAR(4000)
+                    )
+                END
+                """
             )
-            BEGIN
-                CREATE TABLE bike_data_experimental (
-                    id INT IDENTITY PRIMARY KEY,
-                    timestamp DATETIME DEFAULT GETDATE(),
-                    latitude FLOAT,
-                    longitude FLOAT,
-                    speed FLOAT,
-                    direction FLOAT,
-                    roughness FLOAT,
-                    distance_m FLOAT,
-                    device_id NVARCHAR(100),
-                    ip_address NVARCHAR(45),
-                    z_values NVARCHAR(MAX),
-                    avg_speed FLOAT,
-                    interval_s FLOAT
+            cursor.execute(
+                """
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.tables WHERE name = 'bike_data_experimental'
                 )
-            END
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('bike_data', 'ip_address') IS NULL
-                ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('bike_data', 'user_agent') IS NOT NULL
-                ALTER TABLE bike_data DROP COLUMN user_agent
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('bike_data', 'device_fp') IS NOT NULL
-                ALTER TABLE bike_data DROP COLUMN device_fp
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('bike_data', 'distance_m') IS NULL
-                ALTER TABLE bike_data ADD distance_m FLOAT
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('bike_data', 'version') IS NOT NULL
-            BEGIN
-                DECLARE @cons nvarchar(200);
-                SELECT @cons = dc.name
-                FROM sys.default_constraints dc
-                JOIN sys.columns c ON dc.parent_object_id = c.object_id
-                        AND dc.parent_column_id = c.column_id
-                WHERE dc.parent_object_id = OBJECT_ID('bike_data')
-                      AND c.name = 'version';
-                IF @cons IS NOT NULL
-                    EXEC('ALTER TABLE bike_data DROP CONSTRAINT ' + @cons);
-                ALTER TABLE bike_data DROP COLUMN version;
-            END
-            """
-        )
-        cursor.execute(
-            """
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'device_nicknames'
+                BEGIN
+                    CREATE TABLE bike_data_experimental (
+                        id INT IDENTITY PRIMARY KEY,
+                        timestamp DATETIME DEFAULT GETDATE(),
+                        latitude FLOAT,
+                        longitude FLOAT,
+                        speed FLOAT,
+                        direction FLOAT,
+                        roughness FLOAT,
+                        distance_m FLOAT,
+                        device_id NVARCHAR(100),
+                        ip_address NVARCHAR(45),
+                        z_values NVARCHAR(MAX),
+                        avg_speed FLOAT,
+                        interval_s FLOAT
+                    )
+                END
+                """
             )
-            BEGIN
-                CREATE TABLE device_nicknames (
-                    device_id NVARCHAR(100) PRIMARY KEY,
-                    nickname NVARCHAR(100),
-                    user_agent NVARCHAR(256),
-                    device_fp NVARCHAR(256)
+            cursor.execute(
+                """
+                IF COL_LENGTH('bike_data', 'ip_address') IS NULL
+                    ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('bike_data', 'user_agent') IS NOT NULL
+                    ALTER TABLE bike_data DROP COLUMN user_agent
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('bike_data', 'device_fp') IS NOT NULL
+                    ALTER TABLE bike_data DROP COLUMN device_fp
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('bike_data', 'distance_m') IS NULL
+                    ALTER TABLE bike_data ADD distance_m FLOAT
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('bike_data', 'version') IS NOT NULL
+                BEGIN
+                    DECLARE @cons nvarchar(200);
+                    SELECT @cons = dc.name
+                    FROM sys.default_constraints dc
+                    JOIN sys.columns c ON dc.parent_object_id = c.object_id
+                            AND dc.parent_column_id = c.column_id
+                    WHERE dc.parent_object_id = OBJECT_ID('bike_data')
+                          AND c.name = 'version';
+                    IF @cons IS NOT NULL
+                        EXEC('ALTER TABLE bike_data DROP CONSTRAINT ' + @cons);
+                    ALTER TABLE bike_data DROP COLUMN version;
+                END
+                """
+            )
+            cursor.execute(
+                """
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.tables WHERE name = 'device_nicknames'
                 )
-            END
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('device_nicknames', 'user_agent') IS NULL
-                ALTER TABLE device_nicknames ADD user_agent NVARCHAR(256)
-            """
-        )
-        cursor.execute(
-            """
-            IF COL_LENGTH('device_nicknames', 'device_fp') IS NULL
-                ALTER TABLE device_nicknames ADD device_fp NVARCHAR(256)
-            """
-        )
+                BEGIN
+                    CREATE TABLE device_nicknames (
+                        device_id NVARCHAR(100) PRIMARY KEY,
+                        nickname NVARCHAR(100),
+                        user_agent NVARCHAR(256),
+                        device_fp NVARCHAR(256)
+                    )
+                END
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('device_nicknames', 'user_agent') IS NULL
+                    ALTER TABLE device_nicknames ADD user_agent NVARCHAR(256)
+                """
+            )
+            cursor.execute(
+                """
+                IF COL_LENGTH('device_nicknames', 'device_fp') IS NULL
+                    ALTER TABLE device_nicknames ADD device_fp NVARCHAR(256)
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bike_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    latitude REAL,
+                    longitude REAL,
+                    speed REAL,
+                    direction REAL,
+                    roughness REAL,
+                    distance_m REAL,
+                    device_id TEXT,
+                    ip_address TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS debug_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    message TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bike_data_experimental (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    latitude REAL,
+                    longitude REAL,
+                    speed REAL,
+                    direction REAL,
+                    roughness REAL,
+                    distance_m REAL,
+                    device_id TEXT,
+                    ip_address TEXT,
+                    z_values TEXT,
+                    avg_speed REAL,
+                    interval_s REAL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS device_nicknames (
+                    device_id TEXT PRIMARY KEY,
+                    nickname TEXT,
+                    user_agent TEXT,
+                    device_fp TEXT
+                )
+                """
+            )
         conn.commit()
         log_debug("Ensured database tables exist")
     except Exception as exc:
@@ -486,10 +565,16 @@ def post_log(entry: LogEntry, request: Request):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
-                entry.device_id,
-            )
+            if USE_SQLSERVER:
+                cursor.execute(
+                    "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+                    entry.device_id,
+                )
+            else:
+                cursor.execute(
+                    "SELECT latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+                    (entry.device_id,),
+                )
             row = cursor.fetchone()
             if row:
                 prev_lat, prev_lon, prev_ts = row
@@ -543,30 +628,43 @@ def post_log(entry: LogEntry, request: Request):
         cursor.execute(
             "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            entry.latitude,
-            entry.longitude,
-            entry.speed,
-            entry.direction,
-            roughness,
-            distance_m,
-            entry.device_id,
-            ip_address,
+            (
+                entry.latitude,
+                entry.longitude,
+                entry.speed,
+                entry.direction,
+                roughness,
+                distance_m,
+                entry.device_id,
+                ip_address,
+            ),
         )
-        if cursor.rowcount != 1:
+        if USE_SQLSERVER and cursor.rowcount != 1:
             log_debug(f"Insert affected {cursor.rowcount} rows")
             raise HTTPException(status_code=500, detail="Insert failed")
-        cursor.execute(
-            """
-            MERGE device_nicknames AS target
-            USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
-            ON target.device_id = src.device_id
-            WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
-            WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-            """,
-            entry.device_id,
-            entry.user_agent,
-            entry.device_fp,
-        )
+        if USE_SQLSERVER:
+            cursor.execute(
+                """
+                MERGE device_nicknames AS target
+                USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
+                ON target.device_id = src.device_id
+                WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
+                WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
+                """,
+                entry.device_id,
+                entry.user_agent,
+                entry.device_fp,
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO device_nicknames (device_id, user_agent, device_fp)
+                VALUES (?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
+                device_fp=excluded.device_fp
+                """,
+                (entry.device_id, entry.user_agent, entry.device_fp),
+            )
         conn.commit()
         log_debug("Data inserted into database")
     except Exception as exc:
@@ -597,10 +695,16 @@ def post_log_experimental(entry: LogEntry, request: Request):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
-                entry.device_id,
-            )
+            if USE_SQLSERVER:
+                cursor.execute(
+                    "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+                    entry.device_id,
+                )
+            else:
+                cursor.execute(
+                    "SELECT latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+                    (entry.device_id,),
+                )
             row = cursor.fetchone()
             if row:
                 prev_lat, prev_lon, prev_ts = row
@@ -654,44 +758,59 @@ def post_log_experimental(entry: LogEntry, request: Request):
         cursor.execute(
             "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            entry.latitude,
-            entry.longitude,
-            entry.speed,
-            entry.direction,
-            roughness,
-            distance_m,
-            entry.device_id,
-            ip_address,
+            (
+                entry.latitude,
+                entry.longitude,
+                entry.speed,
+                entry.direction,
+                roughness,
+                distance_m,
+                entry.device_id,
+                ip_address,
+            ),
         )
-        if cursor.rowcount != 1:
+        if USE_SQLSERVER and cursor.rowcount != 1:
             log_debug(f"Insert affected {cursor.rowcount} rows")
             raise HTTPException(status_code=500, detail="Insert failed")
-        cursor.execute(
-            """
-            MERGE device_nicknames AS target
-            USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
-            ON target.device_id = src.device_id
-            WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
-            WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-            """,
-            entry.device_id,
-            entry.user_agent,
-            entry.device_fp,
-        )
+        if USE_SQLSERVER:
+            cursor.execute(
+                """
+                MERGE device_nicknames AS target
+                USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
+                ON target.device_id = src.device_id
+                WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
+                WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
+                """,
+                entry.device_id,
+                entry.user_agent,
+                entry.device_fp,
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO device_nicknames (device_id, user_agent, device_fp)
+                VALUES (?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
+                device_fp=excluded.device_fp
+                """,
+                (entry.device_id, entry.user_agent, entry.device_fp),
+            )
         cursor.execute(
             "INSERT INTO bike_data_experimental (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address, z_values, avg_speed, interval_s)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            entry.latitude,
-            entry.longitude,
-            entry.speed,
-            entry.direction,
-            roughness,
-            distance_m,
-            entry.device_id,
-            ip_address,
-            ",".join(str(float(z)) for z in entry.z_values),
-            avg_speed,
-            dt_sec,
+            (
+                entry.latitude,
+                entry.longitude,
+                entry.speed,
+                entry.direction,
+                roughness,
+                distance_m,
+                entry.device_id,
+                ip_address,
+                ",".join(str(float(z)) for z in entry.z_values),
+                avg_speed,
+                dt_sec,
+            ),
         )
         conn.commit()
         log_debug("Experimental data inserted")
@@ -719,10 +838,17 @@ def get_logs(limit: Optional[int] = None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if limit is None:
-            cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+        if USE_SQLSERVER:
+            if limit is None:
+                cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+            else:
+                cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
         else:
-            cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+            query = "SELECT * FROM bike_data ORDER BY id DESC"
+            if limit is None:
+                cursor.execute(query)
+            else:
+                cursor.execute(query + " LIMIT ?", (limit,))
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
         cursor.execute("SELECT AVG(roughness) FROM bike_data")
@@ -863,18 +989,28 @@ def set_nickname(entry: NicknameEntry):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            MERGE device_nicknames AS target
-            USING (SELECT ? AS device_id, ? AS nickname) AS src
-            ON target.device_id = src.device_id
-            WHEN MATCHED THEN UPDATE SET nickname = src.nickname
-            WHEN NOT MATCHED THEN INSERT (device_id, nickname)
-            VALUES (src.device_id, src.nickname);
-            """,
-            entry.device_id,
-            entry.nickname,
-        )
+        if USE_SQLSERVER:
+            cursor.execute(
+                """
+                MERGE device_nicknames AS target
+                USING (SELECT ? AS device_id, ? AS nickname) AS src
+                ON target.device_id = src.device_id
+                WHEN MATCHED THEN UPDATE SET nickname = src.nickname
+                WHEN NOT MATCHED THEN INSERT (device_id, nickname)
+                VALUES (src.device_id, src.nickname);
+                """,
+                entry.device_id,
+                entry.nickname,
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO device_nicknames (device_id, nickname)
+                VALUES (?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname
+                """,
+                (entry.device_id, entry.nickname),
+            )
         conn.commit()
         log_debug("Nickname stored")
     except Exception as exc:
@@ -920,10 +1056,17 @@ def get_gpx(limit: Optional[int] = None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if limit is None:
-            cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+        if USE_SQLSERVER:
+            if limit is None:
+                cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+            else:
+                cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
         else:
-            cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+            query = "SELECT * FROM bike_data ORDER BY id DESC"
+            if limit is None:
+                cursor.execute(query)
+            else:
+                cursor.execute(query + " LIMIT ?", (limit,))
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
         log_debug("Fetched logs for GPX generation")
@@ -966,11 +1109,17 @@ def manage_tables(dep: None = Depends(password_dependency)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sys.tables")
+        if USE_SQLSERVER:
+            cursor.execute("SELECT name FROM sys.tables")
+        else:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         names = [row[0] for row in cursor.fetchall()]
         tables = {}
         for name in names:
-            cursor.execute(f"SELECT TOP 20 * FROM {name}")
+            if USE_SQLSERVER:
+                cursor.execute(f"SELECT TOP 20 * FROM {name}")
+            else:
+                cursor.execute(f"SELECT * FROM {name} LIMIT 20")
             cols = [c[0] for c in cursor.description]
             rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
             tables[name] = rows
@@ -1090,10 +1239,21 @@ def backup_table(req: BackupRequest, dep: None = Depends(password_dependency)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.table)
-        if not cursor.fetchone():
+        if USE_SQLSERVER:
+            cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.table)
+            exists = cursor.fetchone() is not None
+        else:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (req.table,),
+            )
+            exists = cursor.fetchone() is not None
+        if not exists:
             raise HTTPException(status_code=400, detail="Unknown table")
-        cursor.execute(f"SELECT * INTO {new_table} FROM {req.table}")
+        if USE_SQLSERVER:
+            cursor.execute(f"SELECT * INTO {new_table} FROM {req.table}")
+        else:
+            cursor.execute(f"CREATE TABLE {new_table} AS SELECT * FROM {req.table}")
         conn.commit()
         log_debug(f"Backed up {req.table} to {new_table}")
     except HTTPException:
@@ -1123,10 +1283,21 @@ def rename_table(req: RenameRequest, dep: None = Depends(password_dependency)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.old_name)
-        if not cursor.fetchone():
+        if USE_SQLSERVER:
+            cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.old_name)
+            exists = cursor.fetchone() is not None
+        else:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (req.old_name,),
+            )
+            exists = cursor.fetchone() is not None
+        if not exists:
             raise HTTPException(status_code=400, detail="Unknown table")
-        cursor.execute(f"EXEC sp_rename '{req.old_name}', '{req.new_name}'")
+        if USE_SQLSERVER:
+            cursor.execute(f"EXEC sp_rename '{req.old_name}', '{req.new_name}'")
+        else:
+            cursor.execute(f"ALTER TABLE {req.old_name} RENAME TO {req.new_name}")
         conn.commit()
         log_debug(f"Renamed table {req.old_name} to {req.new_name}")
     except HTTPException:
@@ -1476,22 +1647,29 @@ def delete_filtered_records(
 @app.get("/manage/db_size")
 def get_db_size(dep: None = Depends(password_dependency)):
     """Return current database size and max size in GB."""
+    conn = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT SUM(size) * 8.0 / 1024 FROM sys.database_files")
-        size_mb = float(cursor.fetchone()[0] or 0)
-        cursor.execute("SELECT DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes')")
-        max_bytes = cursor.fetchone()[0]
-        max_gb = None
-        if max_bytes not in (None, -1, 0):
-            max_gb = float(max_bytes) / (1024 ** 3)
+        if USE_SQLSERVER:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT SUM(size) * 8.0 / 1024 FROM sys.database_files")
+            size_mb = float(cursor.fetchone()[0] or 0)
+            cursor.execute("SELECT DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes')")
+            max_bytes = cursor.fetchone()[0]
+            max_gb = None
+            if max_bytes not in (None, -1, 0):
+                max_gb = float(max_bytes) / (1024 ** 3)
+        else:
+            db_file = BASE_DIR / "local.db"
+            size_mb = db_file.stat().st_size / (1024 * 1024)
+            max_gb = None
     except Exception as exc:
         log_debug(f"DB size fetch error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
     finally:
         try:
-            conn.close()
+            if conn is not None:
+                conn.close()
         except Exception:
             pass
     return {"size_mb": size_mb, "max_size_gb": max_gb}
