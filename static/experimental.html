@@ -50,6 +50,14 @@
     <select id="device-filter" style="margin-left:1rem;" multiple></select>
     <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
     <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
+    <select id="roughness-filter" style="margin-left:1rem;">
+        <option value="">[All Roughness]</option>
+        <option>Very smooth</option>
+        <option>Smooth</option>
+        <option>Moderate</option>
+        <option>Rough</option>
+        <option>Very rough</option>
+    </select>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
 <div id="page-links" style="margin-bottom:1rem;">
@@ -286,6 +294,12 @@ function roughnessLabel(r) {
     return 'Very rough';
 }
 
+function filterRoughness(r) {
+    const sel = document.getElementById('roughness-filter');
+    if (!sel || !sel.value) return true;
+    return roughnessLabel(r) === sel.value;
+}
+
 function zUp(acc) {
     const beta = orientationData.beta * Math.PI / 180;
     const gamma = orientationData.gamma * Math.PI / 180;
@@ -356,6 +370,7 @@ function loadLogs() {
             roughScales[row.device_id] = s;
         });
         rows.reverse().forEach(row => {
+            if (!filterRoughness(row.roughness)) return;
             const name = deviceNicknames[row.device_id] || '';
             const scale = roughScales[row.device_id] || {min:0,max:1};
             addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
@@ -414,12 +429,14 @@ function handlePosition(pos) {
                 addLog(`Record inserted, roughness: ${data.roughness.toFixed(2)}`);
                 updateStatus();
                 const scale = roughScales[deviceId] || {min: data.roughness, max: data.roughness};
-                addPoint(latitude, longitude, data.roughness, {
-                    timestamp: new Date().toISOString(),
-                    speed: lastSpeed,
-                    direction: lastDir,
-                    roughness: data.roughness
-                }, currentNickname, scale.min, scale.max);
+                if (filterRoughness(data.roughness)) {
+                    addPoint(latitude, longitude, data.roughness, {
+                        timestamp: new Date().toISOString(),
+                        speed: lastSpeed,
+                        direction: lastDir,
+                        roughness: data.roughness
+                    }, currentNickname, scale.min, scale.max);
+                }
                 scale.min = Math.min(scale.min, data.roughness);
                 scale.max = Math.max(scale.max, data.roughness);
                 roughScales[deviceId] = scale;
@@ -520,6 +537,9 @@ document.getElementById('device-filter').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
         .map(o => o.value).filter(v => v);
     loadNickname();
+    loadLogs();
+});
+document.getElementById('roughness-filter').addEventListener('change', () => {
     loadLogs();
 });
 document.getElementById('fullscreen-button').addEventListener('click', () => {
