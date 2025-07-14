@@ -113,6 +113,10 @@ let deviceId = localStorage.getItem('deviceId');
 let selectedIds = deviceId ? [deviceId] : [];
 let freqMin = 0;
 let freqMax = 20;
+const storedMin = parseFloat(localStorage.getItem('freqMin'));
+if (!isNaN(storedMin)) freqMin = storedMin;
+const storedMax = parseFloat(localStorage.getItem('freqMax'));
+if (!isNaN(storedMax)) freqMax = storedMax;
 
 async function authFetch(url, options) {
     let res = await fetch(url, options);
@@ -582,6 +586,17 @@ function updateFreqInputs() {
     document.getElementById('freq-display').textContent = `${freqMin}-${freqMax}`;
 }
 
+function applyFreqFilter() {
+    const fmin = parseFloat(document.getElementById('freq-min').value);
+    const fmax = parseFloat(document.getElementById('freq-max').value);
+    freqMin = isNaN(fmin) ? 0 : fmin;
+    freqMax = isNaN(fmax) ? 20 : fmax;
+    localStorage.setItem('freqMin', freqMin);
+    localStorage.setItem('freqMax', freqMax);
+    updateFreqInputs();
+    addLog(`Filter set to ${freqMin}-${freqMax} Hz`);
+}
+
 async function recalcAll() {
     addLog(`Recalculating roughness using ${freqMin}-${freqMax} Hz`);
     const loadBox = document.getElementById('loading');
@@ -608,6 +623,7 @@ async function recalcAll() {
 }
 
 updateFreqInputs();
+addLog(`Loaded filter ${freqMin}-${freqMax} Hz`);
 
 document.getElementById('toggle').addEventListener('click', () => {
     if (loggingEnabled) {
@@ -648,11 +664,12 @@ document.getElementById('device-filter').addEventListener('change', () => {
 document.getElementById('roughness-filter').addEventListener('change', () => {
     loadLogs();
 });
-document.getElementById('freq-apply').addEventListener('click', () => {
-    freqMin = parseFloat(document.getElementById('freq-min').value) || 0;
-    freqMax = parseFloat(document.getElementById('freq-max').value) || 20;
-    updateFreqInputs();
-    addLog(`Filter set to ${freqMin}-${freqMax} Hz`);
+document.getElementById('freq-apply').addEventListener('click', applyFreqFilter);
+document.getElementById('freq-min').addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyFreqFilter();
+});
+document.getElementById('freq-max').addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyFreqFilter();
 });
 document.getElementById('recalc-btn').addEventListener('click', recalcAll);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
