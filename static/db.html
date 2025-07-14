@@ -518,6 +518,7 @@ initMap();
 populateDeviceOptions();
 loadTables().then(() => { loadSelectedTable(); });
 document.getElementById('table-select').addEventListener('change', loadSelectedTable);
+document.getElementById('filter-device').addEventListener('change', loadFiltered);
 document.getElementById('roughness-filter').addEventListener('change', () => {
     updateMap(tableRows);
 });

@@ -142,7 +142,7 @@ function setDateRange() {
         ids.forEach(id => params.append('device_id', id));
         url = '/date_range?' + params.toString();
     }
-    fetch(url).then(r => r.json()).then(data => {
+    return fetch(url).then(r => r.json()).then(data => {
         if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
         if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
         sliderMin = Date.parse(data.start);
@@ -339,7 +339,7 @@ document.getElementById('load').addEventListener('click', loadData);
 document.getElementById('deviceId').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
         .map(o => o.value).filter(v => v);
-    setDateRange();
+    setDateRange().then(loadData);
     loadNickname();
 });
 document.getElementById('roughness-filter').addEventListener('change', loadData);
