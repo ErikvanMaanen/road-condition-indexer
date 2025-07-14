@@ -23,8 +23,13 @@ This project collects road roughness data from mobile devices and stores it in a
    pip install -r requirements.txt
    ```
    This project requires the Microsoft ODBC Driver for SQL Server
-   (version 17 or 18). If you see an error like `Can't open lib 'ODBC Driver'
+   (version 17 or 18). If you see an error like `Can't open lib 'ODBC Driver'`
    when running `setup_env.py`, install the driver for your operating system.
+
+   If the Azure SQL environment variables are not provided the API will
+   automatically fall back to a local SQLite database stored in
+   `local.db`. This allows running the server without any external
+   database service.
 3. (Optional) Run `python setup_env.py` to verify environment variables and database connectivity.
 4. Start the API server:
    ```bash
