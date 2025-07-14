@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 600px; }
+        #page-links { margin-bottom: 1rem; }
+        label { display:block; margin-top:0.5rem; }
+    </style>
+</head>
+<body>
+<h1>Maintenance</h1>
+<div id="page-links">
+    <a href="/">Main</a> |
+    <a href="experimental.html">Experimental</a> |
+    <a href="device.html">Device View</a> |
+    <a href="db.html">DB Page</a>
+</div>
+<section>
+    <h2>Database Size</h2>
+    <div id="db-info">Loading...</div>
+    <label>New MAXSIZE (GB) <input id="db-size" type="number" min="1"></label>
+    <button onclick="setDbSize()">Update Size</button>
+</section>
+<section style="margin-top:1rem;">
+    <h2>App Service Plan</h2>
+    <div id="plan-info">Loading...</div>
+    <label>SKU <input id="plan-sku"></label>
+    <label>Capacity <input id="plan-cap" type="number" min="1"></label>
+    <button onclick="setPlan()">Update Plan</button>
+</section>
+<script>
+async function authFetch(url, options) {
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+        const pw = prompt('Password:');
+        if (!pw) throw new Error('Password required');
+        const loginRes = await fetch('/login', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({password: pw})
+        });
+        if (!loginRes.ok) throw new Error('Login failed');
+        res = await fetch(url, options);
+    }
+    return res;
+}
+async function loadDbInfo() {
+    const res = await authFetch('/manage/db_size');
+    if(!res.ok) { document.getElementById('db-info').textContent='Unavailable'; return; }
+    const data = await res.json();
+    document.getElementById('db-info').textContent = `Used: ${data.size_mb.toFixed(2)} MB, Max: ${data.max_size_gb ? data.max_size_gb.toFixed(2)+' GB' : 'unlimited'}`;
+}
+async function setDbSize() {
+    const val = document.getElementById('db-size').value;
+    if(!val) return;
+    await authFetch('/manage/set_db_size', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({max_size_gb: parseInt(val,10)})
+    });
+    loadDbInfo();
+}
+async function loadPlan() {
+    const res = await authFetch('/manage/app_plan');
+    if(!res.ok){ document.getElementById('plan-info').textContent='Unavailable'; return; }
+    const data = await res.json();
+    document.getElementById('plan-info').textContent = `Name: ${data.name}, SKU: ${data.sku}, Capacity: ${data.capacity}`;
+}
+async function setPlan() {
+    const sku = document.getElementById('plan-sku').value.trim();
+    const cap = parseInt(document.getElementById('plan-cap').value,10);
+    if(!sku && !cap) return;
+    const body = {};
+    if(sku) body.sku_name = sku;
+    if(cap) body.capacity = cap;
+    await authFetch('/manage/set_app_plan', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    loadPlan();
+}
+loadDbInfo();
+loadPlan();
+</script>
+</body>
+</html>
