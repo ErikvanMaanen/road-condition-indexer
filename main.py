@@ -1341,13 +1341,13 @@ def recalculate_experimental(
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, z_values, avg_speed, interval_s FROM bike_data_experimental"
+            "SELECT id, z_values, avg_speed, interval_s, roughness FROM bike_data_experimental"
         )
         rows = cursor.fetchall()
         updated = 0
         fmin = req.freq_min if req.freq_min is not None else 0.0
         fmax = req.freq_max if req.freq_max is not None else 20.0
-        for rec_id, z_str, avg_speed, interval_s in rows:
+        for rec_id, z_str, avg_speed, interval_s, old_rough in rows:
             try:
                 z_vals = [float(z) for z in z_str.split(',') if z]
             except Exception:
@@ -1365,6 +1365,11 @@ def recalculate_experimental(
                 rec_id,
             )
             updated += cursor.rowcount
+            try:
+                old_val = float(old_rough or 0.0)
+            except Exception:
+                old_val = 0.0
+            log_debug(f"Recalc id {rec_id}: {old_val:.3f} -> {rough:.3f}")
         conn.commit()
         log_debug(
             f"Recalculated experimental roughness for {updated} rows using {fmin}-{fmax} Hz"
