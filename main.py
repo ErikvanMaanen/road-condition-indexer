@@ -255,11 +255,13 @@ def compute_roughness(
     interval_s: float,
     *,
     freq_min: float = 1.0,
+    freq_max: float = 20.0,
 ) -> float:
     """Calculate roughness from vertical acceleration samples.
 
     ``interval_s`` is the time span in seconds covered by ``z_values``. The
-    samples are filtered to keep vibrations between ``freq_min`` and 20 Hz using
+    samples are filtered to keep vibrations between ``freq_min`` and
+    ``freq_max`` using
     a basic FFT band-pass filter. The root mean square of the filtered signal is
     then normalised by the average speed over the interval. If the speed is less
     than 5 km/h the roughness score is forced to zero to avoid noise at low
@@ -278,7 +280,8 @@ def compute_roughness(
     freqs = np.fft.rfftfreq(len(samples), d=1 / sample_rate)
     fft_vals = np.fft.rfft(samples)
     fmin = max(0.0, freq_min)
-    mask = (freqs >= fmin) & (freqs <= 20.0)
+    fmax = max(fmin, freq_max)
+    mask = (freqs >= fmin) & (freqs <= fmax)
     fft_vals[~mask] = 0
     filtered = np.fft.irfft(fft_vals, n=len(samples))
 
@@ -464,6 +467,8 @@ class LogEntry(BaseModel):
     user_agent: Optional[str] = None
     device_fp: Optional[str] = None
     z_values: List[float] = Field(..., alias="z_values")
+    freq_min: Optional[float] = None
+    freq_max: Optional[float] = None
 
 
 @app.post("/log")
@@ -522,7 +527,13 @@ def post_log(entry: LogEntry, request: Request):
         log_debug(f"Elevation: {elevation} m")
     else:
         log_debug("Elevation not available")
-    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec)
+    roughness = compute_roughness(
+        entry.z_values,
+        avg_speed,
+        dt_sec,
+        freq_min=entry.freq_min if entry.freq_min is not None else 1.0,
+        freq_max=entry.freq_max if entry.freq_max is not None else 20.0,
+    )
     distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
@@ -627,7 +638,13 @@ def post_log_experimental(entry: LogEntry, request: Request):
         log_debug(f"Elevation: {elevation} m")
     else:
         log_debug("Elevation not available")
-    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec, freq_min=0.0)
+    roughness = compute_roughness(
+        entry.z_values,
+        avg_speed,
+        dt_sec,
+        freq_min=entry.freq_min if entry.freq_min is not None else 0.0,
+        freq_max=entry.freq_max if entry.freq_max is not None else 20.0,
+    )
     distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
@@ -1309,8 +1326,16 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
     return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}
 
 
+class RecalcRequest(BaseModel):
+    freq_min: Optional[float] = None
+    freq_max: Optional[float] = None
+
+
 @app.post("/manage/recalculate_experimental")
-def recalculate_experimental(dep: None = Depends(password_dependency)):
+def recalculate_experimental(
+    req: RecalcRequest,
+    dep: None = Depends(password_dependency),
+):
     """Recalculate roughness for all experimental records."""
     try:
         conn = get_db_connection()
@@ -1320,6 +1345,8 @@ def recalculate_experimental(dep: None = Depends(password_dependency)):
         )
         rows = cursor.fetchall()
         updated = 0
+        fmin = req.freq_min if req.freq_min is not None else 0.0
+        fmax = req.freq_max if req.freq_max is not None else 20.0
         for rec_id, z_str, avg_speed, interval_s in rows:
             try:
                 z_vals = [float(z) for z in z_str.split(',') if z]
@@ -1329,7 +1356,8 @@ def recalculate_experimental(dep: None = Depends(password_dependency)):
                 z_vals,
                 float(avg_speed or 0.0),
                 float(interval_s or 0.0),
-                freq_min=0.0,
+                freq_min=fmin,
+                freq_max=fmax,
             )
             cursor.execute(
                 "UPDATE bike_data_experimental SET roughness = ? WHERE id = ?",
@@ -1338,7 +1366,9 @@ def recalculate_experimental(dep: None = Depends(password_dependency)):
             )
             updated += cursor.rowcount
         conn.commit()
-        log_debug(f"Recalculated experimental roughness for {updated} rows")
+        log_debug(
+            f"Recalculated experimental roughness for {updated} rows using {fmin}-{fmax} Hz"
+        )
     except Exception as exc:
         log_debug(f"Recalculate experimental error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc

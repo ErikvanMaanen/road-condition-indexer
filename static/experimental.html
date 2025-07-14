@@ -71,6 +71,13 @@
     <a href="db.html">DB Page</a> |
     <a href="maintenance.html">Maintenance</a>
 </div>
+<div id="freq-controls" style="margin-bottom:1rem;">
+    Filter Hz:
+    <input id="freq-min" type="number" value="0" step="0.1" style="width:4rem;"> -
+    <input id="freq-max" type="number" value="20" step="0.1" style="width:4rem;">
+    <button id="freq-apply">Set</button>
+    <button id="recalc-btn">Recalculate</button>
+</div>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
@@ -85,6 +92,24 @@
 <script>
 let deviceId = localStorage.getItem('deviceId');
 let selectedIds = deviceId ? [deviceId] : [];
+let freqMin = 0;
+let freqMax = 20;
+
+async function authFetch(url, options) {
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+        const pw = prompt('Password:');
+        if (!pw) throw new Error('Password required');
+        const loginRes = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw })
+        });
+        if (!loginRes.ok) throw new Error('Login failed');
+        res = await fetch(url, options);
+    }
+    return res;
+}
 function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
     document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
@@ -428,7 +453,9 @@ function handlePosition(pos) {
                 z_values: zValues,
                 device_id: deviceId,
                 user_agent: userAgent,
-                device_fp: fingerprint
+                device_fp: fingerprint,
+                freq_min: freqMin,
+                freq_max: freqMax
             })
         }).then(r => r.json()).then(data => {
             if (data.roughness !== undefined) {
@@ -516,6 +543,30 @@ initMap();
 populateDeviceFilter();
 pollDebug();
 
+function updateFreqInputs() {
+    document.getElementById('freq-min').value = freqMin;
+    document.getElementById('freq-max').value = freqMax;
+    document.getElementById('freq-display').textContent = `${freqMin}-${freqMax}`;
+}
+
+async function recalcAll() {
+    addLog(`Recalculating roughness using ${freqMin}-${freqMax} Hz`);
+    try {
+        const res = await authFetch('/manage/recalculate_experimental', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ freq_min: freqMin, freq_max: freqMax })
+        });
+        const data = await res.json();
+        addLog(`Recalculated ${data.updated} records`);
+        loadLogs();
+    } catch (err) {
+        addLog('Recalc error: ' + err);
+    }
+}
+
+updateFreqInputs();
+
 document.getElementById('toggle').addEventListener('click', () => {
     if (loggingEnabled) {
         stopGeolocation();
@@ -555,6 +606,13 @@ document.getElementById('device-filter').addEventListener('change', () => {
 document.getElementById('roughness-filter').addEventListener('change', () => {
     loadLogs();
 });
+document.getElementById('freq-apply').addEventListener('click', () => {
+    freqMin = parseFloat(document.getElementById('freq-min').value) || 0;
+    freqMax = parseFloat(document.getElementById('freq-max').value) || 20;
+    updateFreqInputs();
+    addLog(`Filter set to ${freqMin}-${freqMax} Hz`);
+});
+document.getElementById('recalc-btn').addEventListener('click', recalcAll);
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
     addLog('Fullscreen button pressed');
@@ -596,9 +654,9 @@ if ('wakeLock' in navigator) {
 }
 </script>
 <div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
-    <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between 0&nbsp;and&nbsp;20&nbsp;Hz,
-    the RMS of the filtered signal is normalised by average speed, and values recorded below
-    5&nbsp;km/h are ignored.
+    <strong>Roughness Calculation</strong> - vertical acceleration samples are filtered between
+    <span id="freq-display">0-20</span>&nbsp;Hz, the RMS of the filtered signal is normalised by average speed,
+    and values recorded below 5&nbsp;km/h are ignored.
 </div>
 </body>
 </html>
