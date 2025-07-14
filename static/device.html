@@ -51,6 +51,10 @@
     <button id="load">Load</button>
     <button id="fullscreen-button">Fullscreen</button>
 </div>
+<div id="loading" style="display:none;margin-bottom:1rem;">
+    <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+    <span id="load-label"></span>
+</div>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
@@ -258,7 +262,15 @@ function loadData() {
     if (end) params.append('end', end);
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
-        .then(data => {
+        .then(async data => {
+            const loadBox = document.getElementById('loading');
+            const prog = document.getElementById('load-progress');
+            const label = document.getElementById('load-label');
+            const rows = data.rows || [];
+            prog.max = rows.length;
+            prog.value = 0;
+            label.textContent = `0 / ${rows.length}`;
+            loadBox.style.display = 'block';
             map.eachLayer(layer => {
                 if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
                     map.removeLayer(layer);
@@ -268,17 +280,22 @@ function loadData() {
             roughMin = 0;
             roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
             roughScales = {};
-            data.rows.forEach(row => {
+            rows.forEach(row => {
                 const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
                 s.min = Math.min(s.min, row.roughness);
                 s.max = Math.max(s.max, row.roughness);
                 roughScales[row.device_id] = s;
             });
-            data.rows.reverse().forEach(row => {
+            for (let i = rows.length - 1; i >= 0; i--) {
+                const row = rows[i];
                 const name = deviceNicknames[row.device_id] || '';
                 const scale = roughScales[row.device_id] || {min:0,max:1};
                 addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
-            });
+                prog.value = rows.length - i;
+                label.textContent = `${rows.length - i} / ${rows.length}`;
+                if ((rows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+            loadBox.style.display = 'none';
         })
         .catch(console.error);
 }
