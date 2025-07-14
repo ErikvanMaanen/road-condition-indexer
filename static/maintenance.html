@@ -25,6 +25,200 @@
     <button onclick="setDbSize()">Update Size</button>
 </section>
 <section style="margin-top:1rem;">
+    <h2>API Reference</h2>
+    <table border="1" cellpadding="4" style="border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Auth</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>/login</td>
+                <td>POST</td>
+                <td>JSON {password}</td>
+                <td>204 No Content</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/auth_check</td>
+                <td>GET</td>
+                <td>Cookie</td>
+                <td>204 or 401</td>
+                <td>Auth cookie</td>
+            </tr>
+            <tr>
+                <td>/log</td>
+                <td>POST</td>
+                <td>JSON {latitude, longitude, speed, direction, device_id, z_values[]}</td>
+                <td>JSON {status, roughness}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/experimental_log</td>
+                <td>POST</td>
+                <td>Same as /log</td>
+                <td>JSON {status, roughness}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/logs?limit=N</td>
+                <td>GET</td>
+                <td>Optional limit 1-1000</td>
+                <td>JSON {rows, average}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/filteredlogs</td>
+                <td>GET</td>
+                <td>device_id, start, end</td>
+                <td>JSON {rows, average}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/device_ids</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {ids}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/date_range</td>
+                <td>GET</td>
+                <td>Optional device_id</td>
+                <td>JSON {start, end}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/nickname</td>
+                <td>POST</td>
+                <td>JSON {device_id, nickname}</td>
+                <td>JSON {status}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/nickname?device_id=ID</td>
+                <td>GET</td>
+                <td>device_id</td>
+                <td>JSON {nickname}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/gpx?limit=N</td>
+                <td>GET</td>
+                <td>Optional limit</td>
+                <td>GPX file</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/debuglog</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {log}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td colspan="5" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
+            </tr>
+            <tr>
+                <td>/manage/tables</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {tables}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/insert_testdata</td>
+                <td>POST</td>
+                <td>JSON {table}</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/delete_all?table=NAME</td>
+                <td>DELETE</td>
+                <td>table</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/backup_table</td>
+                <td>POST</td>
+                <td>JSON {table}</td>
+                <td>JSON {status, new_table}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/rename_table</td>
+                <td>POST</td>
+                <td>JSON {old_name, new_name}</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/record?record_id=ID</td>
+                <td>GET</td>
+                <td>record_id</td>
+                <td>JSON record</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/update_record</td>
+                <td>PUT</td>
+                <td>JSON RecordUpdate</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/delete_record?record_id=ID</td>
+                <td>DELETE</td>
+                <td>record_id</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/merge_device_ids</td>
+                <td>POST</td>
+                <td>JSON {old_id, new_id}</td>
+                <td>JSON {status, bike_rows, experimental_rows}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/db_size</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {size_mb, max_size_gb}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/set_db_size</td>
+                <td>POST</td>
+                <td>JSON {max_size_gb}</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/app_plan</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {name, sku, capacity}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/set_app_plan</td>
+                <td>POST</td>
+                <td>JSON {sku_name?, capacity?}</td>
+                <td>JSON {status}</td>
+                <td>Password</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+<section style="margin-top:1rem;">
     <h2>App Service Plan</h2>
     <div id="plan-info">Loading...</div>
     <label>SKU <input id="plan-sku"></label>
