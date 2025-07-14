@@ -43,9 +43,15 @@
     <button onclick="deleteRecords()">Delete All Records</button>
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
-    <input id="merge-old" placeholder="Old ID">
-    <input id="merge-new" placeholder="New ID">
+    <select id="merge-old"></select>
+    <select id="merge-new"></select>
     <button onclick="mergeIds()">Merge IDs</button>
+    <select id="filter-device" multiple></select>
+    <input id="filter-start" type="datetime-local">
+    <input id="filter-end" type="datetime-local">
+    <input id="filter-ids" placeholder="IDs (comma)">
+    <button onclick="loadFiltered()">Load Filter</button>
+    <button onclick="deleteFiltered()">Delete Filter</button>
 </div>
 <button id="toggle-table" onclick="toggleTable()">Show Table</button>
 <div id="map"></div>
@@ -115,6 +121,27 @@ function initMap() {
     }
 }
 
+function populateDeviceOptions() {
+    fetch('/device_ids').then(r => r.json()).then(data => {
+        const ids = ['merge-old','merge-new','filter-device'];
+        ids.forEach(id => {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            const current = Array.from(sel.selectedOptions).map(o => o.value);
+            sel.innerHTML = '';
+            data.ids.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
+                sel.appendChild(opt);
+            });
+            current.forEach(v => {
+                Array.from(sel.options).forEach(o => { if (o.value === v) o.selected = true; });
+            });
+        });
+    }).catch(console.error);
+}
+
 function colorForRoughness(r) {
     let ratio = 0;
     if (roughAvg > 0) {
@@ -129,18 +156,20 @@ function colorForRoughness(r) {
 }
 
 function addPoint(lat, lon, info) {
-    if (!map) return;
+    if (!map || (lat === 0 && lon === 0)) return;
     const rough = info && typeof info.roughness === 'number' ? info.roughness : 0;
     const marker = L.circleMarker(
         [lat, lon],
         { radius:4, weight:1, opacity:0.9, fillOpacity:0.9, color: colorForRoughness(rough) }
     ).addTo(map);
     if (info) {
+        const timeStr = info.timestamp ? new Date(info.timestamp).toLocaleString() : '';
         let popup = '';
-        if ('id' in info) popup = 'ID: ' + info.id;
-        if ('roughness' in info && info.roughness !== null && info.roughness !== undefined) {
-            popup += (popup ? '<br>' : '') + 'Roughness: ' + Number(info.roughness).toFixed(2);
-        }
+        if (timeStr) popup += `Time: ${timeStr}<br>`;
+        if ('speed' in info) popup += `Speed: ${Number(info.speed).toFixed(1)} km/h<br>`;
+        if ('direction' in info) popup += `Dir: ${directionToCompass(info.direction)}<br>`;
+        if ('roughness' in info)
+            popup += `Roughness: ${roughnessLabel(info.roughness)} (${Number(info.roughness).toFixed(2)})`;
         if (popup) marker.bindPopup(popup);
         if ('id' in info) {
             marker.on('click', () => { localStorage.setItem('selectedRecordId', info.id); loadSelected(); });
@@ -321,8 +350,8 @@ async function renameTable() {
 }
 
 async function mergeIds() {
-    const oldId = document.getElementById('merge-old').value.trim();
-    const newId = document.getElementById('merge-new').value.trim();
+    const oldId = document.getElementById('merge-old').value;
+    const newId = document.getElementById('merge-new').value;
     if(!oldId || !newId || oldId === newId) return;
     await authFetch('/manage/merge_device_ids', {
         method:'POST',
@@ -330,10 +359,53 @@ async function mergeIds() {
         body: JSON.stringify({old_id: oldId, new_id: newId})
     });
     alert('Merge completed');
-    document.getElementById('merge-old').value = '';
-    document.getElementById('merge-new').value = '';
+    populateDeviceOptions();
     loadTables();
     if(currentTable === 'bike_data') loadSelectedTable();
+}
+
+function buildFilterParams() {
+    const params = new URLSearchParams();
+    const devSel = document.getElementById('filter-device');
+    if (devSel) {
+        Array.from(devSel.selectedOptions).forEach(o => params.append('device_id', o.value));
+    }
+    const start = document.getElementById('filter-start').value;
+    const end = document.getElementById('filter-end').value;
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    const ids = document.getElementById('filter-ids').value.trim();
+    if (ids) ids.split(/[,\s]+/).forEach(id => { if(id) params.append('ids', id); });
+    return params;
+}
+
+async function loadFiltered() {
+    const params = buildFilterParams();
+    const res = await authFetch('/manage/filtered_records?' + params.toString());
+    if(!res.ok) return;
+    const data = await res.json();
+    const rows = data.rows || [];
+    currentTable = 'bike_data';
+    setCurrentColumns(rows.length > 0 ? Object.keys(rows[0]) : []);
+    tableRows = rows;
+    if (showTable) {
+        renderTable('bike_data', rows);
+        document.getElementById('output').style.display='block';
+    } else {
+        document.getElementById('output').style.display='none';
+    }
+    updateMap(rows);
+}
+
+async function deleteFiltered() {
+    const params = buildFilterParams();
+    const res = await authFetch('/manage/delete_filtered_records?' + params.toString(), {method:'DELETE'});
+    if(res.ok) {
+        const data = await res.json();
+        alert('Deleted ' + data.deleted + ' records');
+        loadFiltered();
+        loadTables();
+    }
 }
 
 function loadSelected() {
@@ -387,6 +459,7 @@ function toggleTable() {
     }
 }
 initMap();
+populateDeviceOptions();
 loadTables().then(() => { loadSelectedTable(); });
 document.getElementById('table-select').addEventListener('change', loadSelectedTable);
 loadLogs();
