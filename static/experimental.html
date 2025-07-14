@@ -45,18 +45,23 @@
 <div id="button-bar">
     <button id="toggle">Start</button>
     <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
-    <button id="update-button" style="margin-left:1rem;">Update Records</button>
+    <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
     <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
     <select id="device-filter" style="margin-left:1rem;" multiple></select>
-    <input id="nickname" placeholder="Nickname" style="margin-left:1rem;" />
-    <button id="save-nickname" style="margin-left:0.5rem;">Save</button>
-    <select id="roughness-filter" style="margin-left:1rem;">
+    <input id="nickname" placeholder="Nickname" style="margin-left:1rem; display:none;" />
+    <button id="save-nickname" style="margin-left:0.5rem; display:none;">Save</button>
+    <select id="roughness-filter" style="margin-left:1rem;" multiple>
         <option value="">[All Roughness]</option>
-        <option>Very smooth</option>
-        <option>Smooth</option>
-        <option>Moderate</option>
-        <option>Rough</option>
-        <option>Very rough</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+        <option>7</option>
+        <option>8</option>
+        <option>9</option>
+        <option>10</option>
     </select>
     <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
 </div>
@@ -101,8 +106,13 @@ const fingerprint = [
 const LOG_ENDPOINT = '/experimental_log';
 
 function loadNickname() {
+    const nickInput = document.getElementById('nickname');
+    if (!nickInput) {
+        currentNickname = '';
+        return;
+    }
     if (selectedIds.length !== 1) {
-        document.getElementById('nickname').value = '';
+        nickInput.value = '';
         currentNickname = '';
         return;
     }
@@ -111,14 +121,15 @@ function loadNickname() {
         .then(r => r.json())
         .then(data => {
             currentNickname = data.nickname || '';
-            document.getElementById('nickname').value = currentNickname;
+            nickInput.value = currentNickname;
         })
         .catch(console.error);
 }
 
 function saveNickname() {
-    const name = document.getElementById('nickname').value;
-    if (selectedIds.length !== 1) return;
+    const nickInput = document.getElementById('nickname');
+    if (!nickInput || selectedIds.length !== 1) return;
+    const name = nickInput.value;
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,32 +283,28 @@ function directionToCompass(deg) {
 }
 
 function roughnessLabel(r) {
-    if (roughAvg > 0) {
-        if (r < roughAvg * 0.5) return 'Very smooth';
-        if (r < roughAvg * 0.8) return 'Smooth';
-        if (r < roughAvg * 1.2) return 'Moderate';
-        if (r < roughAvg * 1.5) return 'Rough';
-        return 'Very rough';
+    let min = roughMin;
+    let max = roughMax;
+    if (max === min) {
+        if (roughAvg > 0) {
+            min = 0;
+            max = roughAvg * 2;
+        } else {
+            max = min + 10;
+        }
     }
-    if (roughMax !== roughMin) {
-        const step = (roughMax - roughMin) / 5;
-        if (r < roughMin + step) return 'Very smooth';
-        if (r < roughMin + step * 2) return 'Smooth';
-        if (r < roughMin + step * 3) return 'Moderate';
-        if (r < roughMin + step * 4) return 'Rough';
-        return 'Very rough';
-    }
-    if (r < 1) return 'Very smooth';
-    if (r < 2) return 'Smooth';
-    if (r < 3) return 'Moderate';
-    if (r < 4) return 'Rough';
-    return 'Very rough';
+    const step = (max - min) / 10;
+    if (step <= 0) return '1';
+    const idx = Math.max(0, Math.min(9, Math.floor((r - min) / step)));
+    return String(idx + 1);
 }
 
 function filterRoughness(r) {
     const sel = document.getElementById('roughness-filter');
-    if (!sel || !sel.value) return true;
-    return roughnessLabel(r) === sel.value;
+    if (!sel) return true;
+    const values = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    if (values.length === 0) return true;
+    return values.includes(roughnessLabel(r));
 }
 
 function zUp(acc) {
@@ -525,14 +532,20 @@ document.getElementById('gpx-button').addEventListener('click', () => {
     addLog('Generate GPX pressed');
     generateGpx();
 });
-document.getElementById('update-button').addEventListener('click', () => {
-    addLog('Update Records pressed');
-    loadLogs();
-});
-document.getElementById('save-nickname').addEventListener('click', () => {
-    addLog('Save Nickname pressed');
-    saveNickname();
-});
+const updateBtn = document.getElementById('update-button');
+if (updateBtn) {
+    updateBtn.addEventListener('click', () => {
+        addLog('Update Records pressed');
+        loadLogs();
+    });
+}
+const saveNickBtn = document.getElementById('save-nickname');
+if (saveNickBtn) {
+    saveNickBtn.addEventListener('click', () => {
+        addLog('Save Nickname pressed');
+        saveNickname();
+    });
+}
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
         .map(o => o.value).filter(v => v);
