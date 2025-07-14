@@ -250,12 +250,16 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
 
 
 def compute_roughness(
-    z_values: List[float], speed_kmh: float, interval_s: float
+    z_values: List[float],
+    speed_kmh: float,
+    interval_s: float,
+    *,
+    freq_min: float = 1.0,
 ) -> float:
     """Calculate roughness from vertical acceleration samples.
 
     ``interval_s`` is the time span in seconds covered by ``z_values``. The
-    samples are filtered to only keep vibrations between 1 and 20 Hz using
+    samples are filtered to keep vibrations between ``freq_min`` and 20 Hz using
     a basic FFT band-pass filter. The root mean square of the filtered signal is
     then normalised by the average speed over the interval. If the speed is less
     than 5 km/h the roughness score is forced to zero to avoid noise at low
@@ -273,7 +277,8 @@ def compute_roughness(
 
     freqs = np.fft.rfftfreq(len(samples), d=1 / sample_rate)
     fft_vals = np.fft.rfft(samples)
-    mask = (freqs >= 1.0) & (freqs <= 20.0)
+    fmin = max(0.0, freq_min)
+    mask = (freqs >= fmin) & (freqs <= 20.0)
     fft_vals[~mask] = 0
     filtered = np.fft.irfft(fft_vals, n=len(samples))
 
@@ -622,7 +627,7 @@ def post_log_experimental(entry: LogEntry, request: Request):
         log_debug(f"Elevation: {elevation} m")
     else:
         log_debug("Elevation not available")
-    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec)
+    roughness = compute_roughness(entry.z_values, avg_speed, dt_sec, freq_min=0.0)
     distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
@@ -1302,6 +1307,47 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
         except Exception:
             pass
     return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}
+
+
+@app.post("/manage/recalculate_experimental")
+def recalculate_experimental(dep: None = Depends(password_dependency)):
+    """Recalculate roughness for all experimental records."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, z_values, avg_speed, interval_s FROM bike_data_experimental"
+        )
+        rows = cursor.fetchall()
+        updated = 0
+        for rec_id, z_str, avg_speed, interval_s in rows:
+            try:
+                z_vals = [float(z) for z in z_str.split(',') if z]
+            except Exception:
+                z_vals = []
+            rough = compute_roughness(
+                z_vals,
+                float(avg_speed or 0.0),
+                float(interval_s or 0.0),
+                freq_min=0.0,
+            )
+            cursor.execute(
+                "UPDATE bike_data_experimental SET roughness = ? WHERE id = ?",
+                rough,
+                rec_id,
+            )
+            updated += cursor.rowcount
+        conn.commit()
+        log_debug(f"Recalculated experimental roughness for {updated} rows")
+    except Exception as exc:
+        log_debug(f"Recalculate experimental error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"status": "ok", "updated": updated}
 
 
 @app.get("/manage/filtered_records")
