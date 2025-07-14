@@ -48,6 +48,14 @@
     </div>
     <input id="nickname" placeholder="Nickname">
     <button id="save-nickname">Save</button>
+    <select id="roughness-filter">
+        <option value="">[All Roughness]</option>
+        <option>Very smooth</option>
+        <option>Smooth</option>
+        <option>Moderate</option>
+        <option>Rough</option>
+        <option>Very rough</option>
+    </select>
     <button id="load">Load</button>
     <button id="fullscreen-button">Fullscreen</button>
 </div>
@@ -228,6 +236,12 @@ function roughnessLabel(r) {
     return 'Very rough';
 }
 
+function filterRoughness(r) {
+    const sel = document.getElementById('roughness-filter');
+    if (!sel || !sel.value) return true;
+    return roughnessLabel(r) === sel.value;
+}
+
 function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
     if (!map || (lat === 0 && lon === 0)) return;
     const opts = {
@@ -288,6 +302,7 @@ function loadData() {
             });
             for (let i = rows.length - 1; i >= 0; i--) {
                 const row = rows[i];
+                if (!filterRoughness(row.roughness)) continue;
                 const name = deviceNicknames[row.device_id] || '';
                 const scale = roughScales[row.device_id] || {min:0,max:1};
                 addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
@@ -310,6 +325,7 @@ document.getElementById('deviceId').addEventListener('change', () => {
     setDateRange();
     loadNickname();
 });
+document.getElementById('roughness-filter').addEventListener('change', loadData);
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
 let sliderUpdating = false;
 document.getElementById('startDate').addEventListener('change', () => {

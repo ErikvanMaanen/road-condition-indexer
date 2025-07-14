@@ -50,6 +50,14 @@
     <input id="filter-start" type="datetime-local">
     <input id="filter-end" type="datetime-local">
     <input id="filter-ids" placeholder="IDs (comma)">
+    <select id="roughness-filter">
+        <option value="">[All Roughness]</option>
+        <option>Very smooth</option>
+        <option>Smooth</option>
+        <option>Moderate</option>
+        <option>Rough</option>
+        <option>Very rough</option>
+    </select>
     <button onclick="loadFiltered()">Load Filter</button>
     <button onclick="deleteFiltered()">Delete Filter</button>
 </div>
@@ -155,6 +163,35 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
+function roughnessLabel(r) {
+    if (roughAvg > 0) {
+        if (r < roughAvg * 0.5) return 'Very smooth';
+        if (r < roughAvg * 0.8) return 'Smooth';
+        if (r < roughAvg * 1.2) return 'Moderate';
+        if (r < roughAvg * 1.5) return 'Rough';
+        return 'Very rough';
+    }
+    if (roughMax !== roughMin) {
+        const step = (roughMax - roughMin) / 5;
+        if (r < roughMin + step) return 'Very smooth';
+        if (r < roughMin + step * 2) return 'Smooth';
+        if (r < roughMin + step * 3) return 'Moderate';
+        if (r < roughMin + step * 4) return 'Rough';
+        return 'Very rough';
+    }
+    if (r < 1) return 'Very smooth';
+    if (r < 2) return 'Smooth';
+    if (r < 3) return 'Moderate';
+    if (r < 4) return 'Rough';
+    return 'Very rough';
+}
+
+function filterRoughness(r) {
+    const sel = document.getElementById('roughness-filter');
+    if (!sel || !sel.value) return true;
+    return roughnessLabel(r) === sel.value;
+}
+
 function addPoint(lat, lon, info) {
     if (!map || (lat === 0 && lon === 0)) return;
     const rough = info && typeof info.roughness === 'number' ? info.roughness : 0;
@@ -191,7 +228,9 @@ function updateMap(rows) {
     }
     rows.slice().reverse().forEach(r => {
         if ('latitude' in r && 'longitude' in r) {
-            addPoint(parseFloat(r.latitude), parseFloat(r.longitude), r);
+            if (!('roughness' in r) || filterRoughness(parseFloat(r.roughness))) {
+                addPoint(parseFloat(r.latitude), parseFloat(r.longitude), r);
+            }
         }
     });
 }
@@ -462,6 +501,9 @@ initMap();
 populateDeviceOptions();
 loadTables().then(() => { loadSelectedTable(); });
 document.getElementById('table-select').addEventListener('change', loadSelectedTable);
+document.getElementById('roughness-filter').addEventListener('change', () => {
+    updateMap(tableRows);
+});
 loadLogs();
 loadSelected();
 </script>
