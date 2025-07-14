@@ -6,3 +6,4 @@ python-dotenv
 requests
 azure-identity
 azure-mgmt-web
+azure-mgmt-sql

@@ -21,6 +21,7 @@
 <section>
     <h2>Database Size</h2>
     <div id="db-info">Loading...</div>
+    <label>SKU <select id="db-sku" onchange="setDbSku()"></select></label>
     <label>New MAXSIZE (GB) <input id="db-size" type="number" min="1"></label>
     <button onclick="setDbSize()">Update Size</button>
 </section>
@@ -34,6 +35,9 @@
                 <th>Input</th>
                 <th>Output</th>
                 <th>Auth</th>
+                <th>Sample Header</th>
+                <th>Sample Body</th>
+                <th>Sample Response</th>
             </tr>
         </thead>
         <tbody>
@@ -43,6 +47,9 @@
                 <td>JSON {password}</td>
                 <td>204 No Content</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/auth_check</td>
@@ -50,6 +57,9 @@
                 <td>Cookie</td>
                 <td>204 or 401</td>
                 <td>Auth cookie</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/log</td>
@@ -57,6 +67,9 @@
                 <td>JSON {latitude, longitude, speed, direction, device_id, z_values[]}</td>
                 <td>JSON {status, roughness}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/experimental_log</td>
@@ -64,6 +77,9 @@
                 <td>Same as /log</td>
                 <td>JSON {status, roughness}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/logs?limit=N</td>
@@ -71,6 +87,9 @@
                 <td>Optional limit 1-1000</td>
                 <td>JSON {rows, average}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/filteredlogs</td>
@@ -78,6 +97,9 @@
                 <td>device_id, start, end</td>
                 <td>JSON {rows, average}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/device_ids</td>
@@ -85,6 +107,9 @@
                 <td>None</td>
                 <td>JSON {ids}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/date_range</td>
@@ -92,6 +117,9 @@
                 <td>Optional device_id</td>
                 <td>JSON {start, end}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/nickname</td>
@@ -99,6 +127,9 @@
                 <td>JSON {device_id, nickname}</td>
                 <td>JSON {status}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/nickname?device_id=ID</td>
@@ -106,6 +137,9 @@
                 <td>device_id</td>
                 <td>JSON {nickname}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/gpx?limit=N</td>
@@ -113,6 +147,9 @@
                 <td>Optional limit</td>
                 <td>GPX file</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/debuglog</td>
@@ -120,9 +157,12 @@
                 <td>None</td>
                 <td>JSON {log}</td>
                 <td>None</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
-                <td colspan="5" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
+                <td colspan="8" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
             </tr>
             <tr>
                 <td>/manage/tables</td>
@@ -130,6 +170,9 @@
                 <td>None</td>
                 <td>JSON {tables}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/insert_testdata</td>
@@ -137,6 +180,9 @@
                 <td>JSON {table}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/delete_all?table=NAME</td>
@@ -144,6 +190,9 @@
                 <td>table</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/backup_table</td>
@@ -151,6 +200,9 @@
                 <td>JSON {table}</td>
                 <td>JSON {status, new_table}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/rename_table</td>
@@ -158,6 +210,9 @@
                 <td>JSON {old_name, new_name}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/record?record_id=ID</td>
@@ -165,6 +220,9 @@
                 <td>record_id</td>
                 <td>JSON record</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/update_record</td>
@@ -172,6 +230,9 @@
                 <td>JSON RecordUpdate</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/delete_record?record_id=ID</td>
@@ -179,6 +240,9 @@
                 <td>record_id</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/merge_device_ids</td>
@@ -186,6 +250,9 @@
                 <td>JSON {old_id, new_id}</td>
                 <td>JSON {status, bike_rows, experimental_rows}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/db_size</td>
@@ -193,6 +260,9 @@
                 <td>None</td>
                 <td>JSON {size_mb, max_size_gb}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/set_db_size</td>
@@ -200,6 +270,9 @@
                 <td>JSON {max_size_gb}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/app_plan</td>
@@ -207,6 +280,9 @@
                 <td>None</td>
                 <td>JSON {name, sku, capacity}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>/manage/set_app_plan</td>
@@ -214,6 +290,9 @@
                 <td>JSON {sku_name?, capacity?}</td>
                 <td>JSON {status}</td>
                 <td>Password</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
@@ -221,7 +300,7 @@
 <section style="margin-top:1rem;">
     <h2>App Service Plan</h2>
     <div id="plan-info">Loading...</div>
-    <label>SKU <input id="plan-sku"></label>
+    <label>SKU <select id="plan-sku" onchange="setPlan()"></select></label>
     <label>Capacity <input id="plan-cap" type="number" min="1"></label>
     <button onclick="setPlan()">Update Plan</button>
 </section>
@@ -243,9 +322,17 @@ async function authFetch(url, options) {
 }
 async function loadDbInfo() {
     const res = await authFetch('/manage/db_size');
-    if(!res.ok) { document.getElementById('db-info').textContent='Unavailable'; return; }
+    if(!res.ok){ document.getElementById('db-info').textContent='Unavailable'; return; }
     const data = await res.json();
     document.getElementById('db-info').textContent = `Used: ${data.size_mb.toFixed(2)} MB, Max: ${data.max_size_gb ? data.max_size_gb.toFixed(2)+' GB' : 'unlimited'}`;
+    const skuRes = await authFetch('/manage/db_sku');
+    if(skuRes.ok){
+        const skuData = await skuRes.json();
+        const sel = document.getElementById('db-sku');
+        sel.innerHTML='';
+        skuData.options.forEach(o => { const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
+        sel.value = skuData.current || '';
+    }
 }
 async function setDbSize() {
     const val = document.getElementById('db-size').value;
@@ -257,11 +344,29 @@ async function setDbSize() {
     });
     loadDbInfo();
 }
+async function setDbSku() {
+    const sku = document.getElementById('db-sku').value;
+    if(!sku) return;
+    await authFetch('/manage/set_db_sku', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({sku_name: sku})
+    });
+    loadDbInfo();
+}
 async function loadPlan() {
     const res = await authFetch('/manage/app_plan');
     if(!res.ok){ document.getElementById('plan-info').textContent='Unavailable'; return; }
     const data = await res.json();
     document.getElementById('plan-info').textContent = `Name: ${data.name}, SKU: ${data.sku}, Capacity: ${data.capacity}`;
+    const skuRes = await authFetch('/manage/app_plan_skus');
+    if(skuRes.ok){
+        const skuData = await skuRes.json();
+        const sel = document.getElementById('plan-sku');
+        sel.innerHTML='';
+        skuData.options.forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
+        sel.value = skuData.current || '';
+    }
 }
 async function setPlan() {
     const sku = document.getElementById('plan-sku').value.trim();
