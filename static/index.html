@@ -58,6 +58,10 @@
     <a href="db.html">DB Page</a> |
     <a href="maintenance.html">Maintenance</a>
 </div>
+<div id="loading" style="display:none;margin-bottom:1rem;">
+    <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+    <span id="load-label"></span>
+</div>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
@@ -336,9 +340,16 @@ function loadLogs() {
         ids.forEach(id => params.append('device_id', id));
         url = '/filteredlogs?' + params.toString();
     }
-    fetch(url).then(r => r.json()).then(data => {
+    fetch(url).then(r => r.json()).then(async data => {
         const rows = Array.isArray(data) ? data : data.rows;
         roughAvg = data.average || 0;
+        const loadBox = document.getElementById('loading');
+        const prog = document.getElementById('load-progress');
+        const label = document.getElementById('load-label');
+        prog.max = rows.length;
+        prog.value = 0;
+        label.textContent = `0 / ${rows.length}`;
+        loadBox.style.display = 'block';
         if (map) {
             map.eachLayer(layer => {
                 if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
@@ -355,11 +366,16 @@ function loadLogs() {
             s.max = Math.max(s.max, row.roughness);
             roughScales[row.device_id] = s;
         });
-        rows.reverse().forEach(row => {
+        for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i];
             const name = deviceNicknames[row.device_id] || '';
             const scale = roughScales[row.device_id] || {min:0,max:1};
             addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
-        });
+            prog.value = rows.length - i;
+            label.textContent = `${rows.length - i} / ${rows.length}`;
+            if ((rows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
+        }
+        loadBox.style.display = 'none';
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
     }).catch(err => console.error(err));
