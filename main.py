@@ -16,9 +16,12 @@ from typing import Dict, List, Optional, Tuple
 try:
     from azure.identity import ClientSecretCredential
     from azure.mgmt.web import WebSiteManagementClient
+    from azure.mgmt.sql import SqlManagementClient
+    from azure.mgmt.sql.models import DatabaseUpdate, Sku
 except Exception:  # pragma: no cover - optional deps
     ClientSecretCredential = None
     WebSiteManagementClient = None
+    SqlManagementClient = None
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -49,6 +52,16 @@ def get_web_client():
     if not subscription or cred is None:
         return None
     return WebSiteManagementClient(cred, subscription)
+
+def get_sql_client():
+    """Return a SqlManagementClient if configured."""
+    if SqlManagementClient is None:
+        return None
+    subscription = os.getenv("AZURE_SUBSCRIPTION_ID")
+    cred = get_azure_credential()
+    if not subscription or cred is None:
+        return None
+    return SqlManagementClient(cred, subscription)
 
 def verify_password(pw: str) -> bool:
     """Return True if the MD5 hash of ``pw`` matches PASSWORD_HASH."""
@@ -948,6 +961,30 @@ def manage_tables(dep: None = Depends(password_dependency)):
     return {"tables": tables}
 
 
+@app.get("/manage/table_rows")
+def get_table_rows(table: str, dep: None = Depends(password_dependency)):
+    """Return all rows from the specified table."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    if not name_re.match(table):
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT * FROM {table}")
+        cols = [c[0] for c in cursor.description]
+        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+        log_debug(f"Fetched rows for {table}")
+    except Exception as exc:
+        log_debug(f"Fetch table rows error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"rows": rows}
+
+
 class TestdataRequest(BaseModel):
     table: str
 
@@ -1108,6 +1145,11 @@ class SetPlanRequest(BaseModel):
     """Data model for updating the app service plan."""
     sku_name: Optional[str] = None
     capacity: Optional[int] = Field(None, gt=0)
+
+
+class SetSkuRequest(BaseModel):
+    """Data model for updating a database SKU."""
+    sku_name: str
 
 
 @app.get("/manage/record")
@@ -1313,6 +1355,52 @@ def set_db_size(req: SetDbSizeRequest, dep: None = Depends(password_dependency))
     return {"status": "ok"}
 
 
+@app.get("/manage/db_sku")
+def get_db_sku(dep: None = Depends(password_dependency)):
+    """Return current DB SKU and available options."""
+    client = get_sql_client()
+    group = os.getenv("AZURE_RESOURCE_GROUP")
+    server_full = os.getenv("AZURE_SQL_SERVER")
+    db_name = os.getenv("AZURE_SQL_DATABASE")
+    if not client or not group or not server_full or not db_name:
+        raise HTTPException(status_code=404, detail="DB info unavailable")
+    server = server_full.split(".")[0]
+    try:
+        db = client.databases.get(group, server, db_name)
+        current = db.sku.name if db.sku else None
+        options = []
+        try:
+            objs = client.service_objectives.list_by_server(group, server)
+            options = [o.service_objective_name for o in objs if getattr(o, "enabled", True)]
+        except Exception:
+            pass
+        return {"current": current, "options": options}
+    except Exception as exc:
+        log_debug(f"DB SKU info error: {exc}")
+        raise HTTPException(status_code=500, detail="Azure error") from exc
+
+
+@app.post("/manage/set_db_sku")
+def set_db_sku(req: SetSkuRequest, dep: None = Depends(password_dependency)):
+    """Change the database SKU."""
+    client = get_sql_client()
+    group = os.getenv("AZURE_RESOURCE_GROUP")
+    server_full = os.getenv("AZURE_SQL_SERVER")
+    db_name = os.getenv("AZURE_SQL_DATABASE")
+    if not client or not group or not server_full or not db_name:
+        raise HTTPException(status_code=404, detail="DB info unavailable")
+    server = server_full.split(".")[0]
+    try:
+        params = DatabaseUpdate(sku=Sku(name=req.sku_name))
+        poller = client.databases.begin_update(group, server, db_name, params)
+        poller.result()
+        log_debug("Updated database SKU")
+    except Exception as exc:
+        log_debug(f"Set DB SKU error: {exc}")
+        raise HTTPException(status_code=500, detail="Azure error") from exc
+    return {"status": "ok"}
+
+
 @app.get("/manage/app_plan")
 def get_app_plan(dep: None = Depends(password_dependency)):
     """Return info about the App Service plan if configured."""
@@ -1330,6 +1418,28 @@ def get_app_plan(dep: None = Depends(password_dependency)):
         }
     except Exception as exc:
         log_debug(f"App plan info error: {exc}")
+        raise HTTPException(status_code=500, detail="Azure error") from exc
+
+
+@app.get("/manage/app_plan_skus")
+def get_app_plan_skus(dep: None = Depends(password_dependency)):
+    """Return selectable SKUs for the current App Service plan."""
+    client = get_web_client()
+    group = os.getenv("AZURE_RESOURCE_GROUP")
+    plan_name = os.getenv("AZURE_APP_PLAN_NAME")
+    if not client or not group or not plan_name:
+        raise HTTPException(status_code=404, detail="Plan info unavailable")
+    try:
+        sku_list = client.app_service_plans.get_server_farm_skus(group, plan_name)
+        if isinstance(sku_list, dict):
+            options = [s.get("name") for s in sku_list.get("value", [])]
+        else:
+            options = [s.name for s in getattr(sku_list, "value", [])]
+        plan = client.app_service_plans.get(group, plan_name)
+        current = plan.sku.name if plan.sku else None
+        return {"current": current, "options": options}
+    except Exception as exc:
+        log_debug(f"Plan SKU list error: {exc}")
         raise HTTPException(status_code=500, detail="Azure error") from exc
 
 

@@ -47,6 +47,7 @@
     <input id="merge-new" placeholder="New ID">
     <button onclick="mergeIds()">Merge IDs</button>
 </div>
+<button id="toggle-table" onclick="toggleTable()">Show Table</button>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
@@ -69,7 +70,7 @@
         <button type="button" onclick="removeRecord()">Delete</button>
     </form>
 </div>
-<div id="output"></div>
+<div id="output" style="display:none;"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let map;
@@ -78,6 +79,8 @@ let roughMax = 10;
 let roughAvg = 0;
 let currentTable = '';
 let currentColumns = [];
+let showTable = false;
+let tableRows = [];
 
 async function authFetch(url, options) {
     let res = await fetch(url, options);
@@ -289,12 +292,19 @@ function showRow(row) {
 async function loadSelectedTable() {
     const tableName = document.getElementById('table-select').value;
     if (!tableName) return;
-    const res = await authFetch('/manage/tables');
+    const res = await authFetch('/manage/table_rows?table=' + encodeURIComponent(tableName));
+    if(!res.ok) return;
     const data = await res.json();
-    const rows = data.tables[tableName] || [];
+    const rows = data.rows || [];
     currentTable = tableName;
     setCurrentColumns(rows.length > 0 ? Object.keys(rows[0]) : []);
-    renderTable(tableName, rows);
+    tableRows = rows;
+    if (showTable) {
+        renderTable(tableName, rows);
+        document.getElementById('output').style.display='block';
+    } else {
+        document.getElementById('output').style.display='none';
+    }
     updateMap(rows);
 }
 async function renameTable() {
@@ -364,8 +374,21 @@ async function removeRecord() {
     localStorage.removeItem('selectedRecordId');
     loadSelectedTable();
 }
+
+function toggleTable() {
+    showTable = !showTable;
+    document.getElementById('toggle-table').textContent = showTable ? 'Hide Table' : 'Show Table';
+    if(showTable) {
+        renderTable(currentTable, tableRows);
+        document.getElementById('output').style.display='block';
+    } else {
+        document.getElementById('output').innerHTML='';
+        document.getElementById('output').style.display='none';
+    }
+}
 initMap();
-loadTables().then(loadSelectedTable);
+loadTables().then(() => { loadSelectedTable(); });
+document.getElementById('table-select').addEventListener('change', loadSelectedTable);
 loadLogs();
 loadSelected();
 </script>
