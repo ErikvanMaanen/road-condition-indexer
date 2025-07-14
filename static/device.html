@@ -311,17 +311,25 @@ document.getElementById('deviceId').addEventListener('change', () => {
     loadNickname();
 });
 document.getElementById('save-nickname').addEventListener('click', saveNickname);
-document.getElementById('startDate').addEventListener('change', syncRanges);
-document.getElementById('endDate').addEventListener('change', syncRanges);
+document.getElementById('startDate').addEventListener('change', () => {
+    syncRanges();
+    loadData();
+});
+document.getElementById('endDate').addEventListener('change', () => {
+    syncRanges();
+    loadData();
+});
 document.getElementById('startRange').addEventListener('input', () => {
     const v = parseInt(document.getElementById('startRange').value, 10);
     document.getElementById('startDate').value = new Date(v).toISOString().slice(0,16);
     syncRanges();
+    loadData();
 });
 document.getElementById('endRange').addEventListener('input', () => {
     const v = parseInt(document.getElementById('endRange').value, 10);
     document.getElementById('endDate').value = new Date(v).toISOString().slice(0,16);
     syncRanges();
+    loadData();
 });
 document.getElementById('fullscreen-button').addEventListener('click', () => {
     const el = document.getElementById('map');
