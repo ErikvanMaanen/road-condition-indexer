@@ -1159,6 +1159,32 @@ def get_table_rows(table: str, dep: None = Depends(password_dependency)):
     return {"rows": rows}
 
 
+@app.get("/manage/table_range")
+def get_table_range(table: str, dep: None = Depends(password_dependency)):
+    """Return min and max timestamp for a table."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    if not name_re.match(table):
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {table}")
+        row = cursor.fetchone()
+        start, end = row if row else (None, None)
+        log_debug(f"Fetched range for {table}")
+    except Exception as exc:
+        log_debug(f"Range fetch error for {table}: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    start_str = start.isoformat() if start else None
+    end_str = end.isoformat() if end else None
+    return {"start": start_str, "end": end_str}
+
+
 class TestdataRequest(BaseModel):
     table: str
 
