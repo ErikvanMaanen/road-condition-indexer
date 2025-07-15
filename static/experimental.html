@@ -41,16 +41,15 @@
 </head>
 <body>
 <h1>Road Condition Indexer - Experimental</h1>
-<div id="status"></div>
-<div id="button-bar">
-    <button id="toggle">Start</button>
-    <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
-    <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
-    <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
-    <select id="device-filter" style="margin-left:1rem;" multiple></select>
-    <input id="nickname" placeholder="Nickname" style="margin-left:1rem; display:none;" />
-    <button id="save-nickname" style="margin-left:0.5rem; display:none;">Save</button>
-    <select id="roughness-filter" style="margin-left:1rem;" multiple>
+<nav id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a> |
+    <a href="device.html">Device View</a> |
+    <a href="db.html">DB Page</a> |
+    <a href="maintenance.html">Maintenance</a>
+</nav>
+<section id="filters" style="margin-bottom:1rem;">
+    <select id="device-filter" multiple></select>
+    <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Glass-smooth</option>
         <option value="2">2 - Polished</option>
@@ -78,35 +77,42 @@
         <option value="24">24 - Severe ruts</option>
         <option value="25">25 - Impassable</option>
     </select>
-    <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
-</div>
-<div id="page-links" style="margin-bottom:1rem;">
-    <a href="/">Main</a> |
-    <a href="device.html">Device View</a> |
-    <a href="db.html">DB Page</a> |
-    <a href="maintenance.html">Maintenance</a>
-</div>
-<div id="loading" style="display:none;margin-bottom:1rem;">
-    <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
-    <span id="load-label"></span>
-</div>
-<div id="freq-controls" style="margin-bottom:1rem;">
-    Filter Hz:
-    <input id="freq-min" type="number" value="0" step="0.1" style="width:4rem;"> -
-    <input id="freq-max" type="number" value="20" step="0.1" style="width:4rem;">
-    <button id="freq-apply">Set</button>
-    <button id="recalc-btn">Recalculate</button>
-</div>
+    <div id="freq-controls" style="display:inline-block; margin-left:1rem;">
+        Filter Hz:
+        <input id="freq-min" type="number" value="0" step="0.1" style="width:4rem;"> -
+        <input id="freq-max" type="number" value="20" step="0.1" style="width:4rem;">
+        <button id="freq-apply">Set</button>
+        <button id="recalc-btn">Recalculate</button>
+    </div>
+</section>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
     <div id="scale-bar"></div>
     <span>Rough</span>
 </div>
-<h3>Activity Log</h3>
-<div id="log"></div>
-<h3>Debug Messages</h3>
-<textarea id="debug" readonly></textarea>
+<section id="controls" style="margin-bottom:1rem;">
+    <div id="status"></div>
+    <div id="button-bar">
+        <button id="toggle">Start</button>
+        <button id="gpx-button" style="margin-left:1rem;">Generate GPX</button>
+        <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
+        <button id="fullscreen-button" style="margin-left:1rem;">Fullscreen</button>
+        <input id="nickname" placeholder="Nickname" style="margin-left:1rem; display:none;" />
+        <button id="save-nickname" style="margin-left:0.5rem; display:none;">Save</button>
+        <a id="gpx-link" style="display:none; margin-left:1rem;">Download GPX</a>
+    </div>
+    <div id="loading" style="display:none; margin-top:1rem;">
+        <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+        <span id="load-label"></span>
+    </div>
+</section>
+<section id="logs" style="margin-bottom:1rem;">
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+    <h3>Debug Messages</h3>
+    <textarea id="debug" readonly></textarea>
+</section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');

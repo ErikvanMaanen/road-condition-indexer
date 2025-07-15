@@ -32,13 +32,13 @@
 </head>
 <body>
 <h1>Device Records</h1>
-<div id="page-links" style="margin-bottom:1rem;">
+<nav id="page-links" style="margin-bottom:1rem;">
     <a href="/">Main</a> |
     <a href="experimental.html">Experimental</a> |
     <a href="db.html">DB Page</a> |
     <a href="maintenance.html">Maintenance</a>
-</div>
-<div id="controls">
+</nav>
+<section id="filters" style="margin-bottom:1rem;">
     <select id="deviceId" multiple></select>
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
@@ -46,8 +46,6 @@
         <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
         <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
     </div>
-    <input id="nickname" placeholder="Nickname">
-    <button id="save-nickname">Save</button>
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Glass-smooth</option>
@@ -76,19 +74,29 @@
         <option value="24">24 - Severe ruts</option>
         <option value="25">25 - Impassable</option>
     </select>
-    <button id="load">Load</button>
-    <button id="fullscreen-button">Fullscreen</button>
-</div>
-<div id="loading" style="display:none;margin-bottom:1rem;">
-    <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
-    <span id="load-label"></span>
-</div>
+</section>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
     <div id="scale-bar"></div>
     <span>Rough</span>
 </div>
+<section id="controls" style="margin-bottom:1rem;">
+    <input id="nickname" placeholder="Nickname">
+    <button id="save-nickname">Save</button>
+    <button id="load">Load</button>
+    <button id="fullscreen-button">Fullscreen</button>
+    <div id="loading" style="display:none; margin-top:1rem;">
+        <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+        <span id="load-label"></span>
+    </div>
+</section>
+<section id="logs" style="margin-bottom:1rem;">
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+    <h3>Debug Messages</h3>
+    <textarea id="debug" readonly></textarea>
+</section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const currentDeviceId = localStorage.getItem('deviceId');

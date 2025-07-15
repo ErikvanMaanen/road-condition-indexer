@@ -12,12 +12,12 @@
 </head>
 <body>
 <h1>Maintenance</h1>
-<div id="page-links">
+<nav id="page-links">
     <a href="/">Main</a> |
     <a href="experimental.html">Experimental</a> |
     <a href="device.html">Device View</a> |
     <a href="db.html">DB Page</a>
-</div>
+</nav>
 <section>
     <h2>Database Size</h2>
     <div id="db-info">Loading...</div>
@@ -256,5 +256,11 @@ async function loadPlan() {
 loadDbInfo();
 loadPlan();
 </script>
+<section id="logs" style="margin-top:1rem;">
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+    <h3>Debug Messages</h3>
+    <textarea id="debug" readonly></textarea>
+</section>
 </body>
 </html>
