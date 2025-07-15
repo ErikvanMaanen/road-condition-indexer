@@ -35,11 +35,8 @@
     <a href="device.html">Device View</a> |
     <a href="maintenance.html">Maintenance</a>
 </nav>
-<section id="filters" style="margin-bottom:1rem;">
+<section id="filter-dev" style="margin-bottom:1rem;">
     <select id="filter-device" multiple></select>
-    <input id="filter-start" type="datetime-local">
-    <input id="filter-end" type="datetime-local">
-    <input id="filter-ids" placeholder="IDs (comma)">
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Glass-smooth</option>
@@ -53,6 +50,12 @@
         <option value="9">9 - Large potholes</option>
         <option value="10">10 - Impassable</option>
     </select>
+    </select>
+</section>
+<section id="filter-time" style="margin-bottom:1rem;">
+    <input id="filter-start" type="datetime-local">
+    <input id="filter-end" type="datetime-local">
+    <input id="filter-ids" placeholder="IDs (comma)">
     <button onclick="loadFiltered()">Load Filter</button>
     <button onclick="deleteFiltered()">Delete Filter</button>
 </section>
@@ -65,16 +68,22 @@
 <section id="controls" style="margin-bottom:1rem;">
     <button onclick="loadTables()">Refresh Tables</button>
     <button onclick="insertTest()">Insert Test Data</button>
-    <select id="table-select"></select>
+</section>
+<section id="table-actions" style="margin-bottom:1rem;">
+    <h3>Table: <select id="table-select"></select></h3>
     <button onclick="loadSelectedTable()">Load Selected</button>
     <button onclick="deleteRecords()">Delete All Records</button>
     <button onclick="backupTable()">Backup Table</button>
     <button onclick="renameTable()">Rename Table</button>
+    <button id="toggle-table" onclick="toggleTable()">Show Table</button>
+</section>
+<section id="merge-section" style="margin-bottom:1rem;">
+    <h3>Merge Device IDs</h3>
     <select id="merge-old"></select>
     <select id="merge-new"></select>
     <button onclick="mergeIds()">Merge IDs</button>
-    <button id="toggle-table" onclick="toggleTable()">Show Table</button>
-    <div id="record-editor" style="display:none; border:1px solid #ccc; padding:0.5rem; margin-bottom:1rem;">
+</section>
+<div id="record-editor" style="display:none; border:1px solid #ccc; padding:0.5rem; margin-bottom:1rem;">
         <h3>Selected Record</h3>
         <form id="record-form">
             <div>ID <input id="rec-id" readonly></div>
@@ -141,6 +150,43 @@ function initMap() {
         );
     } else {
         setView(defaultPos);
+    }
+    addFullscreenControl(map);
+}
+
+function addFullscreenControl(m) {
+    const Full = L.Control.extend({
+        onAdd: function() {
+            const btn = L.DomUtil.create('button', 'leaflet-bar');
+            btn.textContent = '⤢';
+            L.DomEvent.on(btn, 'click', () => {
+                const el = m.getContainer();
+                addLog('Fullscreen button pressed');
+                if (!document.fullscreenElement) {
+                    el.requestFullscreen?.();
+                } else {
+                    document.exitFullscreen?.();
+                }
+            });
+            return btn;
+        }
+    });
+    m.addControl(new Full({position:'topleft'}));
+}
+
+function addLog(msg) {
+    const div = document.getElementById('log');
+    if (div) {
+        div.textContent += msg + '\n';
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+function addDebug(msg) {
+    const el = document.getElementById('debug');
+    if (el) {
+        el.value += msg + '\n';
+        el.scrollTop = el.scrollHeight;
     }
 }
 
@@ -257,6 +303,7 @@ async function loadLogs() {
 }
 
 async function loadTables(selected) {
+    addLog('Refresh Tables pressed');
     const res = await authFetch('/manage/tables');
     const data = await res.json();
     const select = document.getElementById('table-select');
@@ -272,18 +319,21 @@ async function loadTables(selected) {
 }
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
+    addLog('Insert Test Data pressed');
     await authFetch('/manage/insert_testdata', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t})});
     await loadTables(t);
     loadSelectedTable();
 }
 async function deleteRecords() {
     const t = document.getElementById('table-select').value; if(!t) return;
+    addLog('Delete All Records pressed');
     await authFetch('/manage/delete_all?table='+encodeURIComponent(t), {method:'DELETE'});
     await loadTables(t);
     loadSelectedTable();
 }
 async function backupTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
+    addLog('Backup Table pressed');
     const res = await authFetch('/manage/backup_table', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -372,6 +422,7 @@ function showRow(row) {
 }
 
 async function loadSelectedTable() {
+    addLog('Load Selected Table pressed');
     const tableName = document.getElementById('table-select').value;
     if (!tableName) return;
     const res = await authFetch('/manage/table_rows?table=' + encodeURIComponent(tableName));
@@ -393,6 +444,7 @@ async function renameTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
     const newName = prompt('New table name', t);
     if(!newName || newName === t) return;
+    addLog('Rename Table pressed');
     await authFetch('/manage/rename_table', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -406,6 +458,7 @@ async function mergeIds() {
     const oldId = document.getElementById('merge-old').value;
     const newId = document.getElementById('merge-new').value;
     if(!oldId || !newId || oldId === newId) return;
+    addLog('Merge IDs pressed');
     await authFetch('/manage/merge_device_ids', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -433,6 +486,7 @@ function buildFilterParams() {
 }
 
 async function loadFiltered() {
+    addLog('Load Filter pressed');
     const params = buildFilterParams();
     const res = await authFetch('/manage/filtered_records?' + params.toString());
     if(!res.ok) return;
@@ -451,6 +505,7 @@ async function loadFiltered() {
 }
 
 async function deleteFiltered() {
+    addLog('Delete Filter pressed');
     const params = buildFilterParams();
     const res = await authFetch('/manage/delete_filtered_records?' + params.toString(), {method:'DELETE'});
     if(res.ok) {
@@ -472,6 +527,7 @@ function loadSelected() {
 
 async function saveRecord() {
     if(currentTable !== 'bike_data') return;
+    addLog('Save Record pressed');
     const body = { id: parseInt(document.getElementById('rec-id').value,10) };
     currentColumns.forEach(col => {
         if(col === 'id') return;
@@ -492,6 +548,7 @@ async function saveRecord() {
 
 async function removeRecord() {
     if(currentTable !== 'bike_data') return;
+    addLog('Delete Record pressed');
     const id = document.getElementById('rec-id').value;
     if(!id) return;
     await authFetch('/manage/delete_record?record_id='+encodeURIComponent(id), {method:'DELETE'});
@@ -502,6 +559,7 @@ async function removeRecord() {
 
 function toggleTable() {
     showTable = !showTable;
+    addLog('Toggle Table pressed');
     document.getElementById('toggle-table').textContent = showTable ? 'Hide Table' : 'Show Table';
     if(showTable) {
         renderTable(currentTable, tableRows);

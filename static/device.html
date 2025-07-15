@@ -38,14 +38,8 @@
     <a href="db.html">DB Page</a> |
     <a href="maintenance.html">Maintenance</a>
 </nav>
-<section id="filters" style="margin-bottom:1rem;">
+<section id="filter-dev" style="margin-bottom:1rem;">
     <select id="deviceId" multiple></select>
-    <input id="startDate" type="datetime-local">
-    <input id="endDate" type="datetime-local">
-    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
-        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
-        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
-    </div>
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Glass-smooth</option>
@@ -60,6 +54,14 @@
         <option value="10">10 - Impassable</option>
     </select>
 </section>
+<section id="filter-time" style="margin-bottom:1rem;">
+    <input id="startDate" type="datetime-local">
+    <input id="endDate" type="datetime-local">
+    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
+        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+    </div>
+</section>
 <div id="map"></div>
 <div id="scale-container">
     <span>Smooth</span>
@@ -70,7 +72,8 @@
     <input id="nickname" placeholder="Nickname">
     <button id="save-nickname">Save</button>
     <button id="load">Load</button>
-    <button id="fullscreen-button">Fullscreen</button>
+    <button id="gpx-button">Generate GPX</button>
+    <a id="gpx-link" style="display:none;">Download GPX</a>
     <div id="loading" style="display:none; margin-top:1rem;">
         <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
         <span id="load-label"></span>
@@ -203,6 +206,54 @@ function initMap() {
     } else {
         setView(defaultPos);
     }
+    addFullscreenControl(map);
+}
+
+function addFullscreenControl(m) {
+    const Full = L.Control.extend({
+        onAdd: function() {
+            const btn = L.DomUtil.create('button', 'leaflet-bar');
+            btn.textContent = '⤢';
+            L.DomEvent.on(btn, 'click', () => {
+                const el = m.getContainer();
+                addLog('Fullscreen button pressed');
+                if (!document.fullscreenElement) {
+                    el.requestFullscreen?.();
+                } else {
+                    document.exitFullscreen?.();
+                }
+            });
+            return btn;
+        }
+    });
+    m.addControl(new Full({position:'topleft'}));
+}
+
+function addLog(msg) {
+    const div = document.getElementById('log');
+    if (div) {
+        div.textContent += msg + '\n';
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+function addDebug(msg) {
+    const el = document.getElementById('debug');
+    if (el) {
+        el.value += msg + '\n';
+        el.scrollTop = el.scrollHeight;
+    }
+}
+
+function generateGpx() {
+    fetch('/gpx').then(r => r.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const link = document.getElementById('gpx-link');
+        link.href = url;
+        link.download = 'records.gpx';
+        link.style.display = 'inline';
+        link.textContent = 'Download GPX';
+    }).catch(err => addDebug('GPX error: ' + err));
 }
 
 function colorForRoughness(r, min, max) {
@@ -331,7 +382,10 @@ function loadData() {
 initMap();
 populateDeviceIds();
 syncRanges();
-document.getElementById('load').addEventListener('click', loadData);
+document.getElementById('load').addEventListener('click', () => {
+    addLog('Load pressed');
+    loadData();
+});
 document.getElementById('deviceId').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
         .map(o => o.value).filter(v => v);
@@ -339,7 +393,14 @@ document.getElementById('deviceId').addEventListener('change', () => {
     loadNickname();
 });
 document.getElementById('roughness-filter').addEventListener('change', loadData);
-document.getElementById('save-nickname').addEventListener('click', saveNickname);
+document.getElementById('save-nickname').addEventListener('click', () => {
+    addLog('Save Nickname pressed');
+    saveNickname();
+});
+document.getElementById('gpx-button').addEventListener('click', () => {
+    addLog('Generate GPX pressed');
+    generateGpx();
+});
 let sliderUpdating = false;
 document.getElementById('startDate').addEventListener('change', () => {
     if (sliderUpdating) return;
@@ -366,18 +427,6 @@ document.getElementById('endRange').addEventListener('input', () => {
     syncRanges();
     loadData();
     sliderUpdating = false;
-});
-document.getElementById('fullscreen-button').addEventListener('click', () => {
-    const el = document.getElementById('map');
-    if (!document.fullscreenElement) {
-        if (el.requestFullscreen) {
-            el.requestFullscreen();
-        }
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        }
-    }
 });
 
 document.addEventListener('fullscreenchange', () => {
