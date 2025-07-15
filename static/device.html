@@ -49,30 +49,15 @@
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Glass-smooth</option>
-        <option value="2">2 - Polished</option>
-        <option value="3">3 - Smooth concrete</option>
-        <option value="4">4 - New asphalt</option>
-        <option value="5">5 - Good asphalt</option>
-        <option value="6">6 - Worn asphalt</option>
-        <option value="7">7 - Coarse asphalt</option>
-        <option value="8">8 - Light chip seal</option>
-        <option value="9">9 - Medium chip seal</option>
-        <option value="10">10 - Heavy chip seal</option>
-        <option value="11">11 - Smooth cobbles</option>
-        <option value="12">12 - Worn cobbles</option>
-        <option value="13">13 - Rough cobbles</option>
-        <option value="14">14 - Packed dirt</option>
-        <option value="15">15 - Loose dirt</option>
-        <option value="16">16 - Fine gravel</option>
-        <option value="17">17 - Medium gravel</option>
-        <option value="18">18 - Coarse gravel</option>
-        <option value="19">19 - Rough gravel</option>
-        <option value="20">20 - Broken pavement</option>
-        <option value="21">21 - Small potholes</option>
-        <option value="22">22 - Large potholes</option>
-        <option value="23">23 - Very rough potholes</option>
-        <option value="24">24 - Severe ruts</option>
-        <option value="25">25 - Impassable</option>
+        <option value="2">2 - Smooth concrete</option>
+        <option value="3">3 - Good asphalt</option>
+        <option value="4">4 - Coarse asphalt</option>
+        <option value="5">5 - Medium chip seal</option>
+        <option value="6">6 - Worn cobbles</option>
+        <option value="7">7 - Fine gravel</option>
+        <option value="8">8 - Rough gravel</option>
+        <option value="9">9 - Large potholes</option>
+        <option value="10">10 - Impassable</option>
     </select>
 </section>
 <div id="map"></div>
@@ -105,7 +90,7 @@ let map;
 let deviceNicknames = {};
 let currentNickname = '';
 let roughMin = 0;
-const LABEL_COUNT = 25;
+const LABEL_COUNT = 10;
 let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
@@ -253,9 +238,12 @@ function roughnessLabel(r) {
             max = min + LABEL_COUNT;
         }
     }
-    const step = (max - min) / LABEL_COUNT;
-    if (step <= 0) return '1';
-    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor((r - min) / step)));
+    const offset = 1;
+    let logMin = Math.log(min + offset);
+    let logMax = Math.log(max + offset);
+    if (logMax === logMin) logMax = logMin + 1;
+    const ratio = (Math.log(r + offset) - logMin) / (logMax - logMin);
+    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor(ratio * LABEL_COUNT)));
     return String(idx + 1);
 }
 
