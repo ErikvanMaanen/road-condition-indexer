@@ -340,6 +340,16 @@ async function loadTables(selected) {
     if (!select.value && select.options.length > 0)
         select.value = select.options[0].value;
 }
+
+async function setDateRange() {
+    const tableName = document.getElementById('table-select').value;
+    if (!tableName) return;
+    const res = await authFetch('/manage/table_range?table=' + encodeURIComponent(tableName));
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.start) document.getElementById('filter-start').value = data.start.slice(0,19);
+    if (data.end) document.getElementById('filter-end').value = data.end.slice(0,19);
+}
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
     addLog('Insert Test Data pressed');
@@ -463,6 +473,7 @@ async function loadSelectedTable() {
         document.getElementById('output').style.display='none';
     }
     updateMap(rows);
+    setDateRange();
 }
 async function renameTable() {
     const t = document.getElementById('table-select').value; if(!t) return;
@@ -596,9 +607,14 @@ function toggleTable() {
 }
 initMap();
 populateDeviceOptions();
-loadTables().then(() => { loadSelectedTable(); });
-document.getElementById('table-select').addEventListener('change', loadSelectedTable);
+loadTables().then(() => { loadSelectedTable(); setDateRange(); });
+document.getElementById('table-select').addEventListener('change', () => {
+    loadSelectedTable();
+    setDateRange();
+});
 document.getElementById('filter-device').addEventListener('change', loadFiltered);
+document.getElementById('filter-start').addEventListener('change', loadFiltered);
+document.getElementById('filter-end').addEventListener('change', loadFiltered);
 document.getElementById('roughness-filter').addEventListener('change', () => {
     updateMap(tableRows);
 });
