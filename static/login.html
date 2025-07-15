@@ -42,11 +42,29 @@ async function doLogin() {
     if (res.ok) {
         const params = new URLSearchParams(location.search);
         const next = params.get('next') || '/';
+        addLog('Login successful');
         location.href = next;
     } else {
         alert('Wrong password');
+        addLog('Login failed');
         document.getElementById('pw').value = '';
         document.getElementById('pw').focus();
+    }
+}
+
+function addLog(msg) {
+    const div = document.getElementById('log');
+    if (div) {
+        div.textContent += msg + '\n';
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+function addDebug(msg) {
+    const el = document.getElementById('debug');
+    if (el) {
+        el.value += msg + '\n';
+        el.scrollTop = el.scrollHeight;
     }
 }
 </script>
