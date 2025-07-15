@@ -10,11 +10,27 @@
     </style>
 </head>
 <body>
+<h1>Login</h1>
+<nav id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a> |
+    <a href="experimental.html">Experimental</a> |
+    <a href="device.html">Device View</a> |
+    <a href="db.html">DB Page</a> |
+    <a href="maintenance.html">Maintenance</a>
+</nav>
+<section id="controls" style="margin-bottom:1rem;">
 <div id="login-box">
     <h2>Please enter password</h2>
     <input type="password" id="pw" />
     <button onclick="doLogin()">Login</button>
 </div>
+</section>
+<section id="logs" style="margin-bottom:1rem;">
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+    <h3>Debug Messages</h3>
+    <textarea id="debug" readonly></textarea>
+</section>
 <script>
 async function doLogin() {
     const pw = document.getElementById('pw').value;
