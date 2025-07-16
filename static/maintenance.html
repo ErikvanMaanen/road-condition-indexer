@@ -27,7 +27,6 @@
 <h1>Maintenance</h1>
 <nav id="page-links">
     <a href="/">Main</a> |
-    <a href="experimental.html">Experimental</a> |
     <a href="device.html">Device View</a> |
     <a href="db.html">DB Page</a>
 </nav>
@@ -71,13 +70,6 @@
                 <td>None</td>
             </tr>
             <tr>
-                <td>/experimental_log</td>
-                <td>POST</td>
-                <td>Same as /log</td>
-                <td>JSON {status, roughness}</td>
-                <td>None</td>
-            </tr>
-            <tr>
                 <td>/logs?limit=N</td>
                 <td>GET</td>
                 <td>Query: limit=1-1000 (optional)</td>
@@ -86,20 +78,6 @@
             </tr>
             <tr>
                 <td>/filteredlogs</td>
-                <td>GET</td>
-                <td>Query: device_id=id[,id], start, end</td>
-                <td>JSON {rows: [...], average}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/experimental_logs?limit=N</td>
-                <td>GET</td>
-                <td>Query: limit=1-1000 (optional)</td>
-                <td>JSON {rows: [...], average}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/filtered_experimental</td>
                 <td>GET</td>
                 <td>Query: device_id=id[,id], start, end</td>
                 <td>JSON {rows: [...], average}</td>
@@ -210,7 +188,7 @@
                 <td>/manage/merge_device_ids</td>
                 <td>POST</td>
                 <td>JSON {old_id, new_id}</td>
-                <td>JSON {status, bike_rows, experimental_rows}</td>
+                <td>JSON {status, bike_rows}</td>
                 <td>Password</td>
             </tr>
             <tr>

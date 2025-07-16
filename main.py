@@ -144,12 +144,6 @@ def read_device(request: Request):
     return FileResponse(BASE_DIR / "static" / "device.html")
 
 
-@app.get("/experimental.html")
-def read_experimental(request: Request):
-    """Serve the experimental page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/experimental.html")
-    return FileResponse(BASE_DIR / "static" / "experimental.html")
 
 
 @app.get("/db.html")
@@ -381,30 +375,6 @@ def init_db() -> None:
             )
             cursor.execute(
                 """
-                IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'bike_data_experimental'
-                )
-                BEGIN
-                    CREATE TABLE bike_data_experimental (
-                        id INT IDENTITY PRIMARY KEY,
-                        timestamp DATETIME DEFAULT GETDATE(),
-                        latitude FLOAT,
-                        longitude FLOAT,
-                        speed FLOAT,
-                        direction FLOAT,
-                        roughness FLOAT,
-                        distance_m FLOAT,
-                        device_id NVARCHAR(100),
-                        ip_address NVARCHAR(45),
-                        z_values NVARCHAR(MAX),
-                        avg_speed FLOAT,
-                        interval_s FLOAT
-                    )
-                END
-                """
-            )
-            cursor.execute(
-                """
                 IF COL_LENGTH('bike_data', 'ip_address') IS NULL
                     ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
                 """
@@ -494,25 +464,6 @@ def init_db() -> None:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     message TEXT
-                )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS bike_data_experimental (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    latitude REAL,
-                    longitude REAL,
-                    speed REAL,
-                    direction REAL,
-                    roughness REAL,
-                    distance_m REAL,
-                    device_id TEXT,
-                    ip_address TEXT,
-                    z_values TEXT,
-                    avg_speed REAL,
-                    interval_s REAL
                 )
                 """
             )
@@ -679,151 +630,6 @@ def post_log(entry: LogEntry, request: Request):
     return {"status": "ok", "roughness": roughness}
 
 
-@app.post("/experimental_log")
-def post_log_experimental(entry: LogEntry, request: Request):
-    """Handle logging for the experimental page."""
-    log_debug(
-        f"Received experimental log entry from {entry.device_id}: {entry}"
-    )
-
-    now = datetime.utcnow()
-    avg_speed = entry.speed
-    dist_km = 0.0
-    dt_sec = 2.0
-    prev_info = LAST_POINT.get(entry.device_id)
-    if not prev_info:
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            if USE_SQLSERVER:
-                cursor.execute(
-                    "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
-                    entry.device_id,
-                )
-            else:
-                cursor.execute(
-                    "SELECT latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
-                    (entry.device_id,),
-                )
-            row = cursor.fetchone()
-            if row:
-                prev_lat, prev_lon, prev_ts = row
-                prev_info = (prev_ts, prev_lat, prev_lon)
-        except Exception as exc:
-            log_debug(f"Avg speed fetch error: {exc}")
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-    if prev_info:
-        prev_ts, prev_lat, prev_lon = prev_info
-        dt_sec = (now - prev_ts).total_seconds()
-        if dt_sec <= 0:
-            dt_sec = 2.0
-        dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
-        avg_speed = dist_km / (dt_sec / 3600)
-
-    if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
-        log_debug(
-            f"Ignored experimental entry with interval {dt_sec:.1f}s and distance {dist_km * 1000.0:.1f}m"
-        )
-        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-        return {"status": "ignored", "reason": "interval too long"}
-
-    if avg_speed < 5.0:
-        log_debug(f"Ignored experimental entry with low avg speed: {avg_speed} km/h")
-        LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-        return {"status": "ignored", "reason": "low speed"}
-
-    elevation = get_elevation(entry.latitude, entry.longitude)
-    if elevation is not None:
-        log_debug(f"Elevation: {elevation} m")
-    else:
-        log_debug("Elevation not available")
-    roughness = compute_roughness(
-        entry.z_values,
-        avg_speed,
-        dt_sec,
-        freq_min=entry.freq_min if entry.freq_min is not None else 0.0,
-        freq_max=entry.freq_max if entry.freq_max is not None else 20.0,
-    )
-    distance_m = dist_km * 1000.0
-    log_debug(f"Calculated roughness: {roughness}")
-    ip_address = request.client.host if request.client else None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                entry.latitude,
-                entry.longitude,
-                entry.speed,
-                entry.direction,
-                roughness,
-                distance_m,
-                entry.device_id,
-                ip_address,
-            ),
-        )
-        if USE_SQLSERVER and cursor.rowcount != 1:
-            log_debug(f"Insert affected {cursor.rowcount} rows")
-            raise HTTPException(status_code=500, detail="Insert failed")
-        if USE_SQLSERVER:
-            cursor.execute(
-                """
-                MERGE device_nicknames AS target
-                USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
-                ON target.device_id = src.device_id
-                WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
-                WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-                """,
-                entry.device_id,
-                entry.user_agent,
-                entry.device_fp,
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO device_nicknames (device_id, user_agent, device_fp)
-                VALUES (?, ?, ?)
-                ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
-                device_fp=excluded.device_fp
-                """,
-                (entry.device_id, entry.user_agent, entry.device_fp),
-            )
-        cursor.execute(
-            "INSERT INTO bike_data_experimental (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address, z_values, avg_speed, interval_s)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                entry.latitude,
-                entry.longitude,
-                entry.speed,
-                entry.direction,
-                roughness,
-                distance_m,
-                entry.device_id,
-                ip_address,
-                ",".join(str(float(z)) for z in entry.z_values),
-                avg_speed,
-                dt_sec,
-            ),
-        )
-        conn.commit()
-        log_debug("Experimental data inserted")
-    except Exception as exc:
-        log_debug(f"Database error: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-    return {"status": "ok", "roughness": roughness}
 
 
 @app.get("/logs")
@@ -866,42 +672,6 @@ def get_logs(limit: Optional[int] = None):
     return {"rows": rows, "average": rough_avg}
 
 
-@app.get("/experimental_logs")
-def get_experimental_logs(limit: Optional[int] = None):
-    """Return recent experimental log entries."""
-    if limit is not None and (limit < 1 or limit > 1000):
-        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            if limit is None:
-                cursor.execute("SELECT * FROM bike_data_experimental ORDER BY id DESC")
-            else:
-                cursor.execute(
-                    f"SELECT TOP {limit} * FROM bike_data_experimental ORDER BY id DESC"
-                )
-        else:
-            query = "SELECT * FROM bike_data_experimental ORDER BY id DESC"
-            if limit is None:
-                cursor.execute(query)
-            else:
-                cursor.execute(query + " LIMIT ?", (limit,))
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.execute("SELECT AVG(roughness) FROM bike_data_experimental")
-        avg_row = cursor.fetchone()
-        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
-        log_debug("Fetched experimental logs from database")
-    except Exception as exc:
-        log_debug(f"Database error on experimental fetch: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows, "average": rough_avg}
 
 
 @app.get("/filteredlogs")
@@ -959,61 +729,6 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
     return {"rows": rows, "average": rough_avg}
 
 
-@app.get("/filtered_experimental")
-def get_filtered_experimental(
-    device_id: Optional[List[str]] = Query(None),
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-):
-    """Return experimental log entries filtered by device ID and date range."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "SELECT * FROM bike_data_experimental WHERE 1=1"
-        params = []
-        if device_id:
-            placeholders = ",".join("?" for _ in device_id)
-            query += f" AND device_id IN ({placeholders})"
-            params.extend(device_id)
-        start_dt = None
-        end_dt = None
-        if start:
-            start_dt = datetime.fromisoformat(start)
-            query += " AND timestamp >= ?"
-            params.append(start_dt)
-        if end:
-            end_dt = datetime.fromisoformat(end)
-            query += " AND timestamp <= ?"
-            params.append(end_dt)
-        query += " ORDER BY id DESC"
-        cursor.execute(query, params)
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        avg_query = "SELECT AVG(roughness) FROM bike_data_experimental WHERE 1=1"
-        avg_params = []
-        if device_id:
-            placeholders = ",".join("?" for _ in device_id)
-            avg_query += f" AND device_id IN ({placeholders})"
-            avg_params.extend(device_id)
-        if start:
-            avg_query += " AND timestamp >= ?"
-            avg_params.append(start_dt)
-        if end:
-            avg_query += " AND timestamp <= ?"
-            avg_params.append(end_dt)
-        cursor.execute(avg_query, avg_params)
-        avg_row = cursor.fetchone()
-        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
-        log_debug("Fetched filtered experimental logs from database")
-    except Exception as exc:
-        log_debug(f"Database error on filtered experimental fetch: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows, "average": rough_avg}
 
 
 @app.get("/device_ids")
@@ -1576,12 +1291,6 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
         )
         updated_bike = cursor.rowcount
         cursor.execute(
-            "UPDATE bike_data_experimental SET device_id = ? WHERE device_id = ?",
-            req.new_id,
-            req.old_id,
-        )
-        updated_exp = cursor.rowcount
-        cursor.execute(
             "SELECT 1 FROM device_nicknames WHERE device_id = ?",
             req.new_id,
         )
@@ -1615,66 +1324,9 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
             conn.close()
         except Exception:
             pass
-    return {"status": "ok", "bike_rows": updated_bike, "experimental_rows": updated_exp}
+    return {"status": "ok", "bike_rows": updated_bike}
 
 
-class RecalcRequest(BaseModel):
-    freq_min: Optional[float] = None
-    freq_max: Optional[float] = None
-
-
-@app.post("/manage/recalculate_experimental")
-def recalculate_experimental(
-    req: RecalcRequest,
-    dep: None = Depends(password_dependency),
-):
-    """Recalculate roughness for all experimental records."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, z_values, avg_speed, interval_s, roughness FROM bike_data_experimental"
-        )
-        rows = cursor.fetchall()
-        updated = 0
-        fmin = req.freq_min if req.freq_min is not None else 0.0
-        fmax = req.freq_max if req.freq_max is not None else 20.0
-        for rec_id, z_str, avg_speed, interval_s, old_rough in rows:
-            try:
-                z_vals = [float(z) for z in z_str.split(',') if z]
-            except Exception:
-                z_vals = []
-            rough = compute_roughness(
-                z_vals,
-                float(avg_speed or 0.0),
-                float(interval_s or 0.0),
-                freq_min=fmin,
-                freq_max=fmax,
-            )
-            cursor.execute(
-                "UPDATE bike_data_experimental SET roughness = ? WHERE id = ?",
-                rough,
-                rec_id,
-            )
-            updated += cursor.rowcount
-            try:
-                old_val = float(old_rough or 0.0)
-            except Exception:
-                old_val = 0.0
-            log_debug(f"Recalc id {rec_id}: {old_val:.3f} -> {rough:.3f}")
-        conn.commit()
-        log_debug(
-            f"Recalculated experimental roughness for {updated} rows using {fmin}-{fmax} Hz"
-        )
-    except Exception as exc:
-        log_debug(f"Recalculate experimental error: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok", "updated": updated}
 
 
 @app.get("/manage/filtered_records")
