@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Condition Indexer - Experimental</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
         #log {
@@ -97,7 +97,7 @@
     <h3>Debug Messages</h3>
     <textarea id="debug" readonly></textarea>
 </section>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
 let selectedIds = deviceId ? [deviceId] : [];
