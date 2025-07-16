@@ -52,16 +52,16 @@
     <select id="device-filter" multiple></select>
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
-        <option value="1">1 - Glass-smooth</option>
-        <option value="2">2 - Smooth concrete</option>
-        <option value="3">3 - Good asphalt</option>
-        <option value="4">4 - Coarse asphalt</option>
-        <option value="5">5 - Medium chip seal</option>
-        <option value="6">6 - Worn cobbles</option>
+        <option value="1">1 - Smooth road</option>
+        <option value="2">2 - Even surface</option>
+        <option value="3">3 - Light texture</option>
+        <option value="4">4 - Coarse texture</option>
+        <option value="5">5 - Moderate roughness</option>
+        <option value="6">6 - Bumpy cobbles</option>
         <option value="7">7 - Fine gravel</option>
-        <option value="8">8 - Rough gravel</option>
-        <option value="9">9 - Large potholes</option>
-        <option value="10">10 - Impassable</option>
+        <option value="8">8 - Coarse gravel</option>
+        <option value="9">9 - Severely uneven</option>
+        <option value="10">10 - Extremely rough</option>
     </select>
     <div id="freq-controls" style="display:inline-block; margin-left:1rem;">
         Filter Hz:
@@ -218,6 +218,18 @@ let map;
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
 const LABEL_COUNT = 10;
+const ROUGHNESS_NAMES = [
+    'Smooth road',
+    'Even surface',
+    'Light texture',
+    'Coarse texture',
+    'Moderate roughness',
+    'Bumpy cobbles',
+    'Fine gravel',
+    'Coarse gravel',
+    'Severely uneven',
+    'Extremely rough'
+];
 let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
@@ -362,6 +374,44 @@ function roughnessLabel(r) {
     return String(idx + 1);
 }
 
+function roughnessRange(idx) {
+    let min = roughMin;
+    let max = roughMax;
+    if (max === min) {
+        if (roughAvg > 0) {
+            min = 0;
+            max = roughAvg * 2;
+        } else {
+            max = min + LABEL_COUNT;
+        }
+    }
+    const offset = 1;
+    let logMin = Math.log(min + offset);
+    let logMax = Math.log(max + offset);
+    if (logMax === logMin) logMax = logMin + 1;
+    const low = Math.exp((logMax - logMin) * idx / LABEL_COUNT + logMin) - offset;
+    const high = Math.exp((logMax - logMin) * (idx + 1) / LABEL_COUNT + logMin) - offset;
+    return [low, high];
+}
+
+function updateRoughnessLabels() {
+    const select = document.getElementById('roughness-filter');
+    if (select) {
+        for (let i = 0; i < LABEL_COUNT; i++) {
+            const opt = select.options[i + 1];
+            if (!opt) continue;
+            const [low, high] = roughnessRange(i);
+            opt.textContent = `${i + 1} - ${ROUGHNESS_NAMES[i]} (${low.toFixed(2)}-${high.toFixed(2)})`;
+        }
+    }
+    const items = document.querySelectorAll('#roughness-scale ol li');
+    items.forEach((li, idx) => {
+        if (idx >= LABEL_COUNT) return;
+        const [low, high] = roughnessRange(idx);
+        li.textContent = `${ROUGHNESS_NAMES[idx]} (${low.toFixed(2)}-${high.toFixed(2)})`;
+    });
+}
+
 function filterRoughness(r) {
     const sel = document.getElementById('roughness-filter');
     if (!sel) return true;
@@ -447,6 +497,7 @@ function loadLogs() {
             s.max = Math.max(s.max, row.roughness);
             roughScales[row.device_id] = s;
         });
+        updateRoughnessLabels();
         for (let i = rows.length - 1; i >= 0; i--) {
             const row = rows[i];
             if (!filterRoughness(row.roughness)) continue;
@@ -707,16 +758,16 @@ if ('wakeLock' in navigator) {
 <div id="roughness-scale" style="margin-top:1rem; font-size:0.9rem;">
     <strong>Roughness Scale Reference</strong>
     <ol style="column-count:2; padding-left:1.25rem;">
-        <li>Glass-smooth</li>
-        <li>Smooth concrete</li>
-        <li>Good asphalt</li>
-        <li>Coarse asphalt</li>
-        <li>Medium chip seal</li>
-        <li>Worn cobbles</li>
+        <li>Smooth road</li>
+        <li>Even surface</li>
+        <li>Light texture</li>
+        <li>Coarse texture</li>
+        <li>Moderate roughness</li>
+        <li>Bumpy cobbles</li>
         <li>Fine gravel</li>
-        <li>Rough gravel</li>
-        <li>Large potholes</li>
-        <li>Impassable</li>
+        <li>Coarse gravel</li>
+        <li>Severely uneven</li>
+        <li>Extremely rough</li>
     </ol>
 </div>
 </body>
