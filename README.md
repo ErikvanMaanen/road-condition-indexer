@@ -12,10 +12,6 @@ This project collects road roughness data from mobile devices and stores it in a
 - `GET /logs` – Fetch recent measurements. Accepts an optional `limit` query
   parameter (default 100).
 - `GET /debuglog` – Retrieve backend debug messages.
-- `POST /experimental_log` – Same as `/log` but also stores raw samples for
-  analysis. Used by `experimental.html`.
-- `GET /experimental_logs` – Fetch records from `bike_data_experimental`. Accepts an optional `limit` query parameter (default 100).
-- `GET /filtered_experimental` – Same as `/filteredlogs` but queries `bike_data_experimental`.
 
 ## Setup
 
@@ -43,10 +39,6 @@ The built-in frontend is served from the `static/` directory under the
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
-An additional page `/experimental.html` behaves the same as the main
-interface but sends data to `/experimental_log` so that all raw values
-used in the roughness calculation are stored in the `bike_data_experimental`
-table for further analysis.
 
 The `/maintenance.html` page provides controls to inspect the current SQL
 database size and Azure App Service plan and lets you modify these settings.
@@ -84,21 +76,5 @@ CREATE TABLE device_nicknames (
   nickname NVARCHAR(100),
   user_agent NVARCHAR(256),
   device_fp NVARCHAR(256)
-);
-
-CREATE TABLE bike_data_experimental (
-  id INT IDENTITY PRIMARY KEY,
-  timestamp DATETIME DEFAULT GETDATE(),
-  latitude FLOAT,
-  longitude FLOAT,
-  speed FLOAT,
-  direction FLOAT,
-  roughness FLOAT,
-  distance_m FLOAT,
-  device_id NVARCHAR(100),
-  ip_address NVARCHAR(45),
-  z_values NVARCHAR(MAX),
-  avg_speed FLOAT,
-  interval_s FLOAT
 );
 ```
