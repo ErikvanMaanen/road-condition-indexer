@@ -49,6 +49,16 @@ roughness records from the database and refresh the map.
 When the API starts it will automatically create the `bike_data` and
 `debug_log` tables if they do not already exist.
 
+## Roughness Pipeline
+
+Submitted Z-axis samples are resampled to a constant rate and filtered with a
+0.5–50 Hz Butterworth band-pass. The resulting signal is used to calculate the
+root‑mean‑square acceleration which forms the stored roughness value. Additional
+metrics like the vibration dose value (VDV) and crest factor are computed for
+future analysis, although they are not currently stored in the database. To
+avoid noise during stops, reports with an average speed below 5 km/h still yield
+a roughness score of zero.
+
 ## Database Schema
 
 ```
