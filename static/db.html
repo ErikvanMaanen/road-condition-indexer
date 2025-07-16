@@ -25,6 +25,19 @@
             background: linear-gradient(to right, green, yellow, red);
             border: 1px solid #ccc;
         }
+        #log {
+            width: 100%;
+            height: 150px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+            white-space: pre;
+        }
+        #debug {
+            width: 100%;
+            height: 150px;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -55,7 +68,7 @@
 <section id="filter-time" style="margin-bottom:1rem;">
     <input id="filter-start" type="datetime-local">
     <input id="filter-end" type="datetime-local">
-    <input id="filter-ids" placeholder="IDs (comma)">
+    <input id="filter-ids" placeholder="ID or range (e.g. 5-10)">
     <button onclick="loadFiltered()">Load Filter</button>
     <button onclick="deleteFiltered()">Delete Filter</button>
 </section>
@@ -561,7 +574,17 @@ function buildFilterParams() {
     if (start) params.append('start', start);
     if (end) params.append('end', end);
     const ids = document.getElementById('filter-ids').value.trim();
-    if (ids) ids.split(/[,\s]+/).forEach(id => { if(id) params.append('ids', id); });
+    if (ids) {
+        const m = ids.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+            const a = parseInt(m[1], 10);
+            const b = parseInt(m[2], 10);
+            params.append('start_id', Math.min(a, b));
+            params.append('end_id', Math.max(a, b));
+        } else {
+            ids.split(/[\,\s]+/).forEach(id => { if(id) params.append('ids', id); });
+        }
+    }
     return params;
 }
 

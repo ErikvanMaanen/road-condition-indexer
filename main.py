@@ -1588,6 +1588,8 @@ def get_filtered_records(
     start: Optional[str] = None,
     end: Optional[str] = None,
     ids: Optional[List[int]] = Query(None),
+    start_id: Optional[int] = Query(None),
+    end_id: Optional[int] = Query(None),
     dep: None = Depends(password_dependency),
 ):
     """Return bike_data rows filtered by id, device and time."""
@@ -1601,6 +1603,12 @@ def get_filtered_records(
             query += f" AND id IN ({placeholders})"
             params.extend(ids)
         else:
+            if start_id is not None:
+                query += " AND id >= ?"
+                params.append(start_id)
+            if end_id is not None:
+                query += " AND id <= ?"
+                params.append(end_id)
             if device_id:
                 placeholders = ",".join("?" for _ in device_id)
                 query += f" AND device_id IN ({placeholders})"
@@ -1632,6 +1640,8 @@ def delete_filtered_records(
     start: Optional[str] = None,
     end: Optional[str] = None,
     ids: Optional[List[int]] = Query(None),
+    start_id: Optional[int] = Query(None),
+    end_id: Optional[int] = Query(None),
     dep: None = Depends(password_dependency),
 ):
     """Delete bike_data rows matching the given filters."""
@@ -1645,6 +1655,12 @@ def delete_filtered_records(
             query += f" AND id IN ({placeholders})"
             params.extend(ids)
         else:
+            if start_id is not None:
+                query += " AND id >= ?"
+                params.append(start_id)
+            if end_id is not None:
+                query += " AND id <= ?"
+                params.append(end_id)
             if device_id:
                 placeholders = ",".join("?" for _ in device_id)
                 query += f" AND device_id IN ({placeholders})"
