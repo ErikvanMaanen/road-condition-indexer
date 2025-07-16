@@ -14,6 +14,8 @@ This project collects road roughness data from mobile devices and stores it in a
 - `GET /debuglog` – Retrieve backend debug messages.
 - `POST /experimental_log` – Same as `/log` but also stores raw samples for
   analysis. Used by `experimental.html`.
+- `GET /experimental_logs` – Fetch records from `bike_data_experimental`. Accepts an optional `limit` query parameter (default 100).
+- `GET /filtered_experimental` – Same as `/filteredlogs` but queries `bike_data_experimental`.
 
 ## Setup
 

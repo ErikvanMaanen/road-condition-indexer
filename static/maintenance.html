@@ -92,6 +92,20 @@
                 <td>None</td>
             </tr>
             <tr>
+                <td>/experimental_logs?limit=N</td>
+                <td>GET</td>
+                <td>Query: limit=1-1000 (optional)</td>
+                <td>JSON {rows: [...], average}</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>/filtered_experimental</td>
+                <td>GET</td>
+                <td>Query: device_id=id[,id], start, end</td>
+                <td>JSON {rows: [...], average}</td>
+                <td>None</td>
+            </tr>
+            <tr>
                 <td>/device_ids</td>
                 <td>GET</td>
                 <td>None</td>
