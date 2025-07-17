@@ -5,6 +5,8 @@ import math
 import re
 import hashlib
 
+from scipy import signal
+
 
 import requests
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
@@ -266,23 +268,53 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
         return None
 
 
+def compute_vibration_metrics(
+    samples: np.ndarray,
+    sample_rate: float,
+    *,
+    freq_min: float = 0.5,
+    freq_max: float = 50.0,
+) -> Dict[str, float]:
+    """Return vibration metrics for the provided samples."""
+
+    if sample_rate <= 0 or samples.size == 0:
+        return {"rms": 0.0, "vdv": 0.0, "crest": 0.0}
+
+    # remove DC offset
+    samples = samples - float(np.mean(samples))
+
+    nyq = 0.5 * sample_rate
+    low = max(freq_min / nyq, 1e-4)
+    high = min(freq_max / nyq, 0.99)
+    if high <= low:
+        high = min(low + 0.01, 0.99)
+    b, a = signal.butter(4, [low, high], btype="band")
+    try:
+        filtered = signal.filtfilt(b, a, samples)
+    except Exception:
+        filtered = signal.lfilter(b, a, samples)
+
+    rms = float(np.sqrt(np.mean(np.square(filtered))))
+    vdv = float(np.power(np.sum(np.power(filtered, 4)) / sample_rate, 0.25))
+    crest = float(np.max(np.abs(filtered)) / rms) if rms else 0.0
+
+    return {"rms": rms, "vdv": vdv, "crest": crest}
+
+
 def compute_roughness(
     z_values: List[float],
     speed_kmh: float,
     interval_s: float,
     *,
-    freq_min: float = 1.0,
-    freq_max: float = 20.0,
+    freq_min: float = 0.5,
+    freq_max: float = 50.0,
 ) -> float:
     """Calculate roughness from vertical acceleration samples.
 
     ``interval_s`` is the time span in seconds covered by ``z_values``. The
-    samples are filtered to keep vibrations between ``freq_min`` and
-    ``freq_max`` using
-    a basic FFT band-pass filter. The root mean square of the filtered signal is
-    then normalised by the average speed over the interval. If the speed is less
-    than 5 km/h the roughness score is forced to zero to avoid noise at low
-    speeds.
+    samples are filtered with a Butterworth band-pass filter and the resulting
+    root-mean-square acceleration is returned. Low speeds still lead to a zero
+    score to reduce stationary noise.
     """
 
     if not z_values or interval_s <= 0:
@@ -294,25 +326,17 @@ def compute_roughness(
     if sample_rate <= 0:
         return 0.0
 
-    freqs = np.fft.rfftfreq(len(samples), d=1 / sample_rate)
-    fft_vals = np.fft.rfft(samples)
-    fmin = max(0.0, freq_min)
-    fmax = max(fmin, freq_max)
-    mask = (freqs >= fmin) & (freqs <= fmax)
-    fft_vals[~mask] = 0
-    filtered = np.fft.irfft(fft_vals, n=len(samples))
-
-    rms = float(np.sqrt(np.mean(np.square(filtered))))
-
-    if speed_kmh <= 0:
-        normalised = rms
-    else:
-        normalised = rms / speed_kmh
+    metrics = compute_vibration_metrics(
+        samples,
+        sample_rate,
+        freq_min=freq_min,
+        freq_max=freq_max,
+    )
 
     if speed_kmh < 5.0:
         return 0.0
 
-    return normalised
+    return metrics["rms"]
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
