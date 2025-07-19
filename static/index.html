@@ -543,7 +543,7 @@ function handlePosition(pos) {
                 scale.max = Math.max(scale.max, data.roughness);
                 roughScales[deviceId] = scale;
                 recordCount += 1;
-                loadLogs();
+                // Do not reload all logs during active recording
             }
         }).catch(err => addDebug('Error: ' + err));
         xValues = [];
