@@ -1577,3 +1577,92 @@ def get_app_plan_skus(dep: None = Depends(password_dependency)):
         raise HTTPException(status_code=500, detail="Azure error") from exc
 
 
+@app.get("/manage/table_summary")
+def get_table_summary(dep: None = Depends(password_dependency)):
+    """Return record count and last update for all tables."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    tables = []
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if USE_SQLSERVER:
+            cursor.execute("SELECT name FROM sys.tables")
+        else:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        names = [row[0] for row in cursor.fetchall()]
+        for table in names:
+            if not name_re.match(table):
+                continue
+            try:
+                if USE_SQLSERVER:
+                    cursor.execute(f"SELECT TOP 0 * FROM {table}")
+                else:
+                    cursor.execute(f"SELECT * FROM {table} LIMIT 0")
+                cols = [c[0] for c in cursor.description]
+            except Exception:
+                cols = []
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = int(cursor.fetchone()[0] or 0)
+            last_update = None
+            if "timestamp" in cols:
+                if USE_SQLSERVER:
+                    cursor.execute(f"SELECT TOP 1 timestamp FROM {table} ORDER BY timestamp DESC")
+                else:
+                    cursor.execute(f"SELECT timestamp FROM {table} ORDER BY timestamp DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    last_update = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
+            tables.append({"name": table, "count": count, "last_update": last_update})
+        log_debug("Fetched table summary")
+    except Exception as exc:
+        log_debug(f"Table summary error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+    return {"tables": tables}
+
+
+@app.get("/manage/last_rows")
+def get_last_rows(table: str, limit: int = Query(10, ge=1, le=100), dep: None = Depends(password_dependency)):
+    """Return the latest rows from a table."""
+    name_re = re.compile(r"^[A-Za-z0-9_]+$")
+    if not name_re.match(table):
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if USE_SQLSERVER:
+            cursor.execute(f"SELECT TOP 0 * FROM {table}")
+        else:
+            cursor.execute(f"SELECT * FROM {table} LIMIT 0")
+        cols = [c[0] for c in cursor.description]
+        order_col = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
+        if order_col:
+            if USE_SQLSERVER:
+                cursor.execute(f"SELECT TOP {limit} * FROM {table} ORDER BY {order_col} DESC")
+            else:
+                cursor.execute(f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT ?", (limit,))
+        else:
+            if USE_SQLSERVER:
+                cursor.execute(f"SELECT TOP {limit} * FROM {table}")
+            else:
+                cursor.execute(f"SELECT * FROM {table} LIMIT ?", (limit,))
+        cols = [c[0] for c in cursor.description]
+        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+        log_debug(f"Fetched last rows for {table}")
+    except Exception as exc:
+        log_debug(f"Last rows error: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+    return {"rows": rows}

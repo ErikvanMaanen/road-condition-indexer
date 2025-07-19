@@ -212,6 +212,11 @@
     <h2>App Service Plan</h2>
     <div id="plan-info">Loading...</div>
 </section>
+<section style="margin-top:1rem;">
+    <h2>Tables <button id="refresh-btn">Refresh</button></h2>
+    <div id="table-list">Loading...</div>
+    <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
+</section>
 <script>
 async function authFetch(url, options) {
     let res = await fetch(url, options);
@@ -242,6 +247,46 @@ async function loadDbInfo() {
         sel.value = skuData.current || '';
     }
 }
+
+async function loadSummary() {
+    const res = await authFetch('/manage/table_summary');
+    const container = document.getElementById('table-list');
+    if (!res.ok) { container.textContent = 'Unavailable'; return; }
+    const data = await res.json();
+    const tbl = document.createElement('table');
+    tbl.border = '1';
+    tbl.cellPadding = '4';
+    const head = document.createElement('tr');
+    ['Name','Rows','Last Update',''].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.appendChild(th);});
+    tbl.appendChild(head);
+    data.tables.forEach(info => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${info.name}</td><td>${info.count}</td><td>${info.last_update || ''}</td>`;
+        const btnTd = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.textContent = 'Show Last 10';
+        btn.onclick = () => showRecords(info.name);
+        btnTd.appendChild(btn);
+        tr.appendChild(btnTd);
+        tbl.appendChild(tr);
+    });
+    container.innerHTML = '';
+    container.appendChild(tbl);
+}
+
+async function showRecords(name) {
+    const res = await authFetch(`/manage/last_rows?table=${encodeURIComponent(name)}&limit=10`);
+    const pre = document.getElementById('table-records');
+    if (!res.ok) { pre.textContent = 'Failed to fetch records'; return; }
+    const data = await res.json();
+    pre.textContent = JSON.stringify(data.rows, null, 2);
+}
+
+function refreshAll() {
+    loadDbInfo();
+    loadPlan();
+    loadSummary();
+}
 async function setDbSku() {
     const sku = document.getElementById('db-sku').value;
     if(!sku) return;
@@ -260,6 +305,8 @@ async function loadPlan() {
 }
 loadDbInfo();
 loadPlan();
+loadSummary();
+document.getElementById('refresh-btn').addEventListener('click', refreshAll);
 </script>
 <section id="logs" style="margin-top:1rem;">
     <h3>Activity Log</h3>
