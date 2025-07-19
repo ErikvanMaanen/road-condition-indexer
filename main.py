@@ -1062,6 +1062,83 @@ def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependenc
     return {"status": "ok"}
 
 
+@app.post("/manage/test_table")
+def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
+    """Insert, read and delete two test rows for a table."""
+    uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
+    rows = []
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if req.table == "bike_data":
+            for _ in range(2):
+                cursor.execute(
+                    """
+                    INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                    VALUES (0, 0, 10, 0, 0, 0, ?, '0.0.0.0')
+                    """,
+                    uid,
+                )
+            conn.commit()
+            cursor.execute(
+                "SELECT id, device_id FROM bike_data WHERE device_id = ?", uid
+            )
+            cols = [c[0] for c in cursor.description]
+            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            cursor.execute("DELETE FROM bike_data WHERE device_id = ?", uid)
+            conn.commit()
+        elif req.table == "debug_log":
+            for _ in range(2):
+                cursor.execute(
+                    "INSERT INTO debug_log (message) VALUES (?)",
+                    f"{uid} log",
+                )
+            conn.commit()
+            cursor.execute(
+                "SELECT id, message FROM debug_log WHERE message LIKE ?",
+                f"{uid}%",
+            )
+            cols = [c[0] for c in cursor.description]
+            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            cursor.execute("DELETE FROM debug_log WHERE message LIKE ?", f"{uid}%")
+            conn.commit()
+        elif req.table == "device_nicknames":
+            for idx in range(2):
+                cursor.execute(
+                    """
+                    INSERT INTO device_nicknames (device_id, nickname, user_agent, device_fp)
+                    VALUES (?, 'Test Device', 'test_agent', 'test_fp')
+                    """,
+                    f"{uid}_{idx}",
+                )
+            conn.commit()
+            cursor.execute(
+                "SELECT device_id, nickname FROM device_nicknames WHERE device_id LIKE ?",
+                f"{uid}%",
+            )
+            cols = [c[0] for c in cursor.description]
+            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+            cursor.execute(
+                "DELETE FROM device_nicknames WHERE device_id LIKE ?",
+                f"{uid}%",
+            )
+            conn.commit()
+        else:
+            raise HTTPException(status_code=400, detail="Unknown table")
+        log_debug(f"Tested table {req.table}")
+    except Exception as exc:
+        log_debug(f"Table test error for {req.table}: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+    return {"status": "ok", "rows": rows}
+
+
 @app.delete("/manage/delete_all")
 def delete_all(table: str, dep: None = Depends(password_dependency)):
     """Delete all rows from the specified table."""

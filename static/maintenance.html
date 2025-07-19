@@ -257,16 +257,21 @@ async function loadSummary() {
     tbl.border = '1';
     tbl.cellPadding = '4';
     const head = document.createElement('tr');
-    ['Name','Rows','Last Update',''].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.appendChild(th);});
+    ['Name','Rows','Last Update','Actions'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.appendChild(th);});
     tbl.appendChild(head);
     data.tables.forEach(info => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${info.name}</td><td>${info.count}</td><td>${info.last_update || ''}</td>`;
         const btnTd = document.createElement('td');
-        const btn = document.createElement('button');
-        btn.textContent = 'Show Last 10';
-        btn.onclick = () => showRecords(info.name);
-        btnTd.appendChild(btn);
+        const showBtn = document.createElement('button');
+        showBtn.textContent = 'Show Last 10';
+        showBtn.onclick = () => showRecords(info.name);
+        btnTd.appendChild(showBtn);
+        const testBtn = document.createElement('button');
+        testBtn.textContent = 'Test';
+        testBtn.style.marginLeft = '0.5rem';
+        testBtn.onclick = () => testTable(info.name);
+        btnTd.appendChild(testBtn);
         tr.appendChild(btnTd);
         tbl.appendChild(tr);
     });
@@ -282,10 +287,54 @@ async function showRecords(name) {
     pre.textContent = JSON.stringify(data.rows, null, 2);
 }
 
+function addLog(msg){
+    const div = document.getElementById('log');
+    div.textContent += new Date().toISOString() + ' - ' + msg + '\n';
+    div.scrollTop = div.scrollHeight;
+}
+
+async function loadDebug(){
+    const res = await authFetch('/debuglog');
+    if(res.ok){
+        const data = await res.json();
+        const t = document.getElementById('debug');
+        t.value = data.log.join('\n');
+        t.scrollTop = t.scrollHeight;
+    }
+}
+
+async function testTable(name){
+    addLog('Testing ' + name);
+    const pre = document.getElementById('table-records');
+    pre.textContent = '';
+    try{
+        const res = await authFetch('/manage/test_table', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({table:name})
+        });
+        if(!res.ok){
+            const text = await res.text();
+            pre.textContent = text;
+            addLog('Error: ' + text);
+        }else{
+            const data = await res.json();
+            pre.textContent = JSON.stringify(data.rows, null, 2);
+            addLog('Success');
+        }
+    }catch(e){
+        pre.textContent = e.toString();
+        addLog('Exception: ' + e);
+    }
+    loadDebug();
+    loadSummary();
+}
+
 function refreshAll() {
     loadDbInfo();
     loadPlan();
     loadSummary();
+    loadDebug();
 }
 async function setDbSku() {
     const sku = document.getElementById('db-sku').value;
@@ -306,6 +355,7 @@ async function loadPlan() {
 loadDbInfo();
 loadPlan();
 loadSummary();
+loadDebug();
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
 </script>
 <section id="logs" style="margin-top:1rem;">
