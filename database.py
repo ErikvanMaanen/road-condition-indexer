@@ -8,9 +8,13 @@ This module handles all database operations including:
 
 import os
 import sqlite3
+import logging
+import traceback
 from pathlib import Path
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
+from contextlib import contextmanager
 
 try:
     import pyodbc
@@ -27,6 +31,25 @@ except ImportError:
             self.status_code = status_code
             self.detail = detail
             super().__init__(detail)
+
+# Log levels and categories for filtering
+class LogLevel(Enum):
+    """Debug log levels."""
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+class LogCategory(Enum):
+    """Debug log categories for filtering."""
+    DATABASE = "DATABASE"
+    CONNECTION = "CONNECTION"
+    QUERY = "QUERY"
+    MANAGEMENT = "MANAGEMENT"
+    MIGRATION = "MIGRATION"
+    BACKUP = "BACKUP"
+    GENERAL = "GENERAL"
 
 # Table name constants
 TABLE_BIKE_DATA = "RCI_bike_data"
@@ -52,8 +75,69 @@ USE_SQLSERVER = all(
 class DatabaseManager:
     """Manages database connections and operations."""
     
-    def __init__(self):
+    def __init__(self, log_level: LogLevel = LogLevel.INFO, 
+                 log_categories: Optional[List[LogCategory]] = None):
         self.use_sqlserver = USE_SQLSERVER
+        self.log_level = log_level
+        self.log_categories = log_categories or list(LogCategory)
+        self._log_level_order = {
+            LogLevel.DEBUG: 0,
+            LogLevel.INFO: 1,
+            LogLevel.WARNING: 2,
+            LogLevel.ERROR: 3,
+            LogLevel.CRITICAL: 4
+        }
+        
+        # Initialize logging
+        self._setup_logging()
+        self.log_debug("DatabaseManager initialized", LogLevel.INFO, LogCategory.DATABASE)
+    
+    def _setup_logging(self) -> None:
+        """Set up Python logging for fallback when database logging fails."""
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        self.logger = logging.getLogger(__name__)
+    
+    def set_log_level(self, level: LogLevel) -> None:
+        """Change the minimum log level."""
+        self.log_level = level
+        self.log_debug(f"Log level changed to {level.value}", LogLevel.INFO, LogCategory.GENERAL)
+    
+    def set_log_categories(self, categories: List[LogCategory]) -> None:
+        """Set which log categories to record."""
+        self.log_categories = categories
+        self.log_debug(f"Log categories set to: {[c.value for c in categories]}", 
+                      LogLevel.INFO, LogCategory.GENERAL)
+    
+    def _should_log(self, level: LogLevel, category: LogCategory) -> bool:
+        """Check if a message should be logged based on level and category filters."""
+        level_ok = self._log_level_order[level] >= self._log_level_order[self.log_level]
+        category_ok = category in self.log_categories
+        return level_ok and category_ok
+    
+    @contextmanager
+    def get_connection_context(self, database: Optional[str] = None):
+        """Get a database connection with proper context management to prevent journal file issues."""
+        conn = None
+        try:
+            conn = self.get_connection(database)
+            yield conn
+        except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_connection(self, database: Optional[str] = None):
         """Return a database connection.
@@ -63,73 +147,126 @@ class DatabaseManager:
         ``RCI_local.db`` in the project directory is used. This makes the API usable
         without any external dependencies.
         """
-        if self.use_sqlserver:
-            server = os.getenv("AZURE_SQL_SERVER")
-            port = os.getenv("AZURE_SQL_PORT")
-            user = os.getenv("AZURE_SQL_USER")
-            password = os.getenv("AZURE_SQL_PASSWORD")
-            db_name = database or os.getenv("AZURE_SQL_DATABASE")
-            conn_str = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={server},{port};"
-                f"DATABASE={db_name};"
-                f"UID={user};"
-                f"PWD={password}"
-            )
-            return pyodbc.connect(conn_str)
-        # SQLite fallback
-        db_file = BASE_DIR / "RCI_local.db"
-        return sqlite3.connect(db_file)
+        try:
+            if self.use_sqlserver:
+                server = os.getenv("AZURE_SQL_SERVER")
+                port = os.getenv("AZURE_SQL_PORT")
+                user = os.getenv("AZURE_SQL_USER")
+                password = os.getenv("AZURE_SQL_PASSWORD")
+                db_name = database or os.getenv("AZURE_SQL_DATABASE")
+                
+                self.log_debug(f"Connecting to SQL Server: {server}:{port}, database: {db_name}", 
+                              LogLevel.DEBUG, LogCategory.CONNECTION)
+                
+                conn_str = (
+                    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                    f"SERVER={server},{port};"
+                    f"DATABASE={db_name};"
+                    f"UID={user};"
+                    f"PWD={password}"
+                )
+                conn = pyodbc.connect(conn_str)
+                self.log_debug("SQL Server connection established successfully", 
+                              LogLevel.DEBUG, LogCategory.CONNECTION)
+                return conn
+            else:
+                # SQLite fallback with optimized settings to prevent journal file issues
+                db_file = BASE_DIR / "RCI_local.db"
+                self.log_debug(f"Connecting to SQLite database: {db_file}", 
+                              LogLevel.DEBUG, LogCategory.CONNECTION)
+                
+                # Configure SQLite for better performance and reduced journal cycling
+                conn = sqlite3.connect(
+                    db_file,
+                    timeout=30.0,  # 30-second timeout
+                    check_same_thread=False  # Allow multi-threading
+                )
+                
+                # Set SQLite pragmas to optimize performance and reduce journal issues
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")  # Use Write-Ahead Logging
+                cursor.execute("PRAGMA synchronous=NORMAL")  # Balanced safety/performance
+                cursor.execute("PRAGMA cache_size=-2000")  # 2MB cache (negative = KB)
+                cursor.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp tables
+                cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
+                cursor.execute("PRAGMA wal_autocheckpoint=1000")  # Checkpoint every 1000 pages
+                cursor.close()
+                
+                self.log_debug("SQLite connection established successfully with optimized settings", 
+                              LogLevel.DEBUG, LogCategory.CONNECTION)
+                return conn
+        except Exception as e:
+            self.log_debug(f"Database connection failed: {e}", 
+                          LogLevel.ERROR, LogCategory.CONNECTION, include_stack=True)
+            raise
 
     def ensure_database_exists(self) -> None:
         """Ensure the configured database exists."""
-        if self.use_sqlserver:
-            server = os.getenv("AZURE_SQL_SERVER")
-            port = os.getenv("AZURE_SQL_PORT")
-            user = os.getenv("AZURE_SQL_USER")
-            password = os.getenv("AZURE_SQL_PASSWORD")
-            database = os.getenv("AZURE_SQL_DATABASE")
+        try:
+            if self.use_sqlserver:
+                server = os.getenv("AZURE_SQL_SERVER")
+                port = os.getenv("AZURE_SQL_PORT")
+                user = os.getenv("AZURE_SQL_USER")
+                password = os.getenv("AZURE_SQL_PASSWORD")
+                database = os.getenv("AZURE_SQL_DATABASE")
 
-            conn = self.get_connection("master")
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT database_id FROM sys.databases WHERE name = ?",
-                    database,
-                )
-                if not cursor.fetchone():
-                    cursor.execute(f"CREATE DATABASE [{database}]")
-                    conn.commit()
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-        else:
-            # SQLite creates the database file automatically
-            db_file = BASE_DIR / "RCI_local.db"
-            db_file.touch(exist_ok=True)
+                self.log_debug(f"Checking if database '{database}' exists on {server}", 
+                              LogLevel.DEBUG, LogCategory.DATABASE)
+
+                with self.get_connection_context("master") as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT database_id FROM sys.databases WHERE name = ?",
+                        database,
+                    )
+                    if not cursor.fetchone():
+                        self.log_debug(f"Database '{database}' does not exist, creating it", 
+                                      LogLevel.INFO, LogCategory.DATABASE)
+                        cursor.execute(f"CREATE DATABASE [{database}]")
+                        conn.commit()
+                        self.log_debug(f"Database '{database}' created successfully", 
+                                      LogLevel.INFO, LogCategory.DATABASE)
+                    else:
+                        self.log_debug(f"Database '{database}' already exists", 
+                                      LogLevel.DEBUG, LogCategory.DATABASE)
+            else:
+                # SQLite creates the database file automatically
+                db_file = BASE_DIR / "RCI_local.db"
+                if not db_file.exists():
+                    self.log_debug(f"Creating SQLite database file: {db_file}", 
+                                  LogLevel.INFO, LogCategory.DATABASE)
+                    db_file.touch(exist_ok=True)
+                    self.log_debug("SQLite database file created successfully", 
+                                  LogLevel.INFO, LogCategory.DATABASE)
+                else:
+                    self.log_debug(f"SQLite database file already exists: {db_file}", 
+                                  LogLevel.DEBUG, LogCategory.DATABASE)
+        except Exception as e:
+            self.log_debug(f"Failed to ensure database exists: {e}", 
+                          LogLevel.ERROR, LogCategory.DATABASE, include_stack=True)
+            raise
 
     def init_tables(self) -> None:
         """Ensure that required tables exist."""
         try:
+            self.log_debug("Starting table initialization", LogLevel.INFO, LogCategory.DATABASE)
             self.ensure_database_exists()
-            conn = self.get_connection()
-            cursor = conn.cursor()
             
-            if self.use_sqlserver:
-                self._create_sqlserver_tables(cursor)
-            else:
-                self._create_sqlite_tables(cursor)
-            
-            conn.commit()
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                
+                if self.use_sqlserver:
+                    self.log_debug("Creating SQL Server tables", LogLevel.DEBUG, LogCategory.DATABASE)
+                    self._create_sqlserver_tables(cursor)
+                else:
+                    self.log_debug("Creating SQLite tables", LogLevel.DEBUG, LogCategory.DATABASE)
+                    self._create_sqlite_tables(cursor)
+                
+                conn.commit()
+                self.log_debug("Table initialization completed successfully", LogLevel.INFO, LogCategory.DATABASE)
         except Exception as exc:
+            self.log_debug(f"Database init error: {exc}", LogLevel.ERROR, LogCategory.DATABASE, include_stack=True)
             raise Exception(f"Database init error: {exc}")
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
     def _create_sqlserver_tables(self, cursor):
         """Create tables for SQL Server."""
@@ -166,7 +303,10 @@ class DatabaseManager:
                 CREATE TABLE {TABLE_DEBUG_LOG} (
                     id INT IDENTITY PRIMARY KEY,
                     timestamp DATETIME DEFAULT GETDATE(),
-                    message NVARCHAR(4000)
+                    level NVARCHAR(20),
+                    category NVARCHAR(50),
+                    message NVARCHAR(4000),
+                    stack_trace NVARCHAR(MAX)
                 )
             END
             """
@@ -258,6 +398,26 @@ class DatabaseManager:
                 ALTER TABLE {TABLE_DEVICE_NICKNAMES} ADD device_fp NVARCHAR(256)
             """
         )
+        
+        # Add new debug log columns if they don't exist
+        cursor.execute(
+            f"""
+            IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'level') IS NULL
+                ALTER TABLE {TABLE_DEBUG_LOG} ADD level NVARCHAR(20)
+            """
+        )
+        cursor.execute(
+            f"""
+            IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'category') IS NULL
+                ALTER TABLE {TABLE_DEBUG_LOG} ADD category NVARCHAR(50)
+            """
+        )
+        cursor.execute(
+            f"""
+            IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'stack_trace') IS NULL
+                ALTER TABLE {TABLE_DEBUG_LOG} ADD stack_trace NVARCHAR(MAX)
+            """
+        )
 
     def _create_sqlite_tables(self, cursor):
         """Create tables for SQLite."""
@@ -282,7 +442,10 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS {TABLE_DEBUG_LOG} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                message TEXT
+                level TEXT,
+                category TEXT,
+                message TEXT,
+                stack_trace TEXT
             )
             """
         )
@@ -297,68 +460,159 @@ class DatabaseManager:
             """
         )
 
-    def log_debug(self, message: str) -> None:
-        """Insert a debug message into the debug log table."""
+    def log_debug(self, message: str, level: LogLevel = LogLevel.INFO, 
+                  category: LogCategory = LogCategory.GENERAL,
+                  include_stack: bool = False) -> None:
+        """Insert a debug message into the debug log table with filtering support.
+        
+        Args:
+            message: The log message
+            level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            category: Log category for filtering
+            include_stack: Whether to include stack trace information
+        """
+        if not self._should_log(level, category):
+            return
+            
         timestamp = datetime.utcnow().isoformat()
+        stack_trace = None
+        
+        if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:
+            stack_trace = traceback.format_stack()[-3:-1]  # Get relevant stack frames
+            stack_trace = ''.join(stack_trace).strip()
+        
         try:
             self.execute_non_query(
-                f"INSERT INTO {TABLE_DEBUG_LOG} (message) VALUES (?)",
-                (f"{timestamp} - {message}",)
+                f"""INSERT INTO {TABLE_DEBUG_LOG} (timestamp, level, category, message, stack_trace) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (timestamp, level.value, category.value, message, stack_trace)
             )
-        except Exception:
-            pass
+        except Exception as e:
+            # Fallback to Python logging if database logging fails
+            log_msg = f"[{category.value}] {message}"
+            if level == LogLevel.DEBUG:
+                self.logger.debug(log_msg)
+            elif level == LogLevel.INFO:
+                self.logger.info(log_msg)
+            elif level == LogLevel.WARNING:
+                self.logger.warning(log_msg)
+            elif level == LogLevel.ERROR:
+                self.logger.error(log_msg)
+            elif level == LogLevel.CRITICAL:
+                self.logger.critical(log_msg)
+    
+    def get_debug_logs(self, level_filter: Optional[LogLevel] = None,
+                      category_filter: Optional[LogCategory] = None,
+                      limit: Optional[int] = 100) -> List[Dict[str, Any]]:
+        """Retrieve debug logs with optional filtering.
+        
+        Args:
+            level_filter: Filter by minimum log level
+            category_filter: Filter by specific category
+            limit: Maximum number of logs to return
+            
+        Returns:
+            List of log entries as dictionaries
+        """
+        try:
+            query = f"SELECT * FROM {TABLE_DEBUG_LOG} WHERE 1=1"
+            params = []
+            
+            if level_filter:
+                # Filter by level and above based on severity
+                level_order = self._log_level_order[level_filter]
+                valid_levels = [l.value for l, o in self._log_level_order.items() if o >= level_order]
+                placeholders = ",".join("?" for _ in valid_levels)
+                query += f" AND level IN ({placeholders})"
+                params.extend(valid_levels)
+            
+            if category_filter:
+                query += " AND category = ?"
+                params.append(category_filter.value)
+            
+            query += " ORDER BY id DESC"
+            if limit:
+                if self.use_sqlserver:
+                    query = query.replace("SELECT *", f"SELECT TOP {limit} *")
+                else:
+                    query += " LIMIT ?"
+                    params.append(limit)
+            
+            return self.execute_query(query, tuple(params) if params else None)
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve debug logs: {e}")
+            return []
 
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,
                         device_id: str, ip_address: Optional[str]) -> None:
         """Insert bike data into the database."""
-        conn = self.get_connection()
+        self.log_debug(f"Inserting bike data for device {device_id}: lat={latitude}, lon={longitude}, speed={speed}, roughness={roughness}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
         try:
-            cursor = conn.cursor()
-            cursor.execute(
-                f"INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
-            )
-            if self.use_sqlserver and cursor.rowcount != 1:
-                raise Exception(f"Insert affected {cursor.rowcount} rows")
-            conn.commit()
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                )
+                if self.use_sqlserver and cursor.rowcount != 1:
+                    error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
+                    self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
+                    raise Exception(error_msg)
+                conn.commit()
+                self.log_debug(f"Successfully inserted bike data for device {device_id}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+        except Exception as e:
+            self.log_debug(f"Failed to insert bike data for device {device_id}: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def upsert_device_info(self, device_id: str, user_agent: Optional[str], 
                           device_fp: Optional[str]) -> None:
         """Insert or update device information."""
-        conn = self.get_connection()
+        self.log_debug(f"Upserting device info for {device_id}: user_agent={user_agent}, device_fp={device_fp}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
         try:
-            cursor = conn.cursor()
-            if self.use_sqlserver:
-                cursor.execute(
-                    f"""
-                    MERGE {TABLE_DEVICE_NICKNAMES} AS target
-                    USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
-                    ON target.device_id = src.device_id
-                    WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
-                    WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-                    """,
-                    device_id, user_agent, device_fp
-                )
-            else:
-                cursor.execute(
-                    f"""
-                    INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, user_agent, device_fp)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
-                    device_fp=excluded.device_fp
-                    """,
-                    (device_id, user_agent, device_fp)
-                )
-            conn.commit()
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                if self.use_sqlserver:
+                    cursor.execute(
+                        f"""
+                        MERGE {TABLE_DEVICE_NICKNAMES} AS target
+                        USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
+                        ON target.device_id = src.device_id
+                        WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
+                        WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
+                        """,
+                        device_id, user_agent, device_fp
+                    )
+                else:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, user_agent, device_fp)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
+                        device_fp=excluded.device_fp
+                        """,
+                        (device_id, user_agent, device_fp)
+                    )
+                conn.commit()
+                self.log_debug(f"Successfully upserted device info for {device_id}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+        except Exception as e:
+            self.log_debug(f"Failed to upsert device info for {device_id}: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def get_last_bike_data_point(self, device_id: str) -> Optional[Tuple[datetime, float, float]]:
         """Get the last recorded bike data point for a device."""
+        self.log_debug(f"Retrieving last bike data point for device {device_id}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -374,13 +628,26 @@ class DatabaseManager:
                 )
             row = cursor.fetchone()
             if row:
-                return (row[2], row[0], row[1])  # timestamp, latitude, longitude
+                result = (row[2], row[0], row[1])  # timestamp, latitude, longitude
+                self.log_debug(f"Found last data point for device {device_id}: {result}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+                return result
+            else:
+                self.log_debug(f"No data points found for device {device_id}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
             return None
+        except Exception as e:
+            self.log_debug(f"Failed to get last bike data point for device {device_id}: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
         finally:
             conn.close()
 
     def get_logs(self, limit: Optional[int] = None) -> Tuple[List[Dict], float]:
         """Get bike data logs with optional limit."""
+        self.log_debug(f"Retrieving bike data logs with limit={limit}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -403,7 +670,13 @@ class DatabaseManager:
             avg_row = cursor.fetchone()
             rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
             
+            self.log_debug(f"Retrieved {len(rows)} bike data logs, avg roughness: {rough_avg}", 
+                          LogLevel.DEBUG, LogCategory.QUERY)
             return rows, rough_avg
+        except Exception as e:
+            self.log_debug(f"Failed to retrieve bike data logs: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
         finally:
             conn.close()
 
@@ -411,6 +684,10 @@ class DatabaseManager:
                          start_dt: Optional[datetime] = None,
                          end_dt: Optional[datetime] = None) -> Tuple[List[Dict], float]:
         """Get filtered bike data logs."""
+        filter_desc = f"device_ids={device_ids}, start={start_dt}, end={end_dt}"
+        self.log_debug(f"Retrieving filtered bike data logs: {filter_desc}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -454,7 +731,13 @@ class DatabaseManager:
             avg_row = cursor.fetchone()
             rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
             
+            self.log_debug(f"Retrieved {len(rows)} filtered logs, avg roughness: {rough_avg}", 
+                          LogLevel.DEBUG, LogCategory.QUERY)
             return rows, rough_avg
+        except Exception as e:
+            self.log_debug(f"Failed to retrieve filtered logs: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
         finally:
             conn.close()
 
@@ -572,68 +855,104 @@ class DatabaseManager:
 
     def execute_query(self, query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
         """Execute a query and return results as a list of dictionaries."""
-        conn = self.get_connection()
+        query_short = query[:100] + "..." if len(query) > 100 else query
+        self.log_debug(f"Executing query: {query_short}", LogLevel.DEBUG, LogCategory.QUERY)
+        
         try:
-            cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            
-            # Get column names
-            columns = [desc[0] for desc in cursor.description] if cursor.description else []
-            
-            # Fetch all rows and convert to dictionaries
-            rows = cursor.fetchall()
-            return [dict(zip(columns, row)) for row in rows] if columns else []
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                start_time = datetime.utcnow()
+                
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                
+                # Get column names
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                
+                # Fetch all rows and convert to dictionaries
+                rows = cursor.fetchall()
+                result = [dict(zip(columns, row)) for row in rows] if columns else []
+                
+                end_time = datetime.utcnow()
+                duration = (end_time - start_time).total_seconds()
+                self.log_debug(f"Query completed in {duration:.3f}s, returned {len(result)} rows", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+                return result
+        except Exception as e:
+            self.log_debug(f"Query failed: {query_short} - Error: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def execute_scalar(self, query: str, params: Optional[Tuple] = None) -> Any:
         """Execute a query and return a single scalar value."""
-        conn = self.get_connection()
+        query_short = query[:100] + "..." if len(query) > 100 else query
+        self.log_debug(f"Executing scalar query: {query_short}", LogLevel.DEBUG, LogCategory.QUERY)
+        
         try:
-            cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            result = cursor.fetchone()
-            return result[0] if result else None
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            with self.get_connection_context() as conn:
+                start_time = datetime.utcnow()
+                cursor = conn.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                result = cursor.fetchone()
+                scalar_result = result[0] if result else None
+                
+                end_time = datetime.utcnow()
+                duration = (end_time - start_time).total_seconds()
+                self.log_debug(f"Scalar query completed in {duration:.3f}s, result: {scalar_result}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+                return scalar_result
+        except Exception as e:
+            self.log_debug(f"Scalar query failed: {query_short} - Error: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def execute_non_query(self, query: str, params: Optional[Tuple] = None) -> int:
         """Execute a non-query (INSERT, UPDATE, DELETE) and return affected rows."""
-        conn = self.get_connection()
+        # Only log for non-debug-log queries to avoid infinite recursion
+        is_debug_log_query = TABLE_DEBUG_LOG in query
+        
+        if not is_debug_log_query:
+            self.log_debug(f"Executing non-query: {query[:100]}{'...' if len(query) > 100 else ''}", 
+                          LogLevel.DEBUG, LogCategory.QUERY)
+        
         try:
-            cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            conn.commit()
-            return cursor.rowcount if hasattr(cursor, 'rowcount') else 0
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                conn.commit()
+                rowcount = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
+                
+                if not is_debug_log_query:
+                    self.log_debug(f"Non-query executed successfully, {rowcount} rows affected", 
+                                  LogLevel.DEBUG, LogCategory.QUERY)
+                
+                return rowcount
+        except Exception as e:
+            if not is_debug_log_query:
+                self.log_debug(f"Non-query execution failed: {e}", 
+                              LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def execute_management_operation(self, operation_name: str, operation_func):
         """Execute a management operation with proper error handling and logging."""
+        self.log_debug(f"Starting management operation: {operation_name}", 
+                      LogLevel.INFO, LogCategory.MANAGEMENT)
         try:
             result = operation_func()
-            self.log_debug(f"Management operation '{operation_name}' completed successfully")
+            self.log_debug(f"Management operation '{operation_name}' completed successfully", 
+                          LogLevel.INFO, LogCategory.MANAGEMENT)
             return result
         except Exception as exc:
-            self.log_debug(f"Management operation '{operation_name}' failed: {exc}")
+            self.log_debug(f"Management operation '{operation_name}' failed: {exc}", 
+                          LogLevel.ERROR, LogCategory.MANAGEMENT, include_stack=True)
             raise HTTPException(status_code=500, detail="Database error") from exc
 
     def test_table_operations(self, table_name: str) -> List[Dict[str, Any]]:
@@ -715,6 +1034,9 @@ class DatabaseManager:
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         new_table = f"{table_name}_backup_{timestamp}"
         
+        self.log_debug(f"Starting backup of table '{table_name}' to '{new_table}'", 
+                      LogLevel.INFO, LogCategory.BACKUP)
+        
         # Check if table exists
         if self.use_sqlserver:
             exists = self.execute_scalar(
@@ -728,15 +1050,24 @@ class DatabaseManager:
             )
         
         if not exists:
+            error_msg = f"Table '{table_name}' does not exist"
+            self.log_debug(error_msg, LogLevel.ERROR, LogCategory.BACKUP)
             raise ValueError("Unknown table")
         
-        # Create backup
-        if self.use_sqlserver:
-            self.execute_non_query(f"SELECT * INTO {new_table} FROM {table_name}")
-        else:
-            self.execute_non_query(f"CREATE TABLE {new_table} AS SELECT * FROM {table_name}")
-        
-        return new_table
+        try:
+            # Create backup
+            if self.use_sqlserver:
+                self.execute_non_query(f"SELECT * INTO {new_table} FROM {table_name}")
+            else:
+                self.execute_non_query(f"CREATE TABLE {new_table} AS SELECT * FROM {table_name}")
+            
+            self.log_debug(f"Successfully created backup table '{new_table}'", 
+                          LogLevel.INFO, LogCategory.BACKUP)
+            return new_table
+        except Exception as e:
+            self.log_debug(f"Failed to backup table '{table_name}': {e}", 
+                          LogLevel.ERROR, LogCategory.BACKUP, include_stack=True)
+            raise
 
     def rename_table(self, old_name: str, new_name: str) -> None:
         """Rename a table."""
@@ -869,3 +1200,30 @@ class DatabaseManager:
 
 # Global database manager instance
 db_manager = DatabaseManager()
+
+# Utility functions for easy access to logging functionality
+def set_log_level(level: LogLevel) -> None:
+    """Set the global log level for the database manager."""
+    db_manager.set_log_level(level)
+
+def set_log_categories(categories: List[LogCategory]) -> None:
+    """Set which log categories to record for the database manager."""
+    db_manager.set_log_categories(categories)
+
+def get_debug_logs(level_filter: Optional[LogLevel] = None,
+                  category_filter: Optional[LogCategory] = None,
+                  limit: Optional[int] = 100) -> List[Dict[str, Any]]:
+    """Get debug logs with filtering."""
+    return db_manager.get_debug_logs(level_filter, category_filter, limit)
+
+def log_info(message: str, category: LogCategory = LogCategory.GENERAL) -> None:
+    """Log an info message."""
+    db_manager.log_debug(message, LogLevel.INFO, category)
+
+def log_warning(message: str, category: LogCategory = LogCategory.GENERAL) -> None:
+    """Log a warning message."""
+    db_manager.log_debug(message, LogLevel.WARNING, category)
+
+def log_error(message: str, category: LogCategory = LogCategory.GENERAL, include_stack: bool = True) -> None:
+    """Log an error message."""
+    db_manager.log_debug(message, LogLevel.ERROR, category, include_stack)

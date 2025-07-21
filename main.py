@@ -17,7 +17,10 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 
 # Import database constants and manager
-from database import DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES
+from database import (
+    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES,
+    LogLevel, LogCategory, log_info, log_warning, log_error
+)
 
 try:
     from azure.identity import ClientSecretCredential
@@ -169,7 +172,8 @@ def log_debug(message: str) -> None:
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
-    db_manager.log_debug(message)
+    # Use enhanced logging system
+    db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL)
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -179,12 +183,21 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
         f"?locations={latitude},{longitude}"
     )
     try:
+        log_info(f"Fetching elevation for coordinates: {latitude}, {longitude}")
         response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
-        return data["results"][0]["elevation"]
+        elevation = data["results"][0]["elevation"]
+        log_info(f"Elevation retrieved: {elevation}m")
+        return elevation
+    except requests.exceptions.RequestException as exc:
+        log_warning(f"Network error fetching elevation: {exc}")
+        return None
+    except KeyError as exc:
+        log_error(f"Invalid elevation API response format: {exc}")
+        return None
     except Exception as exc:
-        log_debug(f"Elevation fetch error: {exc}")
+        log_error(f"Unexpected error fetching elevation: {exc}")
         return None
 
 
@@ -295,9 +308,8 @@ class LogEntry(BaseModel):
 
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
-    log_debug(
-        f"Received log entry from {entry.device_id}: {entry}"
-    )
+    log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL)
+    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}")
 
     now = datetime.utcnow()
     avg_speed = entry.speed
@@ -308,7 +320,7 @@ def post_log(entry: LogEntry, request: Request):
         try:
             prev_info = db_manager.get_last_bike_data_point(entry.device_id)
         except Exception as exc:
-            log_debug(f"Avg speed fetch error: {exc}")
+            log_error(f"Failed to fetch previous data point for device {entry.device_id}: {exc}")
 
     if prev_info:
         prev_ts, prev_lat, prev_lon = prev_info
@@ -317,16 +329,15 @@ def post_log(entry: LogEntry, request: Request):
             dt_sec = 2.0
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
         avg_speed = dist_km / (dt_sec / 3600)
+        log_debug(f"Calculated avg speed: {avg_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m")
 
     if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
-        log_debug(
-            f"Ignored log entry with interval {dt_sec:.1f}s and distance {dist_km * 1000.0:.1f}m"
-        )
+        log_warning(f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m")
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < 5.0:
-        log_debug(f"Ignored log entry with low avg speed: {avg_speed} km/h")
+        log_debug(f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h")
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "low speed"}
 
@@ -343,7 +354,7 @@ def post_log(entry: LogEntry, request: Request):
         freq_max=entry.freq_max if entry.freq_max is not None else 20.0,
     )
     distance_m = dist_km * 1000.0
-    log_debug(f"Calculated roughness: {roughness}")
+    log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}")
     ip_address = request.client.host if request.client else None
     
     try:
@@ -362,10 +373,11 @@ def post_log(entry: LogEntry, request: Request):
         # Update device info
         db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
         
-        log_debug("Data inserted into database")
+        log_info(f"Successfully stored data for device {entry.device_id}")
     except Exception as exc:
-        log_debug(f"Database error: {exc}")
+        log_error(f"Database error while storing data for device {entry.device_id}: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
+        
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
     return {"status": "ok", "roughness": roughness}
 
@@ -380,13 +392,17 @@ def get_logs(limit: Optional[int] = None):
     between 1 and 1000.
     """
     if limit is not None and (limit < 1 or limit > 1000):
+        log_warning(f"Invalid limit parameter: {limit}, must be between 1 and 1000")
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     
     try:
+        log_debug(f"Fetching logs with limit={limit}")
         rows, rough_avg = db_manager.get_logs(limit)
-        log_debug("Fetched logs from database")
+        log_info(f"Successfully fetched {len(rows)} log entries")
         return {"rows": rows, "average": rough_avg}
     except Exception as exc:
+        log_error(f"Failed to fetch logs: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
         log_debug(f"Database error on fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
@@ -499,7 +515,49 @@ def get_gpx(limit: Optional[int] = None):
 
 @app.get("/debuglog")
 def get_debuglog():
+    """Get in-memory debug log for compatibility."""
     return {"log": DEBUG_LOG}
+
+
+@app.get("/debuglog/enhanced")
+def get_enhanced_debuglog(
+    level: Optional[str] = Query(None, description="Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    category: Optional[str] = Query(None, description="Log category filter"),
+    limit: Optional[int] = Query(100, description="Maximum number of logs to return")
+):
+    """Get enhanced debug logs with filtering capabilities."""
+    try:
+        level_filter = None
+        if level:
+            try:
+                level_filter = LogLevel(level.upper())
+            except ValueError:
+                log_warning(f"Invalid log level filter: {level}")
+                raise HTTPException(status_code=400, detail=f"Invalid log level: {level}")
+        
+        category_filter = None
+        if category:
+            try:
+                category_filter = LogCategory(category.upper())
+            except ValueError:
+                log_warning(f"Invalid log category filter: {category}")
+                raise HTTPException(status_code=400, detail=f"Invalid log category: {category}")
+        
+        logs = db_manager.get_debug_logs(level_filter, category_filter, limit)
+        log_debug(f"Retrieved {len(logs)} enhanced debug logs with filters: level={level}, category={category}")
+        
+        return {
+            "logs": logs,
+            "total": len(logs),
+            "filters": {
+                "level": level,
+                "category": category,
+                "limit": limit
+            }
+        }
+    except Exception as exc:
+        log_error(f"Failed to retrieve enhanced debug logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
 
 
 @app.get("/manage/tables")
@@ -1048,3 +1106,63 @@ def get_last_rows(table: str, limit: int = Query(10, ge=1, le=100), dep: None = 
     except Exception as exc:
         log_debug(f"Last rows error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
+
+
+# Logging management endpoints
+class LogConfigRequest(BaseModel):
+    level: str
+    categories: Optional[List[str]] = None
+
+
+@app.post("/manage/log_config")
+def set_log_config(config: LogConfigRequest, dep: None = Depends(password_dependency)):
+    """Set logging configuration."""
+    try:
+        # Set log level
+        try:
+            level = LogLevel(config.level.upper())
+            db_manager.set_log_level(level)
+            log_info(f"Log level set to {level.value}")
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid log level: {config.level}")
+        
+        # Set log categories if provided
+        if config.categories is not None:
+            try:
+                categories = [LogCategory(cat.upper()) for cat in config.categories]
+                db_manager.set_log_categories(categories)
+                log_info(f"Log categories set to: {[cat.value for cat in categories]}")
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid log category: {e}")
+        
+        return {"status": "ok", "level": level.value, "categories": config.categories}
+    except Exception as exc:
+        log_error(f"Failed to set log config: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to set log configuration") from exc
+
+
+@app.get("/manage/log_config")
+def get_log_config(dep: None = Depends(password_dependency)):
+    """Get current logging configuration."""
+    try:
+        return {
+            "level": db_manager.log_level.value,
+            "categories": [cat.value for cat in db_manager.log_categories],
+            "available_levels": [level.value for level in LogLevel],
+            "available_categories": [cat.value for cat in LogCategory]
+        }
+    except Exception as exc:
+        log_error(f"Failed to get log config: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to get log configuration") from exc
+
+
+@app.delete("/manage/debug_logs")
+def clear_debug_logs(dep: None = Depends(password_dependency)):
+    """Clear all debug logs from the database."""
+    try:
+        count = db_manager.execute_non_query(f"DELETE FROM {TABLE_DEBUG_LOG}")
+        log_warning(f"Cleared {count} debug log entries")
+        return {"status": "ok", "deleted_count": count}
+    except Exception as exc:
+        log_error(f"Failed to clear debug logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to clear debug logs") from exc
