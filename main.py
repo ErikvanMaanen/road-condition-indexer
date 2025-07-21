@@ -15,6 +15,10 @@ from fastapi.responses import FileResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import numpy as np
 from typing import Dict, List, Optional, Tuple
+
+# Import database constants and manager
+from database import DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES
+
 try:
     from azure.identity import ClientSecretCredential
     from azure.mgmt.web import WebSiteManagementClient
@@ -502,32 +506,26 @@ def get_debuglog():
 def manage_tables(dep: None = Depends(password_dependency)):
     """Return table contents for management page."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute("SELECT name FROM sys.tables")
+        if db_manager.use_sqlserver:
+            names = db_manager.execute_query("SELECT name FROM sys.tables")
+            names = [row['name'] for row in names]
         else:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        names = [row[0] for row in cursor.fetchall()]
+            names = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table'")
+            names = [row['name'] for row in names]
+        
         tables = {}
         for name in names:
-            if USE_SQLSERVER:
-                cursor.execute(f"SELECT TOP 20 * FROM {name}")
+            if db_manager.use_sqlserver:
+                rows = db_manager.execute_query(f"SELECT TOP 20 * FROM {name}")
             else:
-                cursor.execute(f"SELECT * FROM {name} LIMIT 20")
-            cols = [c[0] for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+                rows = db_manager.execute_query(f"SELECT * FROM {name} LIMIT 20")
             tables[name] = rows
-        log_debug("Fetched table info")
+        
+        db_manager.log_debug("Fetched table info")
+        return {"tables": tables}
     except Exception as exc:
-        log_debug(f"Database info error: {exc}")
+        db_manager.log_debug(f"Database info error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"tables": tables}
 
 
 @app.get("/manage/table_rows")
@@ -537,21 +535,12 @@ def get_table_rows(table: str, dep: None = Depends(password_dependency)):
     if not name_re.match(table):
         raise HTTPException(status_code=400, detail="Invalid table name")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT * FROM {table}")
-        cols = [c[0] for c in cursor.description]
-        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-        log_debug(f"Fetched rows for {table}")
+        rows = db_manager.execute_query(f"SELECT * FROM {table}")
+        db_manager.log_debug(f"Fetched rows for {table}")
+        return {"rows": rows}
     except Exception as exc:
-        log_debug(f"Fetch table rows error: {exc}")
+        db_manager.log_debug(f"Fetch table rows error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows}
 
 
 @app.get("/manage/table_range")
@@ -561,23 +550,22 @@ def get_table_range(table: str, dep: None = Depends(password_dependency)):
     if not name_re.match(table):
         raise HTTPException(status_code=400, detail="Invalid table name")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {table}")
-        row = cursor.fetchone()
-        start, end = row if row else (None, None)
-        log_debug(f"Fetched range for {table}")
+        result = db_manager.execute_query(f"SELECT MIN(timestamp), MAX(timestamp) FROM {table}")
+        if result and len(result) > 0:
+            row = result[0]
+            # Get the values from the first row (using dict access or index)
+            min_val = list(row.values())[0] if row else None
+            max_val = list(row.values())[1] if row and len(row.values()) > 1 else None
+        else:
+            min_val, max_val = None, None
+        
+        db_manager.log_debug(f"Fetched range for {table}")
+        start_str = min_val.isoformat() if min_val else None
+        end_str = max_val.isoformat() if max_val else None
+        return {"start": start_str, "end": end_str}
     except Exception as exc:
-        log_debug(f"Range fetch error for {table}: {exc}")
+        db_manager.log_debug(f"Range fetch error for {table}: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    start_str = start.isoformat() if start else None
-    end_str = end.isoformat() if end else None
-    return {"start": start_str, "end": end_str}
 
 
 class TestdataRequest(BaseModel):
@@ -588,138 +576,60 @@ class TestdataRequest(BaseModel):
 def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependency)):
     """Insert a simple test record into a table."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if req.table == "RCI_bike_data":
-            cursor.execute(
-                """
-                INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+        if req.table == TABLE_BIKE_DATA:
+            db_manager.execute_non_query(
+                f"""
+                INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
                 VALUES (0, 0, 10, 0, 0, 0, 'test_device', '0.0.0.0')
                 """
             )
-        elif req.table == "RCI_debug_log":
-            cursor.execute(
-                "INSERT INTO RCI_debug_log (message) VALUES ('test log message')"
+        elif req.table == TABLE_DEBUG_LOG:
+            db_manager.execute_non_query(
+                f"INSERT INTO {TABLE_DEBUG_LOG} (message) VALUES ('test log message')"
             )
-        elif req.table == "RCI_device_nicknames":
-            cursor.execute(
-                """
-                INSERT INTO RCI_device_nicknames (device_id, nickname, user_agent, device_fp)
+        elif req.table == TABLE_DEVICE_NICKNAMES:
+            db_manager.execute_non_query(
+                f"""
+                INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, nickname, user_agent, device_fp)
                 VALUES ('test_device', 'Test Device', 'test_agent', 'test_fp')
                 """
             )
         else:
             raise HTTPException(status_code=400, detail="Unknown table")
-        conn.commit()
-        log_debug("Inserted test data")
+        
+        db_manager.log_debug("Inserted test data")
+        return {"status": "ok"}
     except Exception as exc:
-        log_debug(f"Testdata insert error: {exc}")
+        db_manager.log_debug(f"Testdata insert error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 @app.post("/manage/test_table")
 def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
     """Insert, read and delete two test rows for a table."""
-    uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
-    rows = []
-    conn = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if req.table == "RCI_bike_data":
-            for _ in range(2):
-                cursor.execute(
-                    """
-                    INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
-                    VALUES (0, 0, 10, 0, 0, 0, ?, '0.0.0.0')
-                    """,
-                    uid,
-                )
-            conn.commit()
-            cursor.execute(
-                "SELECT id, device_id FROM RCI_bike_data WHERE device_id = ?", uid
-            )
-            cols = [c[0] for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-            cursor.execute("DELETE FROM RCI_bike_data WHERE device_id = ?", uid)
-            conn.commit()
-        elif req.table == "RCI_debug_log":
-            for _ in range(2):
-                cursor.execute(
-                    "INSERT INTO RCI_debug_log (message) VALUES (?)",
-                    f"{uid} log",
-                )
-            conn.commit()
-            cursor.execute(
-                "SELECT id, message FROM RCI_debug_log WHERE message LIKE ?",
-                f"{uid}%",
-            )
-            cols = [c[0] for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-            cursor.execute("DELETE FROM RCI_debug_log WHERE message LIKE ?", f"{uid}%")
-            conn.commit()
-        elif req.table == "RCI_device_nicknames":
-            for idx in range(2):
-                cursor.execute(
-                    """
-                    INSERT INTO RCI_device_nicknames (device_id, nickname, user_agent, device_fp)
-                    VALUES (?, 'Test Device', 'test_agent', 'test_fp')
-                    """,
-                    f"{uid}_{idx}",
-                )
-            conn.commit()
-            cursor.execute(
-                "SELECT device_id, nickname FROM RCI_device_nicknames WHERE device_id LIKE ?",
-                f"{uid}%",
-            )
-            cols = [c[0] for c in cursor.description]
-            rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-            cursor.execute(
-                "DELETE FROM RCI_device_nicknames WHERE device_id LIKE ?",
-                f"{uid}%",
-            )
-            conn.commit()
-        else:
-            raise HTTPException(status_code=400, detail="Unknown table")
-        log_debug(f"Tested table {req.table}")
+        rows = db_manager.test_table_operations(req.table)
+        db_manager.log_debug(f"Tested table {req.table}")
+        return {"status": "ok", "rows": rows}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as exc:
-        log_debug(f"Table test error for {req.table}: {exc}")
+        db_manager.log_debug(f"Table test error for {req.table}: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-    return {"status": "ok", "rows": rows}
 
 
 @app.delete("/manage/delete_all")
 def delete_all(table: str, dep: None = Depends(password_dependency)):
     """Delete all rows from the specified table."""
-    if table not in ("RCI_bike_data", "RCI_debug_log", "RCI_device_nicknames"):
+    if table not in (TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES):
         raise HTTPException(status_code=400, detail="Unknown table")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"DELETE FROM {table}")
-        conn.commit()
-        log_debug(f"Deleted rows from {table}")
+        db_manager.execute_non_query(f"DELETE FROM {table}")
+        db_manager.log_debug(f"Deleted rows from {table}")
+        return {"status": "ok"}
     except Exception as exc:
-        log_debug(f"Delete error: {exc}")
+        db_manager.log_debug(f"Delete error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 class BackupRequest(BaseModel):
@@ -732,39 +642,16 @@ def backup_table(req: BackupRequest, dep: None = Depends(password_dependency)):
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.table):
         raise HTTPException(status_code=400, detail="Invalid table name")
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    new_table = f"{req.table}_backup_{timestamp}"
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.table)
-            exists = cursor.fetchone() is not None
-        else:
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (req.table,),
-            )
-            exists = cursor.fetchone() is not None
-        if not exists:
-            raise HTTPException(status_code=400, detail="Unknown table")
-        if USE_SQLSERVER:
-            cursor.execute(f"SELECT * INTO {new_table} FROM {req.table}")
-        else:
-            cursor.execute(f"CREATE TABLE {new_table} AS SELECT * FROM {req.table}")
-        conn.commit()
+        new_table = db_manager.backup_table(req.table)
         log_debug(f"Backed up {req.table} to {new_table}")
-    except HTTPException:
-        raise
+        return {"status": "ok", "new_table": new_table}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as exc:
         log_debug(f"Backup error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok", "new_table": new_table}
 
 
 class RenameRequest(BaseModel):
@@ -778,37 +665,16 @@ def rename_table(req: RenameRequest, dep: None = Depends(password_dependency)):
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.old_name) or not name_re.match(req.new_name):
         raise HTTPException(status_code=400, detail="Invalid table name")
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute("SELECT 1 FROM sys.tables WHERE name = ?", req.old_name)
-            exists = cursor.fetchone() is not None
-        else:
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (req.old_name,),
-            )
-            exists = cursor.fetchone() is not None
-        if not exists:
-            raise HTTPException(status_code=400, detail="Unknown table")
-        if USE_SQLSERVER:
-            cursor.execute(f"EXEC sp_rename '{req.old_name}', '{req.new_name}'")
-        else:
-            cursor.execute(f"ALTER TABLE {req.old_name} RENAME TO {req.new_name}")
-        conn.commit()
+        db_manager.rename_table(req.old_name, req.new_name)
         log_debug(f"Renamed table {req.old_name} to {req.new_name}")
-    except HTTPException:
-        raise
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as exc:
         log_debug(f"Rename error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 class RecordUpdate(BaseModel):
@@ -845,29 +711,20 @@ class SetSkuRequest(BaseModel):
 def get_record(record_id: int, dep: None = Depends(password_dependency)):
     """Return a single RCI_bike_data record by id."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM RCI_bike_data WHERE id = ?",
-            record_id,
+        result = db_manager.execute_query(
+            f"SELECT * FROM {TABLE_BIKE_DATA} WHERE id = ?",
+            (record_id,)
         )
-        row = cursor.fetchone()
-        if not row:
+        if not result:
             raise HTTPException(status_code=404, detail="Record not found")
-        columns = [c[0] for c in cursor.description]
-        result = dict(zip(columns, row))
+        
         log_debug(f"Fetched record {record_id}")
+        return result[0]
     except HTTPException:
         raise
     except Exception as exc:
         log_debug(f"Fetch record error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return result
 
 
 @app.put("/manage/update_record")
@@ -891,51 +748,42 @@ def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)
             params.append(value)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
+    
     params.append(update.id)
-    query = "UPDATE RCI_bike_data SET " + ", ".join(fields) + " WHERE id = ?"
+    query = f"UPDATE {TABLE_BIKE_DATA} SET " + ", ".join(fields) + " WHERE id = ?"
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-        if cursor.rowcount == 0:
+        affected_rows = db_manager.execute_non_query(query, tuple(params))
+        if affected_rows == 0:
             raise HTTPException(status_code=404, detail="Record not found")
-        conn.commit()
+        
         log_debug(f"Updated record {update.id}")
+        return {"status": "ok"}
     except HTTPException:
         raise
     except Exception as exc:
         log_debug(f"Update record error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 @app.delete("/manage/delete_record")
 def delete_record(record_id: int, dep: None = Depends(password_dependency)):
     """Delete a RCI_bike_data row by id."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM RCI_bike_data WHERE id = ?", record_id)
-        if cursor.rowcount == 0:
+        affected_rows = db_manager.execute_non_query(
+            f"DELETE FROM {TABLE_BIKE_DATA} WHERE id = ?",
+            (record_id,)
+        )
+        if affected_rows == 0:
             raise HTTPException(status_code=404, detail="Record not found")
-        conn.commit()
+        
         log_debug(f"Deleted record {record_id}")
+        return {"status": "ok"}
     except HTTPException:
         raise
     except Exception as exc:
         log_debug(f"Delete record error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 @app.post("/manage/merge_device_ids")
@@ -943,50 +791,45 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
     """Merge records from old device id into new id."""
     if req.old_id == req.new_id:
         raise HTTPException(status_code=400, detail="IDs must be different")
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE RCI_bike_data SET device_id = ? WHERE device_id = ?",
-            req.new_id,
-            req.old_id,
+        # Update bike data records
+        updated_bike = db_manager.execute_non_query(
+            f"UPDATE {TABLE_BIKE_DATA} SET device_id = ? WHERE device_id = ?",
+            (req.new_id, req.old_id)
         )
-        updated_bike = cursor.rowcount
-        cursor.execute(
-            "SELECT 1 FROM RCI_device_nicknames WHERE device_id = ?",
-            req.new_id,
-        )
-        new_exists = cursor.fetchone() is not None
-        cursor.execute(
-            "SELECT 1 FROM RCI_device_nicknames WHERE device_id = ?",
-            req.old_id,
-        )
-        old_exists = cursor.fetchone() is not None
+        
+        # Check if new device already has a nickname
+        new_exists = bool(db_manager.execute_scalar(
+            f"SELECT 1 FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?",
+            (req.new_id,)
+        ))
+        
+        # Check if old device has a nickname
+        old_exists = bool(db_manager.execute_scalar(
+            f"SELECT 1 FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?",
+            (req.old_id,)
+        ))
+        
         if old_exists:
             if not new_exists:
-                cursor.execute(
-                    "UPDATE RCI_device_nicknames SET device_id = ? WHERE device_id = ?",
-                    req.new_id,
-                    req.old_id,
+                # Move old nickname to new device
+                db_manager.execute_non_query(
+                    f"UPDATE {TABLE_DEVICE_NICKNAMES} SET device_id = ? WHERE device_id = ?",
+                    (req.new_id, req.old_id)
                 )
             else:
-                cursor.execute(
-                    "DELETE FROM RCI_device_nicknames WHERE device_id = ?",
-                    req.old_id,
+                # Delete old nickname (new device already has one)
+                db_manager.execute_non_query(
+                    f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?",
+                    (req.old_id,)
                 )
-        conn.commit()
+        
         log_debug(f"Merged device id {req.old_id} into {req.new_id}")
-    except HTTPException:
-        raise
+        return {"status": "ok", "bike_rows": updated_bike}
     except Exception as exc:
         log_debug(f"Merge device id error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok", "bike_rows": updated_bike}
 
 
 
@@ -1003,10 +846,9 @@ def get_filtered_records(
 ):
     """Return RCI_bike_data rows filtered by id, device and time."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "SELECT * FROM RCI_bike_data WHERE 1=1"
+        query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE 1=1"
         params = []
+        
         if ids:
             placeholders = ",".join("?" for _ in ids)
             query += f" AND id IN ({placeholders})"
@@ -1028,19 +870,13 @@ def get_filtered_records(
             if end:
                 query += " AND timestamp <= ?"
                 params.append(datetime.fromisoformat(end))
+        
         query += " ORDER BY id DESC"
-        cursor.execute(query, params)
-        cols = [c[0] for c in cursor.description]
-        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+        rows = db_manager.execute_query(query, tuple(params) if params else None)
+        return {"rows": rows}
     except Exception as exc:
         log_debug(f"Filtered record fetch error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows}
 
 
 @app.delete("/manage/delete_filtered_records")
@@ -1055,10 +891,9 @@ def delete_filtered_records(
 ):
     """Delete RCI_bike_data rows matching the given filters."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "DELETE FROM RCI_bike_data WHERE 1=1"
+        query = f"DELETE FROM {TABLE_BIKE_DATA} WHERE 1=1"
         params = []
+        
         if ids:
             placeholders = ",".join("?" for _ in ids)
             query += f" AND id IN ({placeholders})"
@@ -1080,19 +915,13 @@ def delete_filtered_records(
             if end:
                 query += " AND timestamp <= ?"
                 params.append(datetime.fromisoformat(end))
-        cursor.execute(query, params)
-        deleted = cursor.rowcount
-        conn.commit()
+        
+        deleted = db_manager.execute_non_query(query, tuple(params) if params else None)
         log_debug(f"Deleted {deleted} filtered records")
+        return {"status": "ok", "deleted": deleted}
     except Exception as exc:
         log_debug(f"Delete filtered records error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok", "deleted": deleted}
 
 
 @app.get("/manage/db_size")
@@ -1198,89 +1027,24 @@ def get_app_plan_skus(dep: None = Depends(password_dependency)):
 @app.get("/manage/table_summary")
 def get_table_summary(dep: None = Depends(password_dependency)):
     """Return record count and last update for all tables."""
-    name_re = re.compile(r"^[A-Za-z0-9_]+$")
-    tables = []
-    conn = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute("SELECT name FROM sys.tables")
-        else:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        names = [row[0] for row in cursor.fetchall()]
-        for table in names:
-            if not name_re.match(table):
-                continue
-            try:
-                if USE_SQLSERVER:
-                    cursor.execute(f"SELECT TOP 0 * FROM {table}")
-                else:
-                    cursor.execute(f"SELECT * FROM {table} LIMIT 0")
-                cols = [c[0] for c in cursor.description]
-            except Exception:
-                cols = []
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            count = int(cursor.fetchone()[0] or 0)
-            last_update = None
-            if "timestamp" in cols:
-                if USE_SQLSERVER:
-                    cursor.execute(f"SELECT TOP 1 timestamp FROM {table} ORDER BY timestamp DESC")
-                else:
-                    cursor.execute(f"SELECT timestamp FROM {table} ORDER BY timestamp DESC LIMIT 1")
-                row = cursor.fetchone()
-                if row and row[0]:
-                    last_update = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
-            tables.append({"name": table, "count": count, "last_update": last_update})
+        tables = db_manager.get_table_summary()
         log_debug("Fetched table summary")
+        return {"tables": tables}
     except Exception as exc:
         log_debug(f"Table summary error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-    return {"tables": tables}
 
 
 @app.get("/manage/last_rows")
 def get_last_rows(table: str, limit: int = Query(10, ge=1, le=100), dep: None = Depends(password_dependency)):
     """Return the latest rows from a table."""
-    name_re = re.compile(r"^[A-Za-z0-9_]+$")
-    if not name_re.match(table):
-        raise HTTPException(status_code=400, detail="Invalid table name")
-    conn = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute(f"SELECT TOP 0 * FROM {table}")
-        else:
-            cursor.execute(f"SELECT * FROM {table} LIMIT 0")
-        cols = [c[0] for c in cursor.description]
-        order_col = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
-        if order_col:
-            if USE_SQLSERVER:
-                cursor.execute(f"SELECT TOP {limit} * FROM {table} ORDER BY {order_col} DESC")
-            else:
-                cursor.execute(f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT ?", (limit,))
-        else:
-            if USE_SQLSERVER:
-                cursor.execute(f"SELECT TOP {limit} * FROM {table}")
-            else:
-                cursor.execute(f"SELECT * FROM {table} LIMIT ?", (limit,))
-        cols = [c[0] for c in cursor.description]
-        rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+        rows = db_manager.get_last_table_rows(table, limit)
         log_debug(f"Fetched last rows for {table}")
+        return {"rows": rows}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as exc:
         log_debug(f"Last rows error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-    return {"rows": rows}

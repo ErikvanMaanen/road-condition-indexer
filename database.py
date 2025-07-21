@@ -17,6 +17,21 @@ try:
 except ImportError:
     pyodbc = None
 
+# Import HTTPException for management operations
+try:
+    from fastapi import HTTPException
+except ImportError:
+    # Fallback if FastAPI not available
+    class HTTPException(Exception):
+        def __init__(self, status_code: int, detail: str):
+            self.status_code = status_code
+            self.detail = detail
+            super().__init__(detail)
+
+# Table name constants
+TABLE_BIKE_DATA = "RCI_bike_data"
+TABLE_DEBUG_LOG = "RCI_debug_log" 
+TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -118,14 +133,14 @@ class DatabaseManager:
 
     def _create_sqlserver_tables(self, cursor):
         """Create tables for SQL Server."""
-        # Create RCI_bike_data table
+        # Create bike data table
         cursor.execute(
-            """
+            f"""
             IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'RCI_bike_data'
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_BIKE_DATA}'
             )
             BEGIN
-                CREATE TABLE RCI_bike_data (
+                CREATE TABLE {TABLE_BIKE_DATA} (
                     id INT IDENTITY PRIMARY KEY,
                     timestamp DATETIME DEFAULT GETDATE(),
                     latitude FLOAT,
@@ -141,14 +156,14 @@ class DatabaseManager:
             """
         )
         
-        # Create RCI_debug_log table
+        # Create debug log table
         cursor.execute(
-            """
+            f"""
             IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'RCI_debug_log'
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_DEBUG_LOG}'
             )
             BEGIN
-                CREATE TABLE RCI_debug_log (
+                CREATE TABLE {TABLE_DEBUG_LOG} (
                     id INT IDENTITY PRIMARY KEY,
                     timestamp DATETIME DEFAULT GETDATE(),
                     message NVARCHAR(4000)
@@ -157,14 +172,14 @@ class DatabaseManager:
             """
         )
         
-        # Create RCI_device_nicknames table
+        # Create device nicknames table
         cursor.execute(
-            """
+            f"""
             IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = 'RCI_device_nicknames'
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_DEVICE_NICKNAMES}'
             )
             BEGIN
-                CREATE TABLE RCI_device_nicknames (
+                CREATE TABLE {TABLE_DEVICE_NICKNAMES} (
                     device_id NVARCHAR(100) PRIMARY KEY,
                     nickname NVARCHAR(100),
                     user_agent NVARCHAR(256),
@@ -181,74 +196,73 @@ class DatabaseManager:
         """Apply schema migrations for SQL Server."""
         # Add ip_address column if it doesn't exist
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_bike_data', 'ip_address') IS NULL
-                ALTER TABLE RCI_bike_data ADD ip_address NVARCHAR(45)
+            f"""
+            IF COL_LENGTH('{TABLE_BIKE_DATA}', 'ip_address') IS NULL
+                ALTER TABLE {TABLE_BIKE_DATA} ADD ip_address NVARCHAR(45)
             """
         )
         
         # Remove old user_agent column from bike_data
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_bike_data', 'user_agent') IS NOT NULL
-                ALTER TABLE RCI_bike_data DROP COLUMN user_agent
+            f"""
+            IF COL_LENGTH('{TABLE_BIKE_DATA}', 'user_agent') IS NOT NULL
+                ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN user_agent
             """
         )
         
         # Remove old device_fp column from bike_data
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_bike_data', 'device_fp') IS NOT NULL
-                ALTER TABLE RCI_bike_data DROP COLUMN device_fp
+            f"""
+            IF COL_LENGTH('{TABLE_BIKE_DATA}', 'device_fp') IS NOT NULL
+                ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN device_fp
             """
         )
         
         # Add distance_m column if it doesn't exist
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_bike_data', 'distance_m') IS NULL
-                ALTER TABLE RCI_bike_data ADD distance_m FLOAT
+            f"""
+            IF COL_LENGTH('{TABLE_BIKE_DATA}', 'distance_m') IS NULL
+                ALTER TABLE {TABLE_BIKE_DATA} ADD distance_m FLOAT
             """
         )
         
         # Remove old version column
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_bike_data', 'version') IS NOT NULL
+            f"""
+            IF COL_LENGTH('{TABLE_BIKE_DATA}', 'version') IS NOT NULL
             BEGIN
                 DECLARE @cons nvarchar(200);
                 SELECT @cons = dc.name
                 FROM sys.default_constraints dc
                 JOIN sys.columns c ON dc.parent_object_id = c.object_id
                         AND dc.parent_column_id = c.column_id
-                WHERE dc.parent_object_id = OBJECT_ID('RCI_bike_data')
+                WHERE dc.parent_object_id = OBJECT_ID('{TABLE_BIKE_DATA}')
                       AND c.name = 'version';
                 IF @cons IS NOT NULL
-                    EXEC('ALTER TABLE RCI_bike_data DROP CONSTRAINT ' + @cons);
-                ALTER TABLE RCI_bike_data DROP COLUMN version;
+                    EXEC('ALTER TABLE {TABLE_BIKE_DATA} DROP CONSTRAINT ' + @cons);
+                ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN version;
             END
-            """
         )
         
         # Add columns to device_nicknames if they don't exist
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_device_nicknames', 'user_agent') IS NULL
-                ALTER TABLE RCI_device_nicknames ADD user_agent NVARCHAR(256)
+            f"""
+            IF COL_LENGTH('{TABLE_DEVICE_NICKNAMES}', 'user_agent') IS NULL
+                ALTER TABLE {TABLE_DEVICE_NICKNAMES} ADD user_agent NVARCHAR(256)
             """
         )
         cursor.execute(
-            """
-            IF COL_LENGTH('RCI_device_nicknames', 'device_fp') IS NULL
-                ALTER TABLE RCI_device_nicknames ADD device_fp NVARCHAR(256)
+            f"""
+            IF COL_LENGTH('{TABLE_DEVICE_NICKNAMES}', 'device_fp') IS NULL
+                ALTER TABLE {TABLE_DEVICE_NICKNAMES} ADD device_fp NVARCHAR(256)
             """
         )
 
     def _create_sqlite_tables(self, cursor):
         """Create tables for SQLite."""
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS RCI_bike_data (
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_BIKE_DATA} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 latitude REAL,
@@ -263,8 +277,8 @@ class DatabaseManager:
             """
         )
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS RCI_debug_log (
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_DEBUG_LOG} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 message TEXT
@@ -272,8 +286,8 @@ class DatabaseManager:
             """
         )
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS RCI_device_nicknames (
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_DEVICE_NICKNAMES} (
                 device_id TEXT PRIMARY KEY,
                 nickname TEXT,
                 user_agent TEXT,
@@ -289,7 +303,7 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO RCI_debug_log (message) VALUES (?)",
+                f"INSERT INTO {TABLE_DEBUG_LOG} (message) VALUES (?)",
                 f"{timestamp} - {message}"
             )
             conn.commit()
@@ -309,7 +323,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
+                f"INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
             )
@@ -327,8 +341,8 @@ class DatabaseManager:
             cursor = conn.cursor()
             if self.use_sqlserver:
                 cursor.execute(
-                    """
-                    MERGE RCI_device_nicknames AS target
+                    f"""
+                    MERGE {TABLE_DEVICE_NICKNAMES} AS target
                     USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
                     ON target.device_id = src.device_id
                     WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
@@ -338,8 +352,8 @@ class DatabaseManager:
                 )
             else:
                 cursor.execute(
-                    """
-                    INSERT INTO RCI_device_nicknames (device_id, user_agent, device_fp)
+                    f"""
+                    INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, user_agent, device_fp)
                     VALUES (?, ?, ?)
                     ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
                     device_fp=excluded.device_fp
@@ -357,12 +371,12 @@ class DatabaseManager:
             cursor = conn.cursor()
             if self.use_sqlserver:
                 cursor.execute(
-                    "SELECT TOP 1 latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC",
+                    f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC",
                     device_id
                 )
             else:
                 cursor.execute(
-                    "SELECT latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+                    f"SELECT latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC LIMIT 1",
                     (device_id,)
                 )
             row = cursor.fetchone()
@@ -379,11 +393,11 @@ class DatabaseManager:
             cursor = conn.cursor()
             if self.use_sqlserver:
                 if limit is None:
-                    cursor.execute("SELECT * FROM RCI_bike_data ORDER BY id DESC")
+                    cursor.execute(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
                 else:
-                    cursor.execute(f"SELECT TOP {limit} * FROM RCI_bike_data ORDER BY id DESC")
+                    cursor.execute(f"SELECT TOP {limit} * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
             else:
-                query = "SELECT * FROM RCI_bike_data ORDER BY id DESC"
+                query = f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
                 if limit is None:
                     cursor.execute(query)
                 else:
@@ -392,7 +406,7 @@ class DatabaseManager:
             columns = [column[0] for column in cursor.description]
             rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
             
-            cursor.execute("SELECT AVG(roughness) FROM RCI_bike_data")
+            cursor.execute(f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA}")
             avg_row = cursor.fetchone()
             rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
             
@@ -407,7 +421,7 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            query = "SELECT * FROM RCI_bike_data WHERE 1=1"
+            query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE 1=1"
             params = []
             
             if device_ids:
@@ -430,7 +444,7 @@ class DatabaseManager:
             rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
             
             # Calculate average for filtered data
-            avg_query = "SELECT AVG(roughness) FROM RCI_bike_data WHERE 1=1"
+            avg_query = f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA} WHERE 1=1"
             avg_params = []
             if device_ids:
                 placeholders = ",".join("?" for _ in device_ids)
@@ -459,8 +473,8 @@ class DatabaseManager:
             cursor.execute(
                 """
                 SELECT DISTINCT bd.device_id, dn.nickname
-                FROM RCI_bike_data bd
-                LEFT JOIN RCI_device_nicknames dn ON bd.device_id = dn.device_id
+                FROM {TABLE_BIKE_DATA} bd
+                LEFT JOIN {TABLE_DEVICE_NICKNAMES} dn ON bd.device_id = dn.device_id
                 """
             )
             return [
@@ -474,7 +488,7 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            query = "SELECT MIN(timestamp), MAX(timestamp) FROM RCI_bike_data"
+            query = f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}"
             params = []
             if device_ids:
                 placeholders = ",".join("?" for _ in device_ids)
@@ -498,8 +512,8 @@ class DatabaseManager:
             cursor = conn.cursor()
             if self.use_sqlserver:
                 cursor.execute(
-                    """
-                    MERGE RCI_device_nicknames AS target
+                    f"""
+                    MERGE {TABLE_DEVICE_NICKNAMES} AS target
                     USING (SELECT ? AS device_id, ? AS nickname) AS src
                     ON target.device_id = src.device_id
                     WHEN MATCHED THEN UPDATE SET nickname = src.nickname
@@ -561,6 +575,302 @@ class DatabaseManager:
                     conn.close()
                 except Exception:
                     pass
+
+    def execute_query(self, query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
+        """Execute a query and return results as a list of dictionaries."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            # Get column names
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            
+            # Fetch all rows and convert to dictionaries
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows] if columns else []
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def execute_scalar(self, query: str, params: Optional[Tuple] = None) -> Any:
+        """Execute a query and return a single scalar value."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            result = cursor.fetchone()
+            return result[0] if result else None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def execute_non_query(self, query: str, params: Optional[Tuple] = None) -> int:
+        """Execute a non-query (INSERT, UPDATE, DELETE) and return affected rows."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            conn.commit()
+            return cursor.rowcount if hasattr(cursor, 'rowcount') else 0
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def execute_management_operation(self, operation_name: str, operation_func):
+        """Execute a management operation with proper error handling and logging."""
+        try:
+            result = operation_func()
+            self.log_debug(f"Management operation '{operation_name}' completed successfully")
+            return result
+        except Exception as exc:
+            self.log_debug(f"Management operation '{operation_name}' failed: {exc}")
+            raise HTTPException(status_code=500, detail="Database error") from exc
+
+    def test_table_operations(self, table_name: str) -> List[Dict[str, Any]]:
+        """Test a table by inserting, reading, and deleting test records."""
+        uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
+        
+        if table_name == TABLE_BIKE_DATA:
+            # Insert test records
+            for _ in range(2):
+                self.execute_non_query(
+                    f"""
+                    INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                    VALUES (0, 0, 10, 0, 0, 0, ?, '0.0.0.0')
+                    """,
+                    (uid,)
+                )
+            
+            # Read records
+            rows = self.execute_query(
+                f"SELECT id, device_id FROM {TABLE_BIKE_DATA} WHERE device_id = ?",
+                (uid,)
+            )
+            
+            # Delete test records
+            self.execute_non_query(
+                f"DELETE FROM {TABLE_BIKE_DATA} WHERE device_id = ?",
+                (uid,)
+            )
+            
+        elif table_name == TABLE_DEBUG_LOG:
+            # Insert test records
+            for _ in range(2):
+                self.execute_non_query(
+                    f"INSERT INTO {TABLE_DEBUG_LOG} (message) VALUES (?)",
+                    (f"{uid} log",)
+                )
+            
+            # Read records
+            rows = self.execute_query(
+                f"SELECT id, message FROM {TABLE_DEBUG_LOG} WHERE message LIKE ?",
+                (f"{uid}%",)
+            )
+            
+            # Delete test records
+            self.execute_non_query(
+                f"DELETE FROM {TABLE_DEBUG_LOG} WHERE message LIKE ?",
+                (f"{uid}%",)
+            )
+            
+        elif table_name == TABLE_DEVICE_NICKNAMES:
+            # Insert test records
+            for idx in range(2):
+                self.execute_non_query(
+                    f"""
+                    INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, nickname, user_agent, device_fp)
+                    VALUES (?, 'Test Device', 'test_agent', 'test_fp')
+                    """,
+                    (f"{uid}_{idx}",)
+                )
+            
+            # Read records
+            rows = self.execute_query(
+                f"SELECT device_id, nickname FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id LIKE ?",
+                (f"{uid}%",)
+            )
+            
+            # Delete test records
+            self.execute_non_query(
+                f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id LIKE ?",
+                (f"{uid}%",)
+            )
+        else:
+            raise ValueError("Unknown table")
+            
+        return rows
+
+    def backup_table(self, table_name: str) -> str:
+        """Create a backup copy of the given table and return the new table name."""
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        new_table = f"{table_name}_backup_{timestamp}"
+        
+        # Check if table exists
+        if self.use_sqlserver:
+            exists = self.execute_scalar(
+                "SELECT 1 FROM sys.tables WHERE name = ?",
+                (table_name,)
+            )
+        else:
+            exists = self.execute_scalar(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            )
+        
+        if not exists:
+            raise ValueError("Unknown table")
+        
+        # Create backup
+        if self.use_sqlserver:
+            self.execute_non_query(f"SELECT * INTO {new_table} FROM {table_name}")
+        else:
+            self.execute_non_query(f"CREATE TABLE {new_table} AS SELECT * FROM {table_name}")
+        
+        return new_table
+
+    def rename_table(self, old_name: str, new_name: str) -> None:
+        """Rename a table."""
+        # Check if table exists
+        if self.use_sqlserver:
+            exists = self.execute_scalar(
+                "SELECT 1 FROM sys.tables WHERE name = ?",
+                (old_name,)
+            )
+        else:
+            exists = self.execute_scalar(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (old_name,)
+            )
+        
+        if not exists:
+            raise ValueError("Unknown table")
+        
+        # Rename table
+        if self.use_sqlserver:
+            self.execute_non_query(f"EXEC sp_rename '{old_name}', '{new_name}'")
+        else:
+            self.execute_non_query(f"ALTER TABLE {old_name} RENAME TO {new_name}")
+
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists."""
+        if self.use_sqlserver:
+            return bool(self.execute_scalar(
+                "SELECT 1 FROM sys.tables WHERE name = ?",
+                (table_name,)
+            ))
+        else:
+            return bool(self.execute_scalar(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ))
+
+    def get_table_summary(self) -> List[Dict[str, Any]]:
+        """Get summary information for all tables including row count and last update."""
+        import re
+        
+        name_re = re.compile(r"^[A-Za-z0-9_]+$")
+        tables = []
+        
+        # Get all table names
+        if self.use_sqlserver:
+            table_names = self.execute_query("SELECT name FROM sys.tables")
+            names = [row['name'] for row in table_names]
+        else:
+            table_names = self.execute_query("SELECT name FROM sqlite_master WHERE type='table'")
+            names = [row['name'] for row in table_names]
+        
+        for table in names:
+            if not name_re.match(table):
+                continue
+                
+            try:
+                # Get column information
+                if self.use_sqlserver:
+                    cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table}")
+                else:
+                    cols_result = self.execute_query(f"SELECT * FROM {table} LIMIT 0")
+                
+                cols = list(cols_result[0].keys()) if cols_result else []
+                
+                # Get row count
+                count = self.execute_scalar(f"SELECT COUNT(*) FROM {table}")
+                count = int(count or 0)
+                
+                # Get last update timestamp if available
+                last_update = None
+                if "timestamp" in cols:
+                    if self.use_sqlserver:
+                        last_ts = self.execute_scalar(f"SELECT TOP 1 timestamp FROM {table} ORDER BY timestamp DESC")
+                    else:
+                        last_ts = self.execute_scalar(f"SELECT timestamp FROM {table} ORDER BY timestamp DESC LIMIT 1")
+                    
+                    if last_ts:
+                        last_update = last_ts.isoformat() if hasattr(last_ts, 'isoformat') else str(last_ts)
+                
+                tables.append({
+                    "name": table, 
+                    "count": count, 
+                    "last_update": last_update
+                })
+                
+            except Exception:
+                # Skip tables that can't be accessed
+                continue
+        
+        return tables
+
+    def get_last_table_rows(self, table_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get the latest rows from a table."""
+        import re
+        
+        name_re = re.compile(r"^[A-Za-z0-9_]+$")
+        if not name_re.match(table_name):
+            raise ValueError("Invalid table name")
+        
+        # Get column information to determine ordering
+        if self.use_sqlserver:
+            cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table_name}")
+        else:
+            cols_result = self.execute_query(f"SELECT * FROM {table_name} LIMIT 0")
+        
+        cols = list(cols_result[0].keys()) if cols_result else []
+        
+        # Determine ordering column
+        order_col = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
+        
+        # Build query
+        if order_col:
+            if self.use_sqlserver:
+                query = f"SELECT TOP {limit} * FROM {table_name} ORDER BY {order_col} DESC"
+                rows = self.execute_query(query)
+            else:
+                query = f"SELECT * FROM {table_name} ORDER BY {order_col} DESC LIMIT ?"
+                rows = self.execute_query(query, (limit,))
+        else:
+            if self.use_sqlserver:
+                query = f"SELECT TOP {limit} * FROM {table_name}"
+                rows = self.execute_query(query)
+            else:
+                query = f"SELECT * FROM {table_name} LIMIT ?"
+                rows = self.execute_query(query, (limit,))
+        
+        return rows
 
 
 # Global database manager instance
