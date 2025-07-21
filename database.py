@@ -10,7 +10,7 @@ import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 try:
     import pyodbc
@@ -242,6 +242,7 @@ class DatabaseManager:
                     EXEC('ALTER TABLE {TABLE_BIKE_DATA} DROP CONSTRAINT ' + @cons);
                 ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN version;
             END
+            """
         )
         
         # Add columns to device_nicknames if they don't exist
@@ -300,20 +301,12 @@ class DatabaseManager:
         """Insert a debug message into the debug log table."""
         timestamp = datetime.utcnow().isoformat()
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
+            self.execute_non_query(
                 f"INSERT INTO {TABLE_DEBUG_LOG} (message) VALUES (?)",
-                f"{timestamp} - {message}"
+                (f"{timestamp} - {message}",)
             )
-            conn.commit()
         except Exception:
             pass
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,
@@ -551,30 +544,31 @@ class DatabaseManager:
 
     def get_database_size(self) -> Tuple[float, Optional[float]]:
         """Return current database size and max size in GB."""
-        conn = None
         try:
             if self.use_sqlserver:
-                conn = self.get_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT SUM(size) * 8.0 / 1024 FROM sys.database_files")
-                size_mb = float(cursor.fetchone()[0] or 0)
-                cursor.execute("SELECT DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes')")
-                max_bytes = cursor.fetchone()[0]
+                # Get database size in MB
+                size_result = self.execute_scalar("SELECT SUM(CAST(size AS BIGINT)) * 8.0 / 1024 FROM sys.database_files")
+                size_mb = float(size_result or 0)
+                
+                # Get max size - use string conversion to handle ODBC type issues
+                max_size_result = self.execute_scalar("SELECT CAST(DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes') AS NVARCHAR(50))")
                 max_gb = None
-                if max_bytes not in (None, -1, 0):
-                    max_gb = max_bytes / (1024 * 1024 * 1024)
+                if max_size_result and max_size_result not in (None, -1, 0, '-1', '0'):
+                    try:
+                        max_bytes = int(str(max_size_result))
+                        if max_bytes > 0:
+                            max_gb = max_bytes / (1024 * 1024 * 1024)
+                    except (ValueError, TypeError):
+                        pass
             else:
                 db_file = BASE_DIR / "RCI_local.db"
                 size_mb = db_file.stat().st_size / (1024 * 1024)
                 max_gb = None
             
             return size_mb, max_gb
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+        except Exception:
+            # Return defaults if there's any error
+            return 0.0, None
 
     def execute_query(self, query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
         """Execute a query and return results as a list of dictionaries."""
