@@ -77,6 +77,7 @@
 </div>
 <section id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
+    <div id="wake-lock-status" style="font-size: 0.9rem; margin: 0.5rem 0;">💤 Screen may turn off</div>
     <div id="button-bar">
         <button id="toggle">Start</button>
         <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
@@ -587,6 +588,9 @@ function startGeolocation() {
         );
     }
     loggingEnabled = true;
+    
+    // Request wake lock when starting recording
+    requestWakeLock();
 }
 
 function stopGeolocation() {
@@ -599,6 +603,9 @@ function stopGeolocation() {
         navigator.geolocation.clearWatch(geoWatchId);
         geoWatchId = null;
     }
+    
+    // Release wake lock when stopping recording
+    releaseWakeLock();
 }
 
 function pollDebug() {
@@ -654,20 +661,58 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 let wakeLock = null;
+
 async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) {
+        addDebug('Wake Lock API not supported');
+        return false;
+    }
+    
     try {
         wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => addDebug('Wake lock released'));
-        addDebug('Wake lock acquired');
+        wakeLock.addEventListener('release', () => {
+            addDebug('Wake lock released');
+            updateWakeLockStatus();
+        });
+        addDebug('Wake lock acquired - screen will stay on');
+        updateWakeLockStatus();
+        return true;
     } catch (err) {
         addDebug('Wake lock error: ' + err.message);
+        updateWakeLockStatus();
+        return false;
     }
 }
 
+async function releaseWakeLock() {
+    if (wakeLock !== null) {
+        try {
+            await wakeLock.release();
+            wakeLock = null;
+            addDebug('Wake lock manually released');
+        } catch (err) {
+            addDebug('Wake lock release error: ' + err.message);
+        }
+        updateWakeLockStatus();
+    }
+}
+
+function updateWakeLockStatus() {
+    const statusElement = document.getElementById('wake-lock-status');
+    if (statusElement) {
+        const isActive = wakeLock !== null && !wakeLock.released;
+        statusElement.textContent = isActive ? '🔆 Screen locked on' : '💤 Screen may turn off';
+        statusElement.style.color = isActive ? 'green' : 'orange';
+    }
+}
+
+// Initialize wake lock status display
+updateWakeLockStatus();
+
+// Re-request wake lock when page becomes visible again (only if recording)
 if ('wakeLock' in navigator) {
-    requestWakeLock();
     document.addEventListener('visibilitychange', () => {
-        if (wakeLock !== null && document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible' && loggingEnabled && (wakeLock === null || wakeLock.released)) {
             requestWakeLock();
         }
     });
