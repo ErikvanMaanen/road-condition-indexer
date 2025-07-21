@@ -559,7 +559,7 @@ async function mergeIds() {
     alert('Merge completed');
     populateDeviceOptions();
     loadTables();
-    if(currentTable === 'bike_data') loadSelectedTable();
+    if(currentTable === 'RCI_bike_data') loadSelectedTable();
 }
 
 function buildFilterParams() {
@@ -594,12 +594,12 @@ async function loadFiltered() {
     if(!res.ok) return;
     const data = await res.json();
     const rows = data.rows || [];
-    currentTable = 'bike_data';
+    currentTable = 'RCI_bike_data';
     setCurrentColumns(rows.length > 0 ? Object.keys(rows[0]) : []);
     tableRows = rows;
     setDateLimits(rows);
     if (showTable) {
-        renderTable('bike_data', rows);
+        renderTable('RCI_bike_data', rows);
         document.getElementById('output').style.display='block';
     } else {
         document.getElementById('output').style.display='none';
@@ -629,7 +629,7 @@ function loadSelected() {
 }
 
 async function saveRecord() {
-    if(currentTable !== 'bike_data') return;
+    if(currentTable !== 'RCI_bike_data') return;
     addLog('Save Record pressed');
     const body = { id: parseInt(document.getElementById('rec-id').value,10) };
     currentColumns.forEach(col => {
@@ -650,7 +650,7 @@ async function saveRecord() {
 }
 
 async function removeRecord() {
-    if(currentTable !== 'bike_data') return;
+    if(currentTable !== 'RCI_bike_data') return;
     addLog('Delete Record pressed');
     const id = document.getElementById('rec-id').value;
     if(!id) return;

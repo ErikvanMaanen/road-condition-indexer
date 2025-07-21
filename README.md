@@ -46,8 +46,8 @@ database size and Azure App Service plan and lets you modify these settings.
 Use the **Update Records** button in the interface to reload the latest
 roughness records from the database and refresh the map.
 
-When the API starts it will automatically create the `bike_data` and
-`debug_log` tables if they do not already exist.
+When the API starts it will automatically create the `RCI_bike_data` and
+`RCI_debug_log` tables if they do not already exist.
 
 ## Roughness Pipeline
 
@@ -62,7 +62,7 @@ a roughness score of zero.
 ## Database Schema
 
 ```
-CREATE TABLE bike_data (
+CREATE TABLE RCI_bike_data (
   id INT IDENTITY PRIMARY KEY,
   timestamp DATETIME DEFAULT GETDATE(),
   latitude FLOAT,
@@ -75,13 +75,13 @@ CREATE TABLE bike_data (
   ip_address NVARCHAR(45)
 );
 
-CREATE TABLE debug_log (
+CREATE TABLE RCI_debug_log (
   id INT IDENTITY PRIMARY KEY,
   timestamp DATETIME DEFAULT GETDATE(),
   message NVARCHAR(4000)
 );
 
-CREATE TABLE device_nicknames (
+CREATE TABLE RCI_device_nicknames (
   device_id NVARCHAR(100) PRIMARY KEY,
   nickname NVARCHAR(100),
   user_agent NVARCHAR(256),

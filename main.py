@@ -182,7 +182,7 @@ def log_debug(message: str) -> None:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO debug_log (message) VALUES (?)",
+            "INSERT INTO RCI_debug_log (message) VALUES (?)",
             f"{timestamp} - {message}"
         )
         conn.commit()
@@ -200,7 +200,7 @@ def get_db_connection(database: Optional[str] = None):
 
     When the required Azure SQL environment variables are present the
     connection uses ``pyodbc``. Otherwise a local SQLite database named
-    ``local.db`` in the project directory is used. This makes the API usable
+    ``RCI_local.db`` in the project directory is used. This makes the API usable
     without any external dependencies.
     """
     if USE_SQLSERVER:
@@ -218,7 +218,7 @@ def get_db_connection(database: Optional[str] = None):
         )
         return pyodbc.connect(conn_str)
     # SQLite fallback
-    db_file = BASE_DIR / "local.db"
+    db_file = BASE_DIR / "RCI_local.db"
     return sqlite3.connect(db_file)
 
 
@@ -248,7 +248,7 @@ def ensure_database_exists() -> None:
                 pass
     else:
         # SQLite creates the database file automatically
-        db_file = BASE_DIR / "local.db"
+        db_file = BASE_DIR / "RCI_local.db"
         db_file.touch(exist_ok=True)
 
 
@@ -365,10 +365,10 @@ def init_db() -> None:
             cursor.execute(
                 """
                 IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'bike_data'
+                    SELECT 1 FROM sys.tables WHERE name = 'RCI_bike_data'
                 )
                 BEGIN
-                    CREATE TABLE bike_data (
+                    CREATE TABLE RCI_bike_data (
                         id INT IDENTITY PRIMARY KEY,
                         timestamp DATETIME DEFAULT GETDATE(),
                         latitude FLOAT,
@@ -386,10 +386,10 @@ def init_db() -> None:
             cursor.execute(
                 """
                 IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'debug_log'
+                    SELECT 1 FROM sys.tables WHERE name = 'RCI_debug_log'
                 )
                 BEGIN
-                    CREATE TABLE debug_log (
+                    CREATE TABLE RCI_debug_log (
                         id INT IDENTITY PRIMARY KEY,
                         timestamp DATETIME DEFAULT GETDATE(),
                         message NVARCHAR(4000)
@@ -399,52 +399,52 @@ def init_db() -> None:
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('bike_data', 'ip_address') IS NULL
-                    ALTER TABLE bike_data ADD ip_address NVARCHAR(45)
+                IF COL_LENGTH('RCI_bike_data', 'ip_address') IS NULL
+                    ALTER TABLE RCI_bike_data ADD ip_address NVARCHAR(45)
                 """
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('bike_data', 'user_agent') IS NOT NULL
-                    ALTER TABLE bike_data DROP COLUMN user_agent
+                IF COL_LENGTH('RCI_bike_data', 'user_agent') IS NOT NULL
+                    ALTER TABLE RCI_bike_data DROP COLUMN user_agent
                 """
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('bike_data', 'device_fp') IS NOT NULL
-                    ALTER TABLE bike_data DROP COLUMN device_fp
+                IF COL_LENGTH('RCI_bike_data', 'device_fp') IS NOT NULL
+                    ALTER TABLE RCI_bike_data DROP COLUMN device_fp
                 """
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('bike_data', 'distance_m') IS NULL
-                    ALTER TABLE bike_data ADD distance_m FLOAT
+                IF COL_LENGTH('RCI_bike_data', 'distance_m') IS NULL
+                    ALTER TABLE RCI_bike_data ADD distance_m FLOAT
                 """
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('bike_data', 'version') IS NOT NULL
+                IF COL_LENGTH('RCI_bike_data', 'version') IS NOT NULL
                 BEGIN
                     DECLARE @cons nvarchar(200);
                     SELECT @cons = dc.name
                     FROM sys.default_constraints dc
                     JOIN sys.columns c ON dc.parent_object_id = c.object_id
                             AND dc.parent_column_id = c.column_id
-                    WHERE dc.parent_object_id = OBJECT_ID('bike_data')
+                    WHERE dc.parent_object_id = OBJECT_ID('RCI_bike_data')
                           AND c.name = 'version';
                     IF @cons IS NOT NULL
-                        EXEC('ALTER TABLE bike_data DROP CONSTRAINT ' + @cons);
-                    ALTER TABLE bike_data DROP COLUMN version;
+                        EXEC('ALTER TABLE RCI_bike_data DROP CONSTRAINT ' + @cons);
+                    ALTER TABLE RCI_bike_data DROP COLUMN version;
                 END
                 """
             )
             cursor.execute(
                 """
                 IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'device_nicknames'
+                    SELECT 1 FROM sys.tables WHERE name = 'RCI_device_nicknames'
                 )
                 BEGIN
-                    CREATE TABLE device_nicknames (
+                    CREATE TABLE RCI_device_nicknames (
                         device_id NVARCHAR(100) PRIMARY KEY,
                         nickname NVARCHAR(100),
                         user_agent NVARCHAR(256),
@@ -455,20 +455,20 @@ def init_db() -> None:
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('device_nicknames', 'user_agent') IS NULL
-                    ALTER TABLE device_nicknames ADD user_agent NVARCHAR(256)
+                IF COL_LENGTH('RCI_device_nicknames', 'user_agent') IS NULL
+                    ALTER TABLE RCI_device_nicknames ADD user_agent NVARCHAR(256)
                 """
             )
             cursor.execute(
                 """
-                IF COL_LENGTH('device_nicknames', 'device_fp') IS NULL
-                    ALTER TABLE device_nicknames ADD device_fp NVARCHAR(256)
+                IF COL_LENGTH('RCI_device_nicknames', 'device_fp') IS NULL
+                    ALTER TABLE RCI_device_nicknames ADD device_fp NVARCHAR(256)
                 """
             )
         else:
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS bike_data (
+                CREATE TABLE IF NOT EXISTS RCI_bike_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     latitude REAL,
@@ -484,7 +484,7 @@ def init_db() -> None:
             )
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS debug_log (
+                CREATE TABLE IF NOT EXISTS RCI_debug_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     message TEXT
@@ -493,7 +493,7 @@ def init_db() -> None:
             )
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS device_nicknames (
+                CREATE TABLE IF NOT EXISTS RCI_device_nicknames (
                     device_id TEXT PRIMARY KEY,
                     nickname TEXT,
                     user_agent TEXT,
@@ -542,12 +542,12 @@ def post_log(entry: LogEntry, request: Request):
             cursor = conn.cursor()
             if USE_SQLSERVER:
                 cursor.execute(
-                    "SELECT TOP 1 latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC",
+                    "SELECT TOP 1 latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC",
                     entry.device_id,
                 )
             else:
                 cursor.execute(
-                    "SELECT latitude, longitude, timestamp FROM bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+                    "SELECT latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
                     (entry.device_id,),
                 )
             row = cursor.fetchone()
@@ -601,7 +601,7 @@ def post_log(entry: LogEntry, request: Request):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
+            "INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.latitude,
@@ -620,7 +620,7 @@ def post_log(entry: LogEntry, request: Request):
         if USE_SQLSERVER:
             cursor.execute(
                 """
-                MERGE device_nicknames AS target
+                MERGE RCI_device_nicknames AS target
                 USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
                 ON target.device_id = src.device_id
                 WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
@@ -633,7 +633,7 @@ def post_log(entry: LogEntry, request: Request):
         else:
             cursor.execute(
                 """
-                INSERT INTO device_nicknames (device_id, user_agent, device_fp)
+                INSERT INTO RCI_device_nicknames (device_id, user_agent, device_fp)
                 VALUES (?, ?, ?)
                 ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
                 device_fp=excluded.device_fp
@@ -670,18 +670,18 @@ def get_logs(limit: Optional[int] = None):
         cursor = conn.cursor()
         if USE_SQLSERVER:
             if limit is None:
-                cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+                cursor.execute("SELECT * FROM RCI_bike_data ORDER BY id DESC")
             else:
-                cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+                cursor.execute(f"SELECT TOP {limit} * FROM RCI_bike_data ORDER BY id DESC")
         else:
-            query = "SELECT * FROM bike_data ORDER BY id DESC"
+            query = "SELECT * FROM RCI_bike_data ORDER BY id DESC"
             if limit is None:
                 cursor.execute(query)
             else:
                 cursor.execute(query + " LIMIT ?", (limit,))
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.execute("SELECT AVG(roughness) FROM bike_data")
+        cursor.execute("SELECT AVG(roughness) FROM RCI_bike_data")
         avg_row = cursor.fetchone()
         rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
         log_debug("Fetched logs from database")
@@ -706,7 +706,7 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "SELECT * FROM bike_data WHERE 1=1"
+        query = "SELECT * FROM RCI_bike_data WHERE 1=1"
         params = []
         if device_id:
             placeholders = ",".join("?" for _ in device_id)
@@ -726,7 +726,7 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
         cursor.execute(query, params)
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        avg_query = "SELECT AVG(roughness) FROM bike_data WHERE 1=1"
+        avg_query = "SELECT AVG(roughness) FROM RCI_bike_data WHERE 1=1"
         avg_params = []
         if device_id:
             placeholders = ",".join("?" for _ in device_id)
@@ -764,8 +764,8 @@ def get_device_ids():
         cursor.execute(
             """
             SELECT DISTINCT bd.device_id, dn.nickname
-            FROM bike_data bd
-            LEFT JOIN device_nicknames dn ON bd.device_id = dn.device_id
+            FROM RCI_bike_data bd
+            LEFT JOIN RCI_device_nicknames dn ON bd.device_id = dn.device_id
             """
         )
         ids = [
@@ -789,7 +789,7 @@ def get_date_range(device_id: Optional[List[str]] = Query(None)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "SELECT MIN(timestamp), MAX(timestamp) FROM bike_data"
+        query = "SELECT MIN(timestamp), MAX(timestamp) FROM RCI_bike_data"
         params = []
         if device_id:
             placeholders = ",".join("?" for _ in device_id)
@@ -826,7 +826,7 @@ def set_nickname(entry: NicknameEntry):
         if USE_SQLSERVER:
             cursor.execute(
                 """
-                MERGE device_nicknames AS target
+                MERGE RCI_device_nicknames AS target
                 USING (SELECT ? AS device_id, ? AS nickname) AS src
                 ON target.device_id = src.device_id
                 WHEN MATCHED THEN UPDATE SET nickname = src.nickname
@@ -839,7 +839,7 @@ def set_nickname(entry: NicknameEntry):
         else:
             cursor.execute(
                 """
-                INSERT INTO device_nicknames (device_id, nickname)
+                INSERT INTO RCI_device_nicknames (device_id, nickname)
                 VALUES (?, ?)
                 ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname
                 """,
@@ -865,7 +865,7 @@ def get_nickname(device_id: str):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT nickname FROM device_nicknames WHERE device_id = ?",
+            "SELECT nickname FROM RCI_device_nicknames WHERE device_id = ?",
             device_id,
         )
         row = cursor.fetchone()
@@ -892,11 +892,11 @@ def get_gpx(limit: Optional[int] = None):
         cursor = conn.cursor()
         if USE_SQLSERVER:
             if limit is None:
-                cursor.execute("SELECT * FROM bike_data ORDER BY id DESC")
+                cursor.execute("SELECT * FROM RCI_bike_data ORDER BY id DESC")
             else:
-                cursor.execute(f"SELECT TOP {limit} * FROM bike_data ORDER BY id DESC")
+                cursor.execute(f"SELECT TOP {limit} * FROM RCI_bike_data ORDER BY id DESC")
         else:
-            query = "SELECT * FROM bike_data ORDER BY id DESC"
+            query = "SELECT * FROM RCI_bike_data ORDER BY id DESC"
             if limit is None:
                 cursor.execute(query)
             else:
@@ -1029,21 +1029,21 @@ def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependenc
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if req.table == "bike_data":
+        if req.table == "RCI_bike_data":
             cursor.execute(
                 """
-                INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
                 VALUES (0, 0, 10, 0, 0, 0, 'test_device', '0.0.0.0')
                 """
             )
-        elif req.table == "debug_log":
+        elif req.table == "RCI_debug_log":
             cursor.execute(
-                "INSERT INTO debug_log (message) VALUES ('test log message')"
+                "INSERT INTO RCI_debug_log (message) VALUES ('test log message')"
             )
-        elif req.table == "device_nicknames":
+        elif req.table == "RCI_device_nicknames":
             cursor.execute(
                 """
-                INSERT INTO device_nicknames (device_id, nickname, user_agent, device_fp)
+                INSERT INTO RCI_device_nicknames (device_id, nickname, user_agent, device_fp)
                 VALUES ('test_device', 'Test Device', 'test_agent', 'test_fp')
                 """
             )
@@ -1071,56 +1071,56 @@ def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        if req.table == "bike_data":
+        if req.table == "RCI_bike_data":
             for _ in range(2):
                 cursor.execute(
                     """
-                    INSERT INTO bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
+                    INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
                     VALUES (0, 0, 10, 0, 0, 0, ?, '0.0.0.0')
                     """,
                     uid,
                 )
             conn.commit()
             cursor.execute(
-                "SELECT id, device_id FROM bike_data WHERE device_id = ?", uid
+                "SELECT id, device_id FROM RCI_bike_data WHERE device_id = ?", uid
             )
             cols = [c[0] for c in cursor.description]
             rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-            cursor.execute("DELETE FROM bike_data WHERE device_id = ?", uid)
+            cursor.execute("DELETE FROM RCI_bike_data WHERE device_id = ?", uid)
             conn.commit()
-        elif req.table == "debug_log":
+        elif req.table == "RCI_debug_log":
             for _ in range(2):
                 cursor.execute(
-                    "INSERT INTO debug_log (message) VALUES (?)",
+                    "INSERT INTO RCI_debug_log (message) VALUES (?)",
                     f"{uid} log",
                 )
             conn.commit()
             cursor.execute(
-                "SELECT id, message FROM debug_log WHERE message LIKE ?",
+                "SELECT id, message FROM RCI_debug_log WHERE message LIKE ?",
                 f"{uid}%",
             )
             cols = [c[0] for c in cursor.description]
             rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
-            cursor.execute("DELETE FROM debug_log WHERE message LIKE ?", f"{uid}%")
+            cursor.execute("DELETE FROM RCI_debug_log WHERE message LIKE ?", f"{uid}%")
             conn.commit()
-        elif req.table == "device_nicknames":
+        elif req.table == "RCI_device_nicknames":
             for idx in range(2):
                 cursor.execute(
                     """
-                    INSERT INTO device_nicknames (device_id, nickname, user_agent, device_fp)
+                    INSERT INTO RCI_device_nicknames (device_id, nickname, user_agent, device_fp)
                     VALUES (?, 'Test Device', 'test_agent', 'test_fp')
                     """,
                     f"{uid}_{idx}",
                 )
             conn.commit()
             cursor.execute(
-                "SELECT device_id, nickname FROM device_nicknames WHERE device_id LIKE ?",
+                "SELECT device_id, nickname FROM RCI_device_nicknames WHERE device_id LIKE ?",
                 f"{uid}%",
             )
             cols = [c[0] for c in cursor.description]
             rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
             cursor.execute(
-                "DELETE FROM device_nicknames WHERE device_id LIKE ?",
+                "DELETE FROM RCI_device_nicknames WHERE device_id LIKE ?",
                 f"{uid}%",
             )
             conn.commit()
@@ -1142,7 +1142,7 @@ def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
 @app.delete("/manage/delete_all")
 def delete_all(table: str, dep: None = Depends(password_dependency)):
     """Delete all rows from the specified table."""
-    if table not in ("bike_data", "debug_log", "device_nicknames"):
+    if table not in ("RCI_bike_data", "RCI_debug_log", "RCI_device_nicknames"):
         raise HTTPException(status_code=400, detail="Unknown table")
     try:
         conn = get_db_connection()
@@ -1251,7 +1251,7 @@ def rename_table(req: RenameRequest, dep: None = Depends(password_dependency)):
 
 
 class RecordUpdate(BaseModel):
-    """Data model for updating a bike_data row."""
+    """Data model for updating a RCI_bike_data row."""
     id: int
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -1282,12 +1282,12 @@ class SetSkuRequest(BaseModel):
 
 @app.get("/manage/record")
 def get_record(record_id: int, dep: None = Depends(password_dependency)):
-    """Return a single bike_data record by id."""
+    """Return a single RCI_bike_data record by id."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM bike_data WHERE id = ?",
+            "SELECT * FROM RCI_bike_data WHERE id = ?",
             record_id,
         )
         row = cursor.fetchone()
@@ -1311,7 +1311,7 @@ def get_record(record_id: int, dep: None = Depends(password_dependency)):
 
 @app.put("/manage/update_record")
 def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)):
-    """Update fields of a bike_data row."""
+    """Update fields of a RCI_bike_data row."""
     fields = []
     params = []
     for column in (
@@ -1331,7 +1331,7 @@ def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     params.append(update.id)
-    query = "UPDATE bike_data SET " + ", ".join(fields) + " WHERE id = ?"
+    query = "UPDATE RCI_bike_data SET " + ", ".join(fields) + " WHERE id = ?"
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1355,11 +1355,11 @@ def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)
 
 @app.delete("/manage/delete_record")
 def delete_record(record_id: int, dep: None = Depends(password_dependency)):
-    """Delete a bike_data row by id."""
+    """Delete a RCI_bike_data row by id."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM bike_data WHERE id = ?", record_id)
+        cursor.execute("DELETE FROM RCI_bike_data WHERE id = ?", record_id)
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Record not found")
         conn.commit()
@@ -1386,31 +1386,31 @@ def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_depen
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE bike_data SET device_id = ? WHERE device_id = ?",
+            "UPDATE RCI_bike_data SET device_id = ? WHERE device_id = ?",
             req.new_id,
             req.old_id,
         )
         updated_bike = cursor.rowcount
         cursor.execute(
-            "SELECT 1 FROM device_nicknames WHERE device_id = ?",
+            "SELECT 1 FROM RCI_device_nicknames WHERE device_id = ?",
             req.new_id,
         )
         new_exists = cursor.fetchone() is not None
         cursor.execute(
-            "SELECT 1 FROM device_nicknames WHERE device_id = ?",
+            "SELECT 1 FROM RCI_device_nicknames WHERE device_id = ?",
             req.old_id,
         )
         old_exists = cursor.fetchone() is not None
         if old_exists:
             if not new_exists:
                 cursor.execute(
-                    "UPDATE device_nicknames SET device_id = ? WHERE device_id = ?",
+                    "UPDATE RCI_device_nicknames SET device_id = ? WHERE device_id = ?",
                     req.new_id,
                     req.old_id,
                 )
             else:
                 cursor.execute(
-                    "DELETE FROM device_nicknames WHERE device_id = ?",
+                    "DELETE FROM RCI_device_nicknames WHERE device_id = ?",
                     req.old_id,
                 )
         conn.commit()
@@ -1440,11 +1440,11 @@ def get_filtered_records(
     end_id: Optional[int] = Query(None),
     dep: None = Depends(password_dependency),
 ):
-    """Return bike_data rows filtered by id, device and time."""
+    """Return RCI_bike_data rows filtered by id, device and time."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "SELECT * FROM bike_data WHERE 1=1"
+        query = "SELECT * FROM RCI_bike_data WHERE 1=1"
         params = []
         if ids:
             placeholders = ",".join("?" for _ in ids)
@@ -1492,11 +1492,11 @@ def delete_filtered_records(
     end_id: Optional[int] = Query(None),
     dep: None = Depends(password_dependency),
 ):
-    """Delete bike_data rows matching the given filters."""
+    """Delete RCI_bike_data rows matching the given filters."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "DELETE FROM bike_data WHERE 1=1"
+        query = "DELETE FROM RCI_bike_data WHERE 1=1"
         params = []
         if ids:
             placeholders = ",".join("?" for _ in ids)
@@ -1550,7 +1550,7 @@ def get_db_size(dep: None = Depends(password_dependency)):
             if max_bytes not in (None, -1, 0):
                 max_gb = float(max_bytes) / (1024 ** 3)
         else:
-            db_file = BASE_DIR / "local.db"
+            db_file = BASE_DIR / "RCI_local.db"
             size_mb = db_file.stat().st_size / (1024 * 1024)
             max_gb = None
     except Exception as exc:
