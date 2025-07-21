@@ -81,9 +81,6 @@
     <span>Rough</span>
 </div>
 <section id="controls" style="margin-bottom:1rem;">
-    <input id="nickname" placeholder="Nickname">
-    <button id="save-nickname">Save</button>
-    <button id="load">Load</button>
     <button id="gpx-button">Generate GPX</button>
     <a id="gpx-link" style="display:none;">Download GPX</a>
     <div id="loading" style="display:none; margin-top:1rem;">
@@ -103,7 +100,6 @@ const currentDeviceId = localStorage.getItem('deviceId');
 let selectedIds = [];
 let map;
 let deviceNicknames = {};
-let currentNickname = '';
 let roughMin = 0;
 const LABEL_COUNT = 10;
 const ROUGHNESS_NAMES = [
@@ -152,7 +148,6 @@ function populateDeviceIds() {
         selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
     }).then(() =>
         setDateRange().then(() => {
-            loadNickname();
             loadData();
         })
     ).catch(console.error);
@@ -176,24 +171,6 @@ function setDateRange() {
     }).catch(console.error);
 }
 
-function loadNickname() {
-    const sel = document.getElementById('deviceId');
-    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
-    if (ids.length !== 1) {
-        document.getElementById('nickname').value = '';
-        currentNickname = '';
-        return;
-    }
-    const id = ids[0];
-    fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
-        .then(r => r.json())
-        .then(data => {
-            currentNickname = data.nickname || '';
-            document.getElementById('nickname').value = currentNickname;
-        })
-        .catch(console.error);
-}
-
 function syncRanges() {
     const startVal = Date.parse(document.getElementById('startDate').value);
     const endVal = Date.parse(document.getElementById('endDate').value);
@@ -204,19 +181,6 @@ function syncRanges() {
         endR.min = sliderMin; endR.max = sliderMax;
         startR.value = startVal; endR.value = endVal;
     }
-}
-
-function saveNickname() {
-    const sel = document.getElementById('deviceId');
-    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
-    const name = document.getElementById('nickname').value;
-    if (ids.length !== 1) return;
-    fetch('/nickname', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: ids[0], nickname: name })
-    }).then(() => populateDeviceIds())
-      .catch(console.error);
 }
 
 function initMap() {
@@ -444,21 +408,12 @@ function loadData() {
 initMap();
 populateDeviceIds();
 syncRanges();
-document.getElementById('load').addEventListener('click', () => {
-    addLog('Load pressed');
-    loadData();
-});
 document.getElementById('deviceId').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
         .map(o => o.value).filter(v => v);
     setDateRange().then(loadData);
-    loadNickname();
 });
 document.getElementById('roughness-filter').addEventListener('change', loadData);
-document.getElementById('save-nickname').addEventListener('click', () => {
-    addLog('Save Nickname pressed');
-    saveNickname();
-});
 document.getElementById('gpx-button').addEventListener('click', () => {
     addLog('Generate GPX pressed');
     generateGpx();

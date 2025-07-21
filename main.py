@@ -14,8 +14,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import numpy as np
-import pyodbc
-import sqlite3
 from typing import Dict, List, Optional, Tuple
 try:
     from azure.identity import ClientSecretCredential
@@ -27,20 +25,9 @@ except Exception:  # pragma: no cover - optional deps
     WebSiteManagementClient = None
     SqlManagementClient = None
 
-BASE_DIR = Path(__file__).resolve().parent
+from database import db_manager
 
-# Use SQL Server when environment variables are provided, otherwise fall back
-# to a local SQLite database for development and testing.
-USE_SQLSERVER = all(
-    os.getenv(var)
-    for var in (
-        "AZURE_SQL_SERVER",
-        "AZURE_SQL_PORT",
-        "AZURE_SQL_USER",
-        "AZURE_SQL_PASSWORD",
-        "AZURE_SQL_DATABASE",
-    )
-) and bool(pyodbc.drivers())
+BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="Road Condition Indexer")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -126,7 +113,7 @@ def read_index(request: Request):
     """Serve the main application page and ensure DB is ready."""
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/")
-    init_db()
+    db_manager.init_tables()
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
@@ -178,78 +165,7 @@ def log_debug(message: str) -> None:
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO RCI_debug_log (message) VALUES (?)",
-            f"{timestamp} - {message}"
-        )
-        conn.commit()
-    except Exception:
-        pass
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
-def get_db_connection(database: Optional[str] = None):
-    """Return a database connection.
-
-    When the required Azure SQL environment variables are present the
-    connection uses ``pyodbc``. Otherwise a local SQLite database named
-    ``RCI_local.db`` in the project directory is used. This makes the API usable
-    without any external dependencies.
-    """
-    if USE_SQLSERVER:
-        server = os.getenv("AZURE_SQL_SERVER")
-        port = os.getenv("AZURE_SQL_PORT")
-        user = os.getenv("AZURE_SQL_USER")
-        password = os.getenv("AZURE_SQL_PASSWORD")
-        db_name = database or os.getenv("AZURE_SQL_DATABASE")
-        conn_str = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"SERVER={server},{port};"
-            f"DATABASE={db_name};"
-            f"UID={user};"
-            f"PWD={password}"
-        )
-        return pyodbc.connect(conn_str)
-    # SQLite fallback
-    db_file = BASE_DIR / "RCI_local.db"
-    return sqlite3.connect(db_file)
-
-
-def ensure_database_exists() -> None:
-    """Ensure the configured database exists."""
-    if USE_SQLSERVER:
-        server = os.getenv("AZURE_SQL_SERVER")
-        port = os.getenv("AZURE_SQL_PORT")
-        user = os.getenv("AZURE_SQL_USER")
-        password = os.getenv("AZURE_SQL_PASSWORD")
-        database = os.getenv("AZURE_SQL_DATABASE")
-
-        conn = get_db_connection("master")
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT database_id FROM sys.databases WHERE name = ?",
-                database,
-            )
-            if not cursor.fetchone():
-                cursor.execute(f"CREATE DATABASE [{database}]")
-                conn.commit()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-    else:
-        # SQLite creates the database file automatically
-        db_file = BASE_DIR / "RCI_local.db"
-        db_file.touch(exist_ok=True)
+    db_manager.log_debug(message)
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -355,161 +271,9 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 
 @app.on_event("startup")
-def init_db() -> None:
-    """Ensure that required tables exist."""
-    try:
-        ensure_database_exists()
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute(
-                """
-                IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'RCI_bike_data'
-                )
-                BEGIN
-                    CREATE TABLE RCI_bike_data (
-                        id INT IDENTITY PRIMARY KEY,
-                        timestamp DATETIME DEFAULT GETDATE(),
-                        latitude FLOAT,
-                        longitude FLOAT,
-                        speed FLOAT,
-                        direction FLOAT,
-                        roughness FLOAT,
-                        distance_m FLOAT,
-                        device_id NVARCHAR(100),
-                        ip_address NVARCHAR(45)
-                    )
-                END
-                """
-            )
-            cursor.execute(
-                """
-                IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'RCI_debug_log'
-                )
-                BEGIN
-                    CREATE TABLE RCI_debug_log (
-                        id INT IDENTITY PRIMARY KEY,
-                        timestamp DATETIME DEFAULT GETDATE(),
-                        message NVARCHAR(4000)
-                    )
-                END
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_bike_data', 'ip_address') IS NULL
-                    ALTER TABLE RCI_bike_data ADD ip_address NVARCHAR(45)
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_bike_data', 'user_agent') IS NOT NULL
-                    ALTER TABLE RCI_bike_data DROP COLUMN user_agent
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_bike_data', 'device_fp') IS NOT NULL
-                    ALTER TABLE RCI_bike_data DROP COLUMN device_fp
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_bike_data', 'distance_m') IS NULL
-                    ALTER TABLE RCI_bike_data ADD distance_m FLOAT
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_bike_data', 'version') IS NOT NULL
-                BEGIN
-                    DECLARE @cons nvarchar(200);
-                    SELECT @cons = dc.name
-                    FROM sys.default_constraints dc
-                    JOIN sys.columns c ON dc.parent_object_id = c.object_id
-                            AND dc.parent_column_id = c.column_id
-                    WHERE dc.parent_object_id = OBJECT_ID('RCI_bike_data')
-                          AND c.name = 'version';
-                    IF @cons IS NOT NULL
-                        EXEC('ALTER TABLE RCI_bike_data DROP CONSTRAINT ' + @cons);
-                    ALTER TABLE RCI_bike_data DROP COLUMN version;
-                END
-                """
-            )
-            cursor.execute(
-                """
-                IF NOT EXISTS (
-                    SELECT 1 FROM sys.tables WHERE name = 'RCI_device_nicknames'
-                )
-                BEGIN
-                    CREATE TABLE RCI_device_nicknames (
-                        device_id NVARCHAR(100) PRIMARY KEY,
-                        nickname NVARCHAR(100),
-                        user_agent NVARCHAR(256),
-                        device_fp NVARCHAR(256)
-                    )
-                END
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_device_nicknames', 'user_agent') IS NULL
-                    ALTER TABLE RCI_device_nicknames ADD user_agent NVARCHAR(256)
-                """
-            )
-            cursor.execute(
-                """
-                IF COL_LENGTH('RCI_device_nicknames', 'device_fp') IS NULL
-                    ALTER TABLE RCI_device_nicknames ADD device_fp NVARCHAR(256)
-                """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS RCI_bike_data (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    latitude REAL,
-                    longitude REAL,
-                    speed REAL,
-                    direction REAL,
-                    roughness REAL,
-                    distance_m REAL,
-                    device_id TEXT,
-                    ip_address TEXT
-                )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS RCI_debug_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    message TEXT
-                )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS RCI_device_nicknames (
-                    device_id TEXT PRIMARY KEY,
-                    nickname TEXT,
-                    user_agent TEXT,
-                    device_fp TEXT
-                )
-                """
-            )
-        conn.commit()
-        log_debug("Ensured database tables exist")
-    except Exception as exc:
-        log_debug(f"Database init error: {exc}")
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+def startup_init():
+    """Initialize the database on startup."""
+    db_manager.init_tables()
 
 
 class LogEntry(BaseModel):
@@ -538,29 +302,9 @@ def post_log(entry: LogEntry, request: Request):
     prev_info = LAST_POINT.get(entry.device_id)
     if not prev_info:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            if USE_SQLSERVER:
-                cursor.execute(
-                    "SELECT TOP 1 latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC",
-                    entry.device_id,
-                )
-            else:
-                cursor.execute(
-                    "SELECT latitude, longitude, timestamp FROM RCI_bike_data WHERE device_id = ? ORDER BY id DESC LIMIT 1",
-                    (entry.device_id,),
-                )
-            row = cursor.fetchone()
-            if row:
-                prev_lat, prev_lon, prev_ts = row
-                prev_info = (prev_ts, prev_lat, prev_lon)
+            prev_info = db_manager.get_last_bike_data_point(entry.device_id)
         except Exception as exc:
             log_debug(f"Avg speed fetch error: {exc}")
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
     if prev_info:
         prev_ts, prev_lat, prev_lon = prev_info
@@ -597,59 +341,27 @@ def post_log(entry: LogEntry, request: Request):
     distance_m = dist_km * 1000.0
     log_debug(f"Calculated roughness: {roughness}")
     ip_address = request.client.host if request.client else None
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO RCI_bike_data (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                entry.latitude,
-                entry.longitude,
-                entry.speed,
-                entry.direction,
-                roughness,
-                distance_m,
-                entry.device_id,
-                ip_address,
-            ),
+        # Insert bike data
+        db_manager.insert_bike_data(
+            entry.latitude,
+            entry.longitude,
+            entry.speed,
+            entry.direction,
+            roughness,
+            distance_m,
+            entry.device_id,
+            ip_address
         )
-        if USE_SQLSERVER and cursor.rowcount != 1:
-            log_debug(f"Insert affected {cursor.rowcount} rows")
-            raise HTTPException(status_code=500, detail="Insert failed")
-        if USE_SQLSERVER:
-            cursor.execute(
-                """
-                MERGE RCI_device_nicknames AS target
-                USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
-                ON target.device_id = src.device_id
-                WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
-                WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-                """,
-                entry.device_id,
-                entry.user_agent,
-                entry.device_fp,
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO RCI_device_nicknames (device_id, user_agent, device_fp)
-                VALUES (?, ?, ?)
-                ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
-                device_fp=excluded.device_fp
-                """,
-                (entry.device_id, entry.user_agent, entry.device_fp),
-            )
-        conn.commit()
+        
+        # Update device info
+        db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
+        
         log_debug("Data inserted into database")
     except Exception as exc:
         log_debug(f"Database error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
     return {"status": "ok", "roughness": roughness}
 
@@ -665,35 +377,14 @@ def get_logs(limit: Optional[int] = None):
     """
     if limit is not None and (limit < 1 or limit > 1000):
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            if limit is None:
-                cursor.execute("SELECT * FROM RCI_bike_data ORDER BY id DESC")
-            else:
-                cursor.execute(f"SELECT TOP {limit} * FROM RCI_bike_data ORDER BY id DESC")
-        else:
-            query = "SELECT * FROM RCI_bike_data ORDER BY id DESC"
-            if limit is None:
-                cursor.execute(query)
-            else:
-                cursor.execute(query + " LIMIT ?", (limit,))
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.execute("SELECT AVG(roughness) FROM RCI_bike_data")
-        avg_row = cursor.fetchone()
-        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
+        rows, rough_avg = db_manager.get_logs(limit)
         log_debug("Fetched logs from database")
+        return {"rows": rows, "average": rough_avg}
     except Exception as exc:
         log_debug(f"Database error on fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows, "average": rough_avg}
 
 
 
@@ -704,53 +395,15 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                       end: Optional[str] = None):
     """Return log entries filtered by device ID and date range."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "SELECT * FROM RCI_bike_data WHERE 1=1"
-        params = []
-        if device_id:
-            placeholders = ",".join("?" for _ in device_id)
-            query += f" AND device_id IN ({placeholders})"
-            params.extend(device_id)
-        start_dt = None
-        end_dt = None
-        if start:
-            start_dt = datetime.fromisoformat(start)
-            query += " AND timestamp >= ?"
-            params.append(start_dt)
-        if end:
-            end_dt = datetime.fromisoformat(end)
-            query += " AND timestamp <= ?"
-            params.append(end_dt)
-        query += " ORDER BY id DESC"
-        cursor.execute(query, params)
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        avg_query = "SELECT AVG(roughness) FROM RCI_bike_data WHERE 1=1"
-        avg_params = []
-        if device_id:
-            placeholders = ",".join("?" for _ in device_id)
-            avg_query += f" AND device_id IN ({placeholders})"
-            avg_params.extend(device_id)
-        if start:
-            avg_query += " AND timestamp >= ?"
-            avg_params.append(start_dt)
-        if end:
-            avg_query += " AND timestamp <= ?"
-            avg_params.append(end_dt)
-        cursor.execute(avg_query, avg_params)
-        avg_row = cursor.fetchone()
-        rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
+        start_dt = datetime.fromisoformat(start) if start else None
+        end_dt = datetime.fromisoformat(end) if end else None
+        
+        rows, rough_avg = db_manager.get_filtered_logs(device_id, start_dt, end_dt)
         log_debug("Fetched filtered logs from database")
+        return {"rows": rows, "average": rough_avg}
     except Exception as exc:
         log_debug(f"Database error on filtered fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"rows": rows, "average": rough_avg}
 
 
 
@@ -759,57 +412,24 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
 def get_device_ids():
     """Return list of unique device IDs with optional nicknames."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT DISTINCT bd.device_id, dn.nickname
-            FROM RCI_bike_data bd
-            LEFT JOIN RCI_device_nicknames dn ON bd.device_id = dn.device_id
-            """
-        )
-        ids = [
-            {"id": row[0], "nickname": row[1]} for row in cursor.fetchall() if row[0]
-        ]
+        ids = db_manager.get_device_ids_with_nicknames()
         log_debug("Fetched unique device ids")
+        return {"ids": ids}
     except Exception as exc:
         log_debug(f"Database error on id fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"ids": ids}
 
 
 @app.get("/date_range")
 def get_date_range(device_id: Optional[List[str]] = Query(None)):
     """Return the oldest and newest timestamps, optionally filtered by device."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "SELECT MIN(timestamp), MAX(timestamp) FROM RCI_bike_data"
-        params = []
-        if device_id:
-            placeholders = ",".join("?" for _ in device_id)
-            query += f" WHERE device_id IN ({placeholders})"
-            params.extend(device_id)
-        cursor.execute(query, params)
-        row = cursor.fetchone()
-        start, end = row if row else (None, None)
+        start_str, end_str = db_manager.get_date_range(device_id)
         log_debug("Fetched date range")
+        return {"start": start_str, "end": end_str}
     except Exception as exc:
         log_debug(f"Database error on range fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    start_str = start.isoformat() if start else None
-    end_str = end.isoformat() if end else None
-    return {"start": start_str, "end": end_str}
 
 
 class NicknameEntry(BaseModel):
@@ -821,65 +441,24 @@ class NicknameEntry(BaseModel):
 def set_nickname(entry: NicknameEntry):
     """Set or update a nickname for a device."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            cursor.execute(
-                """
-                MERGE RCI_device_nicknames AS target
-                USING (SELECT ? AS device_id, ? AS nickname) AS src
-                ON target.device_id = src.device_id
-                WHEN MATCHED THEN UPDATE SET nickname = src.nickname
-                WHEN NOT MATCHED THEN INSERT (device_id, nickname)
-                VALUES (src.device_id, src.nickname);
-                """,
-                entry.device_id,
-                entry.nickname,
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO RCI_device_nicknames (device_id, nickname)
-                VALUES (?, ?)
-                ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname
-                """,
-                (entry.device_id, entry.nickname),
-            )
-        conn.commit()
+        db_manager.set_device_nickname(entry.device_id, entry.nickname)
         log_debug("Nickname stored")
+        return {"status": "ok"}
     except Exception as exc:
         log_debug(f"Nickname store error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"status": "ok"}
 
 
 @app.get("/nickname")
 def get_nickname(device_id: str):
     """Get nickname for a device id."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT nickname FROM RCI_device_nicknames WHERE device_id = ?",
-            device_id,
-        )
-        row = cursor.fetchone()
-        nickname = row[0] if row else None
+        nickname = db_manager.get_device_nickname(device_id)
         log_debug("Fetched nickname")
+        return {"nickname": nickname}
     except Exception as exc:
         log_debug(f"Nickname fetch error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return {"nickname": nickname}
 
 
 @app.get("/gpx")
@@ -887,31 +466,13 @@ def get_gpx(limit: Optional[int] = None):
     """Return log records as a GPX file."""
     if limit is not None and (limit < 1 or limit > 1000):
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if USE_SQLSERVER:
-            if limit is None:
-                cursor.execute("SELECT * FROM RCI_bike_data ORDER BY id DESC")
-            else:
-                cursor.execute(f"SELECT TOP {limit} * FROM RCI_bike_data ORDER BY id DESC")
-        else:
-            query = "SELECT * FROM RCI_bike_data ORDER BY id DESC"
-            if limit is None:
-                cursor.execute(query)
-            else:
-                cursor.execute(query + " LIMIT ?", (limit,))
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        rows, _ = db_manager.get_logs(limit)
         log_debug("Fetched logs for GPX generation")
     except Exception as exc:
         log_debug(f"Database error on GPX fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
 
     gpx_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1537,32 +1098,12 @@ def delete_filtered_records(
 @app.get("/manage/db_size")
 def get_db_size(dep: None = Depends(password_dependency)):
     """Return current database size and max size in GB."""
-    conn = None
     try:
-        if USE_SQLSERVER:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT SUM(size) * 8.0 / 1024 FROM sys.database_files")
-            size_mb = float(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes')")
-            max_bytes = cursor.fetchone()[0]
-            max_gb = None
-            if max_bytes not in (None, -1, 0):
-                max_gb = float(max_bytes) / (1024 ** 3)
-        else:
-            db_file = BASE_DIR / "RCI_local.db"
-            size_mb = db_file.stat().st_size / (1024 * 1024)
-            max_gb = None
+        size_mb, max_gb = db_manager.get_database_size()
+        return {"size_mb": size_mb, "max_size_gb": max_gb}
     except Exception as exc:
         log_debug(f"DB size fetch error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
-    finally:
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-    return {"size_mb": size_mb, "max_size_gb": max_gb}
 
 
 

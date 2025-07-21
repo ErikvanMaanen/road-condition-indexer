@@ -25,6 +25,8 @@
         #status { margin-bottom: 1rem; font-weight: bold; }
         #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        input:disabled { opacity: 0.5; cursor: not-allowed; }
         #toggle { padding: 1rem 2rem; font-size: 1.25rem; }
         #scale-container {
             display: flex;
@@ -48,7 +50,11 @@
     <a href="maintenance.html">Maintenance</a>
 </nav>
 <section id="filter-dev" style="margin-bottom:1rem;">
-    <select id="device-filter" multiple></select>
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <select id="device-filter" multiple></select>
+        <input id="nickname" placeholder="Device nickname" style="flex: 0 0 150px;" />
+        <button id="save-nickname">Save Nickname</button>
+    </div>
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Smooth road</option>
@@ -74,8 +80,6 @@
     <div id="button-bar">
         <button id="toggle">Start</button>
         <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
-        <input id="nickname" placeholder="Nickname" style="margin-left:1rem; display:none;" />
-        <button id="save-nickname" style="margin-left:0.5rem; display:none;">Save</button>
     </div>
     <div id="loading" style="display:none; margin-top:1rem;">
         <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
@@ -114,15 +118,22 @@ const LOG_ENDPOINT = '/log';
 
 function loadNickname() {
     const nickInput = document.getElementById('nickname');
-    if (!nickInput) {
+    const saveBtn = document.getElementById('save-nickname');
+    if (!nickInput || !saveBtn) {
         currentNickname = '';
         return;
     }
     if (selectedIds.length !== 1) {
         nickInput.value = '';
+        nickInput.placeholder = selectedIds.length === 0 ? 'Device nickname' : 'Select single device to edit nickname';
+        nickInput.disabled = true;
+        saveBtn.disabled = true;
         currentNickname = '';
         return;
     }
+    nickInput.disabled = false;
+    saveBtn.disabled = false;
+    nickInput.placeholder = 'Device nickname';
     const id = selectedIds[0];
     fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
         .then(r => r.json())
@@ -135,7 +146,8 @@ function loadNickname() {
 
 function saveNickname() {
     const nickInput = document.getElementById('nickname');
-    if (!nickInput || selectedIds.length !== 1) return;
+    const saveBtn = document.getElementById('save-nickname');
+    if (!nickInput || !saveBtn || selectedIds.length !== 1 || nickInput.disabled || saveBtn.disabled) return;
     const name = nickInput.value;
     fetch('/nickname', {
         method: 'POST',
@@ -621,13 +633,10 @@ if (updateBtn) {
         loadLogs();
     });
 }
-const saveNickBtn = document.getElementById('save-nickname');
-if (saveNickBtn) {
-    saveNickBtn.addEventListener('click', () => {
-        addLog('Save Nickname pressed');
-        saveNickname();
-    });
-}
+document.getElementById('save-nickname').addEventListener('click', () => {
+    addLog('Save Nickname pressed');
+    saveNickname();
+});
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
         .map(o => o.value).filter(v => v);
