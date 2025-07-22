@@ -747,7 +747,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                """
+                f"""
                 SELECT DISTINCT bd.device_id, dn.nickname
                 FROM {TABLE_BIKE_DATA} bd
                 LEFT JOIN {TABLE_DEVICE_NICKNAMES} dn ON bd.device_id = dn.device_id
