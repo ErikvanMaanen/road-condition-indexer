@@ -200,14 +200,18 @@ LAST_POINT: Dict[str, Tuple[datetime, float, float]] = {}
 
 
 def log_debug(message: str) -> None:
-    """Append message to debug log with timestamp."""
+    """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
     timestamp = datetime.utcnow().isoformat()
     DEBUG_LOG.append(f"{timestamp} - {message}")
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
-    # Use enhanced logging system
-    db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL)
+    # Log to DB as error if message contains 'error' or 'exception', else as debug
+    lower_msg = message.lower()
+    if 'error' in lower_msg or 'exception' in lower_msg:
+        log_error(message)
+    else:
+        db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL)
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
