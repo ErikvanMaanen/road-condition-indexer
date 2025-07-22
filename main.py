@@ -56,6 +56,46 @@ def get_azure_credential():
         client_secret=client_secret,
     )
 
+def get_client_ip(request: Request) -> str:
+    """Extract the real client IP address from the request."""
+    # Check for forwarded headers in order of preference
+    forwarded_headers = [
+        'X-Forwarded-For',      # Standard proxy header
+        'X-Real-IP',            # Nginx proxy header
+        'CF-Connecting-IP',     # Cloudflare header
+        'X-Client-IP',          # Some proxy configurations
+        'X-Forwarded',          # Alternative forwarding header
+        'Forwarded-For',        # RFC 7239 compliant header
+        'Forwarded'             # RFC 7239 standard header
+    ]
+    
+    # Try forwarded headers first
+    for header in forwarded_headers:
+        if header in request.headers:
+            # X-Forwarded-For can contain multiple IPs (client, proxy1, proxy2...)
+            # We want the first one (the original client)
+            ip_list = request.headers[header].split(',')
+            client_ip = ip_list[0].strip()
+            
+            # Validate it's a reasonable IP address
+            if client_ip and client_ip != 'unknown':
+                # Remove port if present (IPv6 format handling)
+                if ':' in client_ip and not client_ip.startswith('['):
+                    # IPv4 with port
+                    client_ip = client_ip.split(':')[0]
+                elif client_ip.startswith('[') and ']:' in client_ip:
+                    # IPv6 with port [::1]:8080
+                    client_ip = client_ip.split(']:')[0] + ']'
+                
+                return client_ip
+    
+    # Fall back to request.client.host
+    if request.client and request.client.host:
+        return request.client.host
+    
+    # Final fallback
+    return 'unknown'
+
 def get_web_client():
     """Return a WebSiteManagementClient if configured."""
     if WebSiteManagementClient is None:
@@ -355,7 +395,7 @@ def post_log(entry: LogEntry, request: Request):
     )
     distance_m = dist_km * 1000.0
     log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}")
-    ip_address = request.client.host if request.client else None
+    ip_address = get_client_ip(request)
     
     try:
         # Insert bike data

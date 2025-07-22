@@ -73,6 +73,11 @@
     <div id="scale-bar"></div>
     <span>Rough</span>
 </div>
+<div style="margin-bottom:1rem;">
+    <label>
+        <input type="checkbox" id="center-on-user" checked> Keep map centered on my location
+    </label>
+</div>
 <section id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
     <div id="wake-lock-status" style="font-size: 0.9rem; margin: 0.5rem 0;">💤 Screen may turn off</div>
@@ -85,12 +90,15 @@
         <span id="load-label"></span>
     </div>
 </section>
-<section id="logs" style="margin-bottom:1rem;">
+<section id="logs" style="margin-bottom:1rem; display:none;">
     <h3>Activity Log</h3>
     <div id="log"></div>
     <h3>Debug Messages</h3>
     <textarea id="debug" readonly></textarea>
 </section>
+<div style="margin-bottom:1rem;">
+    <button id="toggle-logs" onclick="toggleLogs()">Show Logs</button>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let deviceId = localStorage.getItem('deviceId');
@@ -217,6 +225,20 @@ let deviceNicknames = {};
 let currentNickname = '';
 let motionDataReceived = false;
 let motionPermissionTimer = null;
+let userLocation = null; // Store user's current location
+
+function toggleLogs() {
+    const logsSection = document.getElementById('logs');
+    const toggleButton = document.getElementById('toggle-logs');
+    
+    if (logsSection.style.display === 'none') {
+        logsSection.style.display = 'block';
+        toggleButton.textContent = 'Hide Logs';
+    } else {
+        logsSection.style.display = 'none';
+        toggleButton.textContent = 'Show Logs';
+    }
+}
 if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', (event) => {
         if (event.beta !== null && event.gamma !== null) {
@@ -261,15 +283,28 @@ function initMap() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-    const setView = coords => map.setView(coords, zoom);
+    
+    const setView = coords => {
+        userLocation = coords;
+        map.setView(coords, zoom);
+    };
+    
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-            pos => setView([pos.coords.latitude, pos.coords.longitude]),
-            () => setView(defaultPos),
+            pos => {
+                const coords = [pos.coords.latitude, pos.coords.longitude];
+                setView(coords);
+                addLog('Map centered on your location');
+            },
+            () => {
+                setView(defaultPos);
+                addLog('Using default location (Houten, NL)');
+            },
             GEO_OPTIONS
         );
     } else {
         setView(defaultPos);
+        addLog('Geolocation not supported, using default location');
     }
     addFullscreenControl(map);
 }
@@ -520,6 +555,16 @@ function handlePosition(pos) {
     lastLon = longitude;
     lastSpeed = (speed || 0) * 3.6; // convert to km/h
     lastDir = heading || 0;
+    
+    // Update user location
+    userLocation = [latitude, longitude];
+    
+    // Center map on user if option is selected
+    const centerOnUser = document.getElementById('center-on-user').checked;
+    if (centerOnUser && map) {
+        map.setView(userLocation, map.getZoom());
+    }
+    
     updateStatus();
     addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
     if (loggingEnabled && zValues.length > 0) {
@@ -554,6 +599,11 @@ function handlePosition(pos) {
                 scale.max = Math.max(scale.max, data.roughness);
                 roughScales[deviceId] = scale;
                 recordCount += 1;
+                
+                // Center map on user location after adding point if option is selected
+                if (centerOnUser && map && userLocation) {
+                    map.setView(userLocation, map.getZoom());
+                }
                 // Do not reload all logs during active recording
             }
         }).catch(err => addDebug('Error: ' + err));

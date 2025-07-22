@@ -57,6 +57,9 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 - Fullscreen map support with proper resize handling
 - Progressive loading with progress indicators
 - Dual-range time filtering with synchronized sliders
+- **NEW**: Map auto-centers on user location on page load
+- **NEW**: Optional "Keep map centered on my location" feature for real-time tracking
+- **NEW**: Activity log and debug messages hidden by default with toggle button
 
 ### Authentication System
 - Cookie-based authentication with MD5 password hashing
@@ -96,7 +99,14 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 3. **Logging Performance**: Enhanced with database-level filtering
 
 ### Current Issues
-1. **Function Name Bug**: `device.html` line 497 calls `populateDeviceFilter()` but should call `populateDeviceIds()`
+- No critical bugs currently identified
+
+### Recent UI Improvements (January 2025)
+1. **Main Page UI Enhancements**: 
+   - Activity log and debug message sections now hidden by default with "Show Logs" toggle button
+   - Map automatically centers on user's location when page loads with fallback to Houten, NL
+   - Added "Keep map centered on my location" checkbox for real-time location tracking
+   - Map view updates to follow user location during active recording when option is enabled
 
 ## Development Best Practices
 
@@ -111,6 +121,9 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 - Progressive loading for large datasets (process in chunks of 100)
 - Synchronize slider controls with date inputs
 - Handle fullscreen mode properly for map resizing
+- **NEW**: Use `userLocation` variable to track current user position
+- **NEW**: Check `center-on-user` checkbox state before updating map center
+- **NEW**: Toggle log visibility with `toggleLogs()` function
 
 ### Security Considerations
 - Management endpoints require authentication

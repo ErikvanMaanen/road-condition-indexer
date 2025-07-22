@@ -1122,13 +1122,13 @@ class DatabaseManager:
             ))
 
     def get_table_summary(self) -> List[Dict[str, Any]]:
-        """Get summary information for all tables including row count and last update."""
+        """Get summary information for RCI tables including row count and last update."""
         import re
         
-        name_re = re.compile(r"^[A-Za-z0-9_]+$")
+        name_re = re.compile(r"^RCI_[A-Za-z0-9_]+$")  # Only allow RCI_ prefixed tables
         tables = []
         
-        # Get all table names
+        # Get all RCI table names
         if self.use_sqlserver:
             table_names = self.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
             names = [row['name'] for row in table_names]
@@ -1138,6 +1138,7 @@ class DatabaseManager:
         
         for table in names:
             if not name_re.match(table):
+                continue  # Skip any table that doesn't match RCI_* pattern
                 continue
                 
             try:
