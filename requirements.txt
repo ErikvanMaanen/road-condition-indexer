@@ -8,3 +8,4 @@ azure-identity
 azure-mgmt-web
 azure-mgmt-sql
 scipy
+pytz

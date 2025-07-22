@@ -4,6 +4,7 @@ from datetime import datetime
 import math
 import re
 import hashlib
+import pytz
 
 from scipy import signal
 
@@ -199,9 +200,28 @@ DEBUG_LOG: List[str] = []
 LAST_POINT: Dict[str, Tuple[datetime, float, float]] = {}
 
 
+def get_dutch_time(utc_time: datetime = None) -> str:
+    """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
+    try:
+        if utc_time is None:
+            utc_time = datetime.utcnow()
+        
+        # Set UTC timezone
+        utc_time = utc_time.replace(tzinfo=pytz.UTC)
+        
+        # Convert to Dutch time
+        dutch_tz = pytz.timezone('Europe/Amsterdam')
+        dutch_time = utc_time.astimezone(dutch_tz)
+        
+        return dutch_time.isoformat()
+    except Exception:
+        # Fallback to UTC if timezone conversion fails
+        return (utc_time or datetime.utcnow()).isoformat()
+
+
 def log_debug(message: str) -> None:
     """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = get_dutch_time()
     DEBUG_LOG.append(f"{timestamp} - {message}")
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
@@ -329,6 +349,16 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 def startup_init():
     """Initialize the database on startup."""
     db_manager.init_tables()
+    
+    # Check database integrity at startup
+    try:
+        integrity_ok = db_manager.check_database_integrity()
+        if not integrity_ok:
+            log_error("Database integrity issues detected at startup")
+        else:
+            log_debug("Database integrity check passed at startup")
+    except Exception as e:
+        log_error(f"Failed to check database integrity at startup: {e}")
 
 
 class LogEntry(BaseModel):
@@ -628,8 +658,65 @@ def get_manage_debug_logs(
     except HTTPException:
         raise
     except Exception as exc:
+        # Check if this is a database corruption error
+        error_msg = str(exc).lower()
+        if "disk i/o error" in error_msg or "database is locked" in error_msg or "corrupt" in error_msg:
+            log_error(f"Database corruption detected in debug logs: {exc}")
+            # Try to check and repair database integrity
+            try:
+                integrity_ok = db_manager.check_database_integrity()
+                if not integrity_ok:
+                    log_error("Database integrity check failed, corruption likely")
+                return [{"timestamp": get_dutch_time(), 
+                        "level": "ERROR", 
+                        "category": "DATABASE", 
+                        "message": "Database corruption detected. Debug logs may be unavailable temporarily.",
+                        "stack_trace": None}]
+            except Exception as repair_exc:
+                log_error(f"Database repair attempt failed: {repair_exc}")
+                return [{"timestamp": get_dutch_time(), 
+                        "level": "CRITICAL", 
+                        "category": "DATABASE", 
+                        "message": "Critical database error. Please check disk space and database file integrity.",
+                        "stack_trace": None}]
+        
         log_error(f"Failed to retrieve debug logs for management: {exc}")
         raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
+
+
+@app.post("/manage/repair_database")
+def repair_database(dep: None = Depends(password_dependency)):
+    """Repair database integrity issues - requires authentication."""
+    try:
+        log_debug("Starting manual database repair")
+        
+        # Check current integrity
+        integrity_ok = db_manager.check_database_integrity()
+        
+        if integrity_ok:
+            log_debug("Database integrity check passed - no repair needed")
+            return {"status": "success", "message": "Database integrity is OK, no repair needed"}
+        
+        # Try to recover debug log table if corrupted
+        try:
+            db_manager._recover_debug_log_table()
+            log_debug("Debug log table recovery completed")
+        except Exception as e:
+            log_error(f"Debug log table recovery failed: {e}")
+        
+        # Re-check integrity
+        integrity_ok = db_manager.check_database_integrity()
+        
+        if integrity_ok:
+            log_debug("Database repair completed successfully")
+            return {"status": "success", "message": "Database repair completed successfully"}
+        else:
+            log_error("Database repair failed - integrity issues persist")
+            return {"status": "warning", "message": "Database repair completed but some issues may persist"}
+            
+    except Exception as exc:
+        log_error(f"Database repair failed: {exc}")
+        raise HTTPException(status_code=500, detail="Database repair failed") from exc
 
 
 @app.get("/manage/tables")

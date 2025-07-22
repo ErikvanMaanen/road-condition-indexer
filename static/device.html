@@ -328,6 +328,24 @@ function roughnessRange(idx) {
     return [low, high];
 }
 
+// Utility function to format time in Dutch timezone
+function formatDutchTime(isoString) {
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleString('nl-NL', {
+            timeZone: 'Europe/Amsterdam',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (error) {
+        return isoString; // Fallback to original string
+    }
+}
+
 function updateRoughnessLabels() {
     const select = document.getElementById('roughness-filter');
     if (select) {
@@ -361,7 +379,7 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
     let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
     if (nickname) popup = `Device: ${nickname}<br>` + popup;
     if (info) {
-        const timeStr = new Date(info.timestamp).toLocaleString();
+        const timeStr = formatDutchTime(info.timestamp);
         popup = `Time: ${timeStr}<br>` +
                 `Speed: ${info.speed.toFixed(1)} km/h<br>` +
                 `Dir: ${directionToCompass(info.direction)}<br>` +

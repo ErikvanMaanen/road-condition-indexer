@@ -15,6 +15,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
+import pytz
 
 try:
     import pyodbc
@@ -117,6 +118,47 @@ class DatabaseManager:
         level_ok = self._log_level_order[level] >= self._log_level_order[self.log_level]
         category_ok = category in self.log_categories
         return level_ok and category_ok
+    
+    def _get_dutch_time(self, utc_time: datetime = None) -> str:
+        """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
+        try:
+            if utc_time is None:
+                utc_time = datetime.utcnow()
+            
+            # Set UTC timezone
+            utc_time = utc_time.replace(tzinfo=pytz.UTC)
+            
+            # Convert to Dutch time
+            dutch_tz = pytz.timezone('Europe/Amsterdam')
+            dutch_time = utc_time.astimezone(dutch_tz)
+            
+            return dutch_time.isoformat()
+        except Exception:
+            # Fallback to UTC if timezone conversion fails
+            return (utc_time or datetime.utcnow()).isoformat()
+    
+    def _parse_dutch_time_display(self, iso_time_str: str) -> str:
+        """Parse ISO time string and return formatted Dutch time for display."""
+        try:
+            # Parse the datetime (could be UTC or already with timezone)
+            if '+' in iso_time_str or iso_time_str.endswith('Z'):
+                # Already has timezone info
+                dt = datetime.fromisoformat(iso_time_str.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=pytz.UTC)
+            else:
+                # Assume UTC if no timezone info
+                dt = datetime.fromisoformat(iso_time_str)
+                dt = dt.replace(tzinfo=pytz.UTC)
+            
+            # Convert to Dutch time
+            dutch_tz = pytz.timezone('Europe/Amsterdam')
+            dutch_time = dt.astimezone(dutch_tz)
+            
+            return dutch_time.strftime('%d-%m-%Y %H:%M:%S %Z')
+        except Exception:
+            # Fallback to original string
+            return iso_time_str
     
     @contextmanager
     def get_connection_context(self, database: Optional[str] = None):
@@ -474,7 +516,7 @@ class DatabaseManager:
         if not self._should_log(level, category):
             return
             
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = self._get_dutch_time()
         stack_trace = None
         
         if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:
@@ -488,6 +530,15 @@ class DatabaseManager:
                 (timestamp, level.value, category.value, message, stack_trace)
             )
         except Exception as e:
+            # Check for database corruption
+            error_msg = str(e).lower()
+            if "disk i/o error" in error_msg or "database is locked" in error_msg or "corrupt" in error_msg:
+                try:
+                    # Try to recover the debug log table
+                    self._recover_debug_log_table()
+                except Exception:
+                    pass  # Recovery failed, fall back to Python logging
+            
             # Fallback to Python logging if database logging fails
             log_msg = f"[{category.value}] {message}"
             if level == LogLevel.DEBUG:
@@ -540,8 +591,72 @@ class DatabaseManager:
             
             return self.execute_query(query, tuple(params) if params else None)
         except Exception as e:
+            # Check if this is a disk I/O error or corruption
+            error_msg = str(e).lower()
+            if "disk i/o error" in error_msg or "database is locked" in error_msg or "corrupt" in error_msg:
+                self.logger.error(f"Database corruption detected: {e}")
+                try:
+                    # Try to recover by recreating the debug log table
+                    self._recover_debug_log_table()
+                    return []  # Return empty list after recovery attempt
+                except Exception as recovery_error:
+                    self.logger.error(f"Failed to recover debug log table: {recovery_error}")
+            
             self.logger.error(f"Failed to retrieve debug logs: {e}")
             return []
+
+    def _recover_debug_log_table(self) -> None:
+        """Attempt to recover the debug log table from corruption."""
+        try:
+            # First try to backup existing data if possible
+            backup_table = f"{TABLE_DEBUG_LOG}_backup_{int(datetime.utcnow().timestamp())}"
+            try:
+                backup_query = f"CREATE TABLE {backup_table} AS SELECT * FROM {TABLE_DEBUG_LOG}"
+                self.execute_query(backup_query)
+                self.logger.info(f"Created backup table: {backup_table}")
+            except Exception:
+                self.logger.warning("Could not create backup of corrupted debug log table")
+            
+            # Drop the corrupted table
+            self.execute_query(f"DROP TABLE IF EXISTS {TABLE_DEBUG_LOG}")
+            
+            # Recreate the table with fresh structure
+            self._create_debug_log_table()
+            
+            self.logger.info("Debug log table recovered successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Debug log table recovery failed: {e}")
+            raise
+
+    def check_database_integrity(self) -> bool:
+        """Check database integrity and repair if needed."""
+        try:
+            if not self.use_sqlserver:
+                # For SQLite, run PRAGMA integrity_check
+                result = self.execute_query("PRAGMA integrity_check")
+                if result and len(result) > 0:
+                    first_result = result[0]
+                    if isinstance(first_result, dict) and 'integrity_check' in first_result:
+                        integrity_ok = first_result['integrity_check'] == 'ok'
+                    elif isinstance(first_result, (list, tuple)) and len(first_result) > 0:
+                        integrity_ok = first_result[0] == 'ok'
+                    else:
+                        integrity_ok = str(first_result).lower() == 'ok'
+                    
+                    if not integrity_ok:
+                        self.logger.warning("Database integrity check failed, attempting repair")
+                        # Try to vacuum the database
+                        self.execute_query("VACUUM")
+                        return False
+                    return True
+            else:
+                # For SQL Server, check if we can perform basic operations
+                self.execute_query("SELECT 1")
+                return True
+        except Exception as e:
+            self.logger.error(f"Database integrity check failed: {e}")
+            return False
 
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,

@@ -209,10 +209,16 @@
             </select>
         </div>
         <div class="control-group">
+            <label>Sort:</label>
+            <select id="log-sort-order" onchange="loadDatabaseLogs()">
+                <option value="desc" selected>Latest First</option>
+                <option value="asc">Oldest First</option>
+            </select>
             <button onclick="loadDatabaseLogs()">🔄 Refresh Logs</button>
             <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
             <button onclick="exportLogs()">📥 Export CSV</button>
             <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
+            <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
         </div>
     </div>
     <div class="log-viewer-content">
@@ -412,29 +418,51 @@
 let autoRefreshInterval = null;
 let currentLogs = [];
 
+// Utility function to format time in Dutch timezone
+function formatDutchTime(isoString) {
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleString('nl-NL', {
+            timeZone: 'Europe/Amsterdam',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (error) {
+        return isoString; // Fallback to original string
+    }
+}
+
 // Database log viewer functions
 async function loadDatabaseLogs() {
     const levelFilter = document.getElementById('log-level-filter').value;
     const categoryFilter = document.getElementById('log-category-filter').value;
     const limit = document.getElementById('log-limit').value;
-    
+    const sortOrder = document.getElementById('log-sort-order').value;
     try {
         // Build query parameters
         const params = new URLSearchParams();
         if (levelFilter) params.append('level_filter', levelFilter);
         if (categoryFilter) params.append('category_filter', categoryFilter);
         if (limit) params.append('limit', limit);
-        
+        // No backend sort param, so sort client-side
         const response = await authFetch(`/manage/debug_logs?${params.toString()}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
-        const logs = await response.json();
+        let logs = await response.json();
+        // Sort client-side
+        logs.sort((a, b) => {
+            const ta = new Date(a.timestamp).getTime();
+            const tb = new Date(b.timestamp).getTime();
+            return sortOrder === 'asc' ? ta - tb : tb - ta;
+        });
         currentLogs = logs;
         displayLogs(logs);
         updateLogStats(logs);
-        
     } catch (error) {
         document.getElementById('log-display').innerHTML = `
             <div style="color: red; padding: 10px;">
@@ -447,31 +475,26 @@ async function loadDatabaseLogs() {
 
 function displayLogs(logs) {
     const display = document.getElementById('log-display');
-    
     if (!logs || logs.length === 0) {
         display.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No logs found matching the current filters</div>';
         return;
     }
-    
     let html = '';
     logs.forEach(log => {
-        const timestamp = new Date(log.timestamp).toLocaleString();
+        const timestamp = formatDutchTime(log.timestamp);
         const level = log.level || 'INFO';
         const category = log.category || 'GENERAL';
-        
-        html += `
-            <div class="log-entry">
-                <div>
-                    <span class="log-timestamp">${timestamp}</span>
-                    <span class="log-level log-level-${level}">${level}</span>
-                    <span class="log-category">${category}</span>
-                </div>
-                <div class="log-message">${escapeHtml(log.message || '')}</div>
-                ${log.stack_trace ? `<div class="log-stack">${escapeHtml(log.stack_trace)}</div>` : ''}
+        // Only 3 rows: header, message, stack (if present)
+        html += `<div class="log-entry">
+            <div>
+                <span class="log-timestamp">${timestamp}</span>
+                <span class="log-level log-level-${level}">${level}</span>
+                <span class="log-category">${category}</span>
             </div>
-        `;
+            <div class="log-message">${escapeHtml(log.message || '')}</div>
+            ${log.stack_trace ? `<div class="log-stack">${escapeHtml(log.stack_trace)}</div>` : ''}
+        </div>`;
     });
-    
     display.innerHTML = html;
 }
 
@@ -492,8 +515,8 @@ function updateLogStats(logs) {
         categoryCounts[category] = (categoryCounts[category] || 0) + 1;
     });
     
-    const oldest = new Date(logs[logs.length - 1]?.timestamp).toLocaleString();
-    const newest = new Date(logs[0]?.timestamp).toLocaleString();
+    const oldest = formatDutchTime(logs[logs.length - 1]?.timestamp);
+    const newest = formatDutchTime(logs[0]?.timestamp);
     
     const levelStats = Object.entries(levelCounts)
         .map(([level, count]) => `${level}: ${count}`)
@@ -563,6 +586,40 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+async function repairDatabase() {
+    if (!confirm('This will attempt to repair database corruption issues. Continue?')) {
+        return;
+    }
+    
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.textContent = '🔧 Repairing...';
+    btn.disabled = true;
+    
+    try {
+        const response = await authFetch('/manage/repair_database', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        alert(`Database repair result: ${result.message}`);
+        
+        // Refresh logs after repair
+        loadDatabaseLogs();
+        
+    } catch (error) {
+        alert(`Database repair failed: ${error.message}`);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
 }
 
 // Load logs on page load
