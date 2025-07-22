@@ -51,7 +51,15 @@
     <a href="maintenance.html">Maintenance</a>
 </nav>
 <section id="filter-dev" style="margin-bottom:1rem;">
-    <select id="deviceId" multiple></select>
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <select id="deviceId" multiple></select>
+        <button id="rename-button" style="padding: 0.5rem;">Rename</button>
+    </div>
+    <div id="rename-section" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #ccc; background: #f5f5f5;">
+        <input type="text" id="nickname-input" placeholder="Enter new nickname" style="margin-right: 0.5rem;">
+        <button id="save-rename" style="margin-right: 0.5rem;">Save</button>
+        <button id="cancel-rename">Cancel</button>
+    </div>
     <select id="roughness-filter" multiple>
         <option value="">[All Roughness]</option>
         <option value="1">1 - Smooth road</option>
@@ -449,6 +457,60 @@ document.getElementById('endRange').addEventListener('input', () => {
 document.addEventListener('fullscreenchange', () => {
     if (map) {
         map.invalidateSize();
+    }
+});
+
+// Rename functionality
+document.getElementById('rename-button').addEventListener('click', () => {
+    const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
+    if (selectedDevices.length !== 1) {
+        alert('Please select exactly one device to rename.');
+        return;
+    }
+    
+    const deviceId = selectedDevices[0].value;
+    const currentNickname = deviceNicknames[deviceId] || '';
+    
+    document.getElementById('nickname-input').value = currentNickname;
+    document.getElementById('rename-section').style.display = 'block';
+    document.getElementById('nickname-input').focus();
+});
+
+document.getElementById('save-rename').addEventListener('click', () => {
+    const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
+    if (selectedDevices.length !== 1) {
+        document.getElementById('rename-section').style.display = 'none';
+        return;
+    }
+    
+    const deviceId = selectedDevices[0].value;
+    const nickname = document.getElementById('nickname-input').value.trim();
+    
+    fetch('/nickname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, nickname: nickname })
+    })
+    .then(response => response.json())
+    .then(() => {
+        document.getElementById('rename-section').style.display = 'none';
+        populateDeviceIds(); // Refresh the device list
+    })
+    .catch(error => {
+        console.error('Error saving nickname:', error);
+        alert('Failed to save nickname. Please try again.');
+    });
+});
+
+document.getElementById('cancel-rename').addEventListener('click', () => {
+    document.getElementById('rename-section').style.display = 'none';
+    document.getElementById('nickname-input').value = '';
+});
+
+// Allow Enter key to save rename
+document.getElementById('nickname-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        document.getElementById('save-rename').click();
     }
 });
 </script>

@@ -957,6 +957,10 @@ class DatabaseManager:
 
     def test_table_operations(self, table_name: str) -> List[Dict[str, Any]]:
         """Test a table by inserting, reading, and deleting test records."""
+        # Only allow tables that start with RCI_
+        if not table_name.startswith("RCI_"):
+            raise ValueError("Access denied: Only RCI_ tables are allowed")
+            
         uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
         
         if table_name == TABLE_BIKE_DATA:
@@ -1031,6 +1035,10 @@ class DatabaseManager:
 
     def backup_table(self, table_name: str) -> str:
         """Create a backup copy of the given table and return the new table name."""
+        # Only allow tables that start with RCI_
+        if not table_name.startswith("RCI_"):
+            raise ValueError("Access denied: Only RCI_ tables are allowed")
+            
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         new_table = f"{table_name}_backup_{timestamp}"
         
@@ -1071,6 +1079,10 @@ class DatabaseManager:
 
     def rename_table(self, old_name: str, new_name: str) -> None:
         """Rename a table."""
+        # Only allow tables that start with RCI_
+        if not old_name.startswith("RCI_") or not new_name.startswith("RCI_"):
+            raise ValueError("Access denied: Only RCI_ tables are allowed")
+            
         # Check if table exists
         if self.use_sqlserver:
             exists = self.execute_scalar(
@@ -1094,6 +1106,10 @@ class DatabaseManager:
 
     def table_exists(self, table_name: str) -> bool:
         """Check if a table exists."""
+        # Only allow tables that start with RCI_
+        if not table_name.startswith("RCI_"):
+            return False
+            
         if self.use_sqlserver:
             return bool(self.execute_scalar(
                 "SELECT 1 FROM sys.tables WHERE name = ?",
@@ -1114,10 +1130,10 @@ class DatabaseManager:
         
         # Get all table names
         if self.use_sqlserver:
-            table_names = self.execute_query("SELECT name FROM sys.tables")
+            table_names = self.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
             names = [row['name'] for row in table_names]
         else:
-            table_names = self.execute_query("SELECT name FROM sqlite_master WHERE type='table'")
+            table_names = self.execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
             names = [row['name'] for row in table_names]
         
         for table in names:
@@ -1167,6 +1183,10 @@ class DatabaseManager:
         name_re = re.compile(r"^[A-Za-z0-9_]+$")
         if not name_re.match(table_name):
             raise ValueError("Invalid table name")
+        
+        # Only allow tables that start with RCI_
+        if not table_name.startswith("RCI_"):
+            raise ValueError("Access denied: Only RCI_ tables are allowed")
         
         # Get column information to determine ordering
         if self.use_sqlserver:
