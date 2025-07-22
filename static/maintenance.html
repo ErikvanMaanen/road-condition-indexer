@@ -21,6 +21,146 @@
             height: 150px;
             margin-top: 1rem;
         }
+        .log-viewer {
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-bottom: 2rem;
+            background: #f9f9f9;
+        }
+        .log-viewer-header {
+            background: #e8e8e8;
+            padding: 12px;
+            border-bottom: 1px solid #ccc;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+        }
+        .log-viewer-controls {
+            padding: 12px;
+            border-bottom: 1px solid #ccc;
+            background: white;
+        }
+        .log-viewer-content {
+            padding: 12px;
+            background: white;
+            border-radius: 0 0 6px 6px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        .control-group label {
+            margin: 0;
+            font-weight: bold;
+            min-width: 80px;
+        }
+        .control-group select, .control-group input {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .control-group button {
+            padding: 6px 12px;
+            background: #007cba;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .control-group button:hover {
+            background: #005a87;
+        }
+        .control-group button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #log-display {
+            width: 100%;
+            height: 400px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            background: white;
+            font-family: monospace;
+            font-size: 0.9rem;
+            padding: 8px;
+            white-space: pre-wrap;
+        }
+        .log-entry {
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+            margin-bottom: 8px;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        .log-timestamp {
+            color: #666;
+            font-weight: bold;
+        }
+        .log-level {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .log-level-DEBUG { background: #e3f2fd; color: #1976d2; }
+        .log-level-INFO { background: #e8f5e8; color: #2e7d32; }
+        .log-level-WARNING { background: #fff3e0; color: #f57c00; }
+        .log-level-ERROR { background: #ffebee; color: #d32f2f; }
+        .log-level-CRITICAL { background: #f3e5f5; color: #7b1fa2; }
+        .log-category {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-right: 8px;
+        }
+        .log-message {
+            margin-top: 4px;
+        }
+        .log-stack {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-left: 3px solid #d32f2f;
+            font-family: monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+        }
+        .log-stats {
+            margin-top: 10px;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+        .api-reference {
+            margin-top: 1rem;
+        }
+        .api-toggle {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .api-toggle:hover {
+            background: #e8e8e8;
+        }
+        .api-content {
+            display: none;
+        }
+        .api-content.show {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -29,23 +169,77 @@
     <a href="/">Main</a> |
     <a href="device.html">Device View</a>
 </nav>
-<section>
-    <h2>Database Size</h2>
-    <div id="db-info">Loading...</div>
-    <label>SKU <select id="db-sku" onchange="setDbSku()"></select></label>
+
+<!-- Database Log Viewer -->
+<section class="log-viewer">
+    <div class="log-viewer-header">
+        📋 Database Log Viewer
+    </div>
+    <div class="log-viewer-controls">
+        <div class="control-group">
+            <label>Level:</label>
+            <select id="log-level-filter">
+                <option value="">All Levels</option>
+                <option value="DEBUG">Debug</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+                <option value="CRITICAL">Critical</option>
+            </select>
+            
+            <label>Category:</label>
+            <select id="log-category-filter">
+                <option value="">All Categories</option>
+                <option value="DATABASE">Database</option>
+                <option value="CONNECTION">Connection</option>
+                <option value="QUERY">Query</option>
+                <option value="MANAGEMENT">Management</option>
+                <option value="MIGRATION">Migration</option>
+                <option value="BACKUP">Backup</option>
+                <option value="GENERAL">General</option>
+            </select>
+            
+            <label>Limit:</label>
+            <select id="log-limit">
+                <option value="50">50 entries</option>
+                <option value="100" selected>100 entries</option>
+                <option value="200">200 entries</option>
+                <option value="500">500 entries</option>
+                <option value="1000">1000 entries</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <button onclick="loadDatabaseLogs()">🔄 Refresh Logs</button>
+            <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
+            <button onclick="exportLogs()">📥 Export CSV</button>
+            <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
+        </div>
+    </div>
+    <div class="log-viewer-content">
+        <div id="log-stats" class="log-stats">
+            Ready to load logs...
+        </div>
+        <div id="log-display">
+            Click "Refresh Logs" to load database logs
+        </div>
+    </div>
 </section>
-<section style="margin-top:1rem;">
-    <h2>API Reference</h2>
-    <table border="1" cellpadding="4" style="border-collapse:collapse;">
-        <thead>
-            <tr>
-                <th>Endpoint</th>
-                <th>Method</th>
-                <th>Input</th>
-                <th>Output</th>
-                <th>Auth</th>
-            </tr>
-        </thead>
+
+<section class="api-reference">
+    <div class="api-toggle" onclick="toggleApiReference()">
+        <strong>📖 API Reference</strong> (click to expand)
+    </div>
+    <div id="api-content" class="api-content">
+        <table border="1" cellpadding="4" style="border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th>Method</th>
+                    <th>Input</th>
+                    <th>Output</th>
+                    <th>Auth</th>
+                </tr>
+            </thead>
         <tbody>
             <tr>
                 <td>/login</td>
@@ -205,11 +399,8 @@
                 <td>Password</td>
             </tr>
         </tbody>
-    </table>
-</section>
-<section style="margin-top:1rem;">
-    <h2>App Service Plan</h2>
-    <div id="plan-info">Loading...</div>
+        </table>
+    </div>
 </section>
 <section style="margin-top:1rem;">
     <h2>Tables <button id="refresh-btn">Refresh</button></h2>
@@ -217,6 +408,181 @@
     <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
 </section>
 <script>
+// Log viewer variables
+let autoRefreshInterval = null;
+let currentLogs = [];
+
+// Database log viewer functions
+async function loadDatabaseLogs() {
+    const levelFilter = document.getElementById('log-level-filter').value;
+    const categoryFilter = document.getElementById('log-category-filter').value;
+    const limit = document.getElementById('log-limit').value;
+    
+    try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (levelFilter) params.append('level_filter', levelFilter);
+        if (categoryFilter) params.append('category_filter', categoryFilter);
+        if (limit) params.append('limit', limit);
+        
+        const response = await authFetch(`/manage/debug_logs?${params.toString()}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const logs = await response.json();
+        currentLogs = logs;
+        displayLogs(logs);
+        updateLogStats(logs);
+        
+    } catch (error) {
+        document.getElementById('log-display').innerHTML = `
+            <div style="color: red; padding: 10px;">
+                Error loading logs: ${error.message}
+            </div>
+        `;
+        document.getElementById('log-stats').textContent = 'Error loading logs';
+    }
+}
+
+function displayLogs(logs) {
+    const display = document.getElementById('log-display');
+    
+    if (!logs || logs.length === 0) {
+        display.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No logs found matching the current filters</div>';
+        return;
+    }
+    
+    let html = '';
+    logs.forEach(log => {
+        const timestamp = new Date(log.timestamp).toLocaleString();
+        const level = log.level || 'INFO';
+        const category = log.category || 'GENERAL';
+        
+        html += `
+            <div class="log-entry">
+                <div>
+                    <span class="log-timestamp">${timestamp}</span>
+                    <span class="log-level log-level-${level}">${level}</span>
+                    <span class="log-category">${category}</span>
+                </div>
+                <div class="log-message">${escapeHtml(log.message || '')}</div>
+                ${log.stack_trace ? `<div class="log-stack">${escapeHtml(log.stack_trace)}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    display.innerHTML = html;
+}
+
+function updateLogStats(logs) {
+    if (!logs || logs.length === 0) {
+        document.getElementById('log-stats').textContent = 'No logs to display';
+        return;
+    }
+    
+    const levelCounts = {};
+    const categoryCounts = {};
+    
+    logs.forEach(log => {
+        const level = log.level || 'INFO';
+        const category = log.category || 'GENERAL';
+        
+        levelCounts[level] = (levelCounts[level] || 0) + 1;
+        categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    });
+    
+    const oldest = new Date(logs[logs.length - 1]?.timestamp).toLocaleString();
+    const newest = new Date(logs[0]?.timestamp).toLocaleString();
+    
+    const levelStats = Object.entries(levelCounts)
+        .map(([level, count]) => `${level}: ${count}`)
+        .join(', ');
+    
+    const categoryStats = Object.entries(categoryCounts)
+        .map(([category, count]) => `${category}: ${count}`)
+        .join(', ');
+    
+    document.getElementById('log-stats').innerHTML = `
+        <strong>Total entries:</strong> ${logs.length}<br>
+        <strong>Time range:</strong> ${oldest} → ${newest}<br>
+        <strong>Levels:</strong> ${levelStats}<br>
+        <strong>Categories:</strong> ${categoryStats}
+    `;
+}
+
+function clearLogDisplay() {
+    document.getElementById('log-display').innerHTML = 'Display cleared. Click "Refresh Logs" to reload.';
+    document.getElementById('log-stats').textContent = 'Display cleared';
+    currentLogs = [];
+}
+
+function exportLogs() {
+    if (!currentLogs || currentLogs.length === 0) {
+        alert('No logs to export. Please load logs first.');
+        return;
+    }
+    
+    const headers = ['Timestamp', 'Level', 'Category', 'Message', 'Stack Trace'];
+    const csvContent = [
+        headers.join(','),
+        ...currentLogs.map(log => [
+            `"${log.timestamp || ''}"`,
+            `"${log.level || ''}"`,
+            `"${log.category || ''}"`,
+            `"${(log.message || '').replace(/"/g, '""')}"`,
+            `"${(log.stack_trace || '').replace(/"/g, '""')}"`
+        ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `database_logs_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function toggleAutoRefresh() {
+    const btn = document.getElementById('auto-refresh-btn');
+    
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        btn.textContent = '⏸️ Auto-refresh: OFF';
+        btn.style.background = '#007cba';
+    } else {
+        autoRefreshInterval = setInterval(loadDatabaseLogs, 10000); // Refresh every 10 seconds
+        btn.textContent = '⏯️ Auto-refresh: ON';
+        btn.style.background = '#28a745';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load logs on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadDatabaseLogs();
+});
+
+function toggleApiReference() {
+    const content = document.getElementById('api-content');
+    const toggle = document.querySelector('.api-toggle');
+    
+    if (content.classList.contains('show')) {
+        content.classList.remove('show');
+        toggle.innerHTML = '<strong>📖 API Reference</strong> (click to expand)';
+    } else {
+        content.classList.add('show');
+        toggle.innerHTML = '<strong>📖 API Reference</strong> (click to collapse)';
+    }
+}
+
 async function authFetch(url, options) {
     let res = await fetch(url, options);
     if (res.status === 401) {
@@ -231,20 +597,6 @@ async function authFetch(url, options) {
         res = await fetch(url, options);
     }
     return res;
-}
-async function loadDbInfo() {
-    const res = await authFetch('/manage/db_size');
-    if(!res.ok){ document.getElementById('db-info').textContent='Unavailable'; return; }
-    const data = await res.json();
-    document.getElementById('db-info').textContent = `Used: ${data.size_mb.toFixed(2)} MB, Max: ${data.max_size_gb ? data.max_size_gb.toFixed(2)+' GB' : 'unlimited'}`;
-    const skuRes = await authFetch('/manage/db_sku');
-    if(skuRes.ok){
-        const skuData = await skuRes.json();
-        const sel = document.getElementById('db-sku');
-        sel.innerHTML='';
-        skuData.options.forEach(o => { const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
-        sel.value = skuData.current || '';
-    }
 }
 
 async function loadSummary() {
@@ -330,29 +682,10 @@ async function testTable(name){
 }
 
 function refreshAll() {
-    loadDbInfo();
-    loadPlan();
     loadSummary();
     loadDebug();
 }
-async function setDbSku() {
-    const sku = document.getElementById('db-sku').value;
-    if(!sku) return;
-    await authFetch('/manage/set_db_sku', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({sku_name: sku})
-    });
-    loadDbInfo();
-}
-async function loadPlan() {
-    const res = await authFetch('/manage/app_plan');
-    if(!res.ok){ document.getElementById('plan-info').textContent='Unavailable'; return; }
-    const data = await res.json();
-    document.getElementById('plan-info').textContent = `Name: ${data.name}, SKU: ${data.sku}, Capacity: ${data.capacity}`;
-}
-loadDbInfo();
-loadPlan();
+
 loadSummary();
 loadDebug();
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);

@@ -598,6 +598,40 @@ def get_enhanced_debuglog(
         raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
 
 
+@app.get("/manage/debug_logs")
+def get_manage_debug_logs(
+    level_filter: Optional[str] = Query(None, description="Log level filter"),
+    category_filter: Optional[str] = Query(None, description="Log category filter"),
+    limit: Optional[int] = Query(100, description="Maximum number of logs to return"),
+    dep: None = Depends(password_dependency)
+):
+    """Get debug logs from database with filtering - requires authentication."""
+    try:
+        level_enum = None
+        if level_filter:
+            try:
+                level_enum = LogLevel(level_filter.upper())
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid log level: {level_filter}")
+        
+        category_enum = None
+        if category_filter:
+            try:
+                category_enum = LogCategory(category_filter.upper())
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid log category: {category_filter}")
+        
+        logs = db_manager.get_debug_logs(level_enum, category_enum, limit)
+        log_debug(f"Retrieved {len(logs)} debug logs via manage endpoint")
+        
+        return logs
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to retrieve debug logs for management: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
+
+
 @app.get("/manage/tables")
 def manage_tables(dep: None = Depends(password_dependency)):
     """Return table contents for management page."""
