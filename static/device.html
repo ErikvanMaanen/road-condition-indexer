@@ -61,6 +61,19 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <select id="roughness-filter" multiple style="min-width:180px;">
+            <option value="">[All Roughness]</option>
+            <option value="1">1 - Smooth road</option>
+            <option value="2">2 - Even surface</option>
+            <option value="3">3 - Light texture</option>
+            <option value="4">4 - Coarse texture</option>
+            <option value="5">5 - Moderate roughness</option>
+            <option value="6">6 - Bumpy cobbles</option>
+            <option value="7">7 - Fine gravel</option>
+            <option value="8">8 - Coarse gravel</option>
+            <option value="9">9 - Severely uneven</option>
+            <option value="10">10 - Extremely rough</option>
+        </select>
         <select id="deviceId" multiple></select>
         <button id="rename-button" style="padding: 0.5rem;">Rename</button>
     </div>
@@ -69,19 +82,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
         <button id="save-rename" style="margin-right: 0.5rem;">Save</button>
         <button id="cancel-rename">Cancel</button>
     </div>
-    <select id="roughness-filter" multiple>
-        <option value="">[All Roughness]</option>
-        <option value="1">1 - Smooth road</option>
-        <option value="2">2 - Even surface</option>
-        <option value="3">3 - Light texture</option>
-        <option value="4">4 - Coarse texture</option>
-        <option value="5">5 - Moderate roughness</option>
-        <option value="6">6 - Bumpy cobbles</option>
-        <option value="7">7 - Fine gravel</option>
-        <option value="8">8 - Coarse gravel</option>
-        <option value="9">9 - Severely uneven</option>
-        <option value="10">10 - Extremely rough</option>
-    </select>
 </section>
 <section id="filter-time" style="margin-bottom:1rem;">
     <input id="startDate" type="datetime-local">
