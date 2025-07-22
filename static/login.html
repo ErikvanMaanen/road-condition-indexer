@@ -63,18 +63,24 @@ async function doLogin() {
     }
 }
 
-function addLog(msg) {
+function addLog(msg, category = 'General', level = 'INFO') {
     const div = document.getElementById('log');
     if (div) {
-        div.textContent += msg + '\n';
+        const time = new Date().toISOString();
+        div.textContent += `[${time}] [${level}] [${category}] ${msg}\n`;
         div.scrollTop = div.scrollHeight;
     }
 }
 
-function addDebug(msg) {
+function addDebug(msg, category = 'Debug', level = 'DEBUG', error = null) {
     const el = document.getElementById('debug');
     if (el) {
-        el.value += msg + '\n';
+        const time = new Date().toISOString();
+        let out = `[${time}] [${level}] [${category}] ${msg}`;
+        if (level === 'ERROR' && error && error.stack) {
+            out += `\nStack: ${error.stack}`;
+        }
+        el.value += out + '\n';
         el.scrollTop = el.scrollHeight;
     }
 }
