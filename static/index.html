@@ -40,10 +40,66 @@
             background: linear-gradient(to right, green, yellow, red);
             border: 1px solid #ccc;
         }
+        #status-indicators {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+            gap: 6px;
+        }
+        .status-item:last-child {
+            margin-bottom: 0;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid #333;
+        }
+        .status-green {
+            background-color: #4CAF50;
+        }
+        .status-red {
+            background-color: #f44336;
+        }
+        .status-explanation {
+            font-size: 0.7rem;
+            color: #666;
+            margin-left: 16px;
+        }
     </style>
 </head>
 <body>
 <h1>Road Condition Indexer</h1>
+<!-- Status indicators in top right -->
+<div id="status-indicators">
+    <div class="status-item">
+        <div id="location-indicator" class="status-indicator status-red"></div>
+        <span>Location</span>
+        <div id="location-explanation" class="status-explanation">Checking GPS access...</div>
+    </div>
+    <div class="status-item">
+        <div id="acceleration-indicator" class="status-indicator status-red"></div>
+        <span>Motion</span>
+        <div id="acceleration-explanation" class="status-explanation">Checking accelerometer...</div>
+    </div>
+    <div class="status-item">
+        <div id="database-indicator" class="status-indicator status-red"></div>
+        <span>Database</span>
+        <div id="database-explanation" class="status-explanation">Checking DB connection...</div>
+    </div>
+</div>
 <nav id="page-links" style="margin-bottom:1rem;">
     <a href="device.html">Device View</a>
 </nav>
@@ -199,8 +255,15 @@ function populateDeviceFilter() {
             if (selectedIds.includes(o.value)) o.selected = true;
         });
         selectedIds = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
+        // Update database status indicator
+        databaseStatus = true;
+        updateStatusIndicator('database', true);
     }).then(() => { loadNickname(); loadLogs(); })
-      .catch(console.error);
+      .catch(err => {
+          console.error(err);
+          databaseStatus = false;
+          updateStatusIndicator('database', false, 'Failed to load device list');
+      });
 }
 let xValues = [];
 let yValues = [];
@@ -236,6 +299,42 @@ let motionDataReceived = false;
 let motionPermissionTimer = null;
 let userLocation = null; // Store user's current location
 
+// Status tracking variables
+let locationStatus = false;
+let accelerationStatus = false;
+let databaseStatus = false;
+
+function updateStatusIndicator(type, status, explanation = '') {
+    const indicator = document.getElementById(`${type}-indicator`);
+    const explanationEl = document.getElementById(`${type}-explanation`);
+    
+    if (indicator) {
+        indicator.className = `status-indicator ${status ? 'status-green' : 'status-red'}`;
+    }
+    
+    if (explanationEl) {
+        explanationEl.textContent = explanation;
+        explanationEl.style.display = explanation ? 'block' : 'none';
+    }
+}
+
+function checkDatabaseStatus() {
+    fetch('/device_ids')
+        .then(response => {
+            if (response.ok) {
+                databaseStatus = true;
+                updateStatusIndicator('database', true);
+            } else {
+                databaseStatus = false;
+                updateStatusIndicator('database', false, 'Database connection failed');
+            }
+        })
+        .catch(err => {
+            databaseStatus = false;
+            updateStatusIndicator('database', false, 'Database unreachable');
+        });
+}
+
 function toggleLogs() {
     const logsSection = document.getElementById('logs');
     const toggleButton = document.getElementById('toggle-logs');
@@ -260,8 +359,29 @@ function requestMotionPermission() {
     if (typeof DeviceMotionEvent !== 'undefined' &&
         typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
-            .then(res => addDebug('Motion permission: ' + res))
-            .catch(err => addDebug('Motion permission error: ' + err));
+            .then(res => {
+                addDebug('Motion permission: ' + res);
+                if (res === 'granted') {
+                    accelerationStatus = true;
+                    updateStatusIndicator('acceleration', true);
+                } else {
+                    accelerationStatus = false;
+                    updateStatusIndicator('acceleration', false, 'Motion permission denied');
+                }
+            })
+            .catch(err => {
+                addDebug('Motion permission error: ' + err);
+                accelerationStatus = false;
+                updateStatusIndicator('acceleration', false, 'Motion permission error');
+            });
+    } else {
+        // For browsers that don't require permission, check if motion events work
+        if (typeof DeviceMotionEvent !== 'undefined') {
+            updateStatusIndicator('acceleration', false, 'Waiting for motion data...');
+        } else {
+            accelerationStatus = false;
+            updateStatusIndicator('acceleration', false, 'Motion sensors not supported');
+        }
     }
 }
 
@@ -270,6 +390,9 @@ function checkMotionPermission() {
         addDebug('No acceleration data received, requesting permission');
         requestMotionPermission();
         motionPermissionTimer = setTimeout(checkMotionPermission, 5000);
+    } else {
+        accelerationStatus = true;
+        updateStatusIndicator('acceleration', true);
     }
 }
 const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
@@ -279,10 +402,21 @@ let recordCount = 0;
 
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
-        () => addDebug('Geolocation permission granted'),
-        err => addDebug('Geolocation permission denied: ' + err.message),
+        () => {
+            addDebug('Geolocation permission granted');
+            locationStatus = true;
+            updateStatusIndicator('location', true);
+        },
+        err => {
+            addDebug('Geolocation permission denied: ' + err.message);
+            locationStatus = false;
+            updateStatusIndicator('location', false, 'GPS permission denied or unavailable');
+        },
         GEO_OPTIONS
     );
+} else {
+    locationStatus = false;
+    updateStatusIndicator('location', false, 'Geolocation not supported by browser');
 }
 
 function initMap() {
@@ -304,16 +438,22 @@ function initMap() {
                 const coords = [pos.coords.latitude, pos.coords.longitude];
                 setView(coords);
                 addLog('Map centered on your location');
+                locationStatus = true;
+                updateStatusIndicator('location', true);
             },
             () => {
                 setView(defaultPos);
                 addLog('Using default location (Houten, NL)');
+                locationStatus = false;
+                updateStatusIndicator('location', false, 'GPS unavailable, using default location');
             },
             GEO_OPTIONS
         );
     } else {
         setView(defaultPos);
         addLog('Geolocation not supported, using default location');
+        locationStatus = false;
+        updateStatusIndicator('location', false, 'Geolocation not supported by browser');
     }
     addFullscreenControl(map);
 }
@@ -547,7 +687,11 @@ if (window.DeviceMotionEvent) {
     window.addEventListener('devicemotion', (event) => {
         if (event.accelerationIncludingGravity) {
             const acc = event.accelerationIncludingGravity;
-            motionDataReceived = true;
+            if (!motionDataReceived) {
+                motionDataReceived = true;
+                accelerationStatus = true;
+                updateStatusIndicator('acceleration', true);
+            }
             xValues.push(acc.x || 0);
             yValues.push(acc.y || 0);
             const zUpVal = zUp(acc);
@@ -556,6 +700,9 @@ if (window.DeviceMotionEvent) {
             updateStatus();
         }
     });
+} else {
+    accelerationStatus = false;
+    updateStatusIndicator('acceleration', false, 'Device motion not supported');
 }
 
 function handlePosition(pos) {
@@ -624,11 +771,15 @@ function handlePosition(pos) {
 
 function handleGeoError(err) {
     addDebug('Geolocation error: ' + err.message);
+    locationStatus = false;
+    updateStatusIndicator('location', false, `GPS error: ${err.message}`);
 }
 
 function startGeolocation() {
     if (!navigator.geolocation) {
         addDebug('Geolocation not supported');
+        locationStatus = false;
+        updateStatusIndicator('location', false, 'Geolocation not supported');
         return;
     }
     motionDataReceived = false;
@@ -677,6 +828,10 @@ updateStatus();
 initMap();
 populateDeviceFilter();
 pollDebug();
+// Initial status check
+checkDatabaseStatus();
+// Check database status periodically
+setInterval(checkDatabaseStatus, 30000);
 
 document.getElementById('toggle').addEventListener('click', () => {
     if (loggingEnabled) {
