@@ -182,12 +182,6 @@ def read_device(request: Request):
 
 
 
-@app.get("/db.html")
-def read_db_page(request: Request):
-    """Serve the database management page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/db.html")
-    return FileResponse(BASE_DIR / "static" / "db.html")
 
 
 @app.get("/maintenance.html")
