@@ -45,9 +45,19 @@
 <body>
 <h1>Road Condition Indexer</h1>
 <nav id="page-links" style="margin-bottom:1rem;">
-    <a href="device.html">Device View</a> |
-    <a href="maintenance.html">Maintenance</a>
+    <a href="device.html">Device View</a>
 </nav>
+</body>
+<!-- Hidden maintenance link as a square at bottom right -->
+<a href="maintenance.html" id="maintenance-link" style="position:fixed;bottom:24px;right:24px;width:32px;height:32px;display:block;z-index:9999;opacity:0.2;background:#888;border-radius:6px;text-align:center;line-height:32px;text-decoration:none;font-size:1.5rem;transition:opacity 0.2s;" title="Maintenance">🛠️</a>
+<script>
+// Show the maintenance link on hover or focus
+const maintLink = document.getElementById('maintenance-link');
+maintLink.addEventListener('mouseenter',()=>maintLink.style.opacity='1');
+maintLink.addEventListener('mouseleave',()=>maintLink.style.opacity='0.2');
+maintLink.addEventListener('focus',()=>maintLink.style.opacity='1');
+maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
+</script>
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
         <select id="device-filter" multiple></select>
