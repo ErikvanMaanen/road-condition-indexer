@@ -418,8 +418,8 @@ def post_log(entry: LogEntry, request: Request):
         entry.z_values,
         avg_speed,
         dt_sec,
-        freq_min=entry.freq_min if entry.freq_min is not None else 1.0,
-        freq_max=entry.freq_max if entry.freq_max is not None else 20.0,
+        freq_min=entry.freq_min if entry.freq_min is not None else 0.5,
+        freq_max=entry.freq_max if entry.freq_max is not None else 50.0,
     )
     distance_m = dist_km * 1000.0
     log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}")

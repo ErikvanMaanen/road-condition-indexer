@@ -40,7 +40,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 ## Key Features & Recent Developments
 
 ### Data Processing Pipeline
-- Z-axis acceleration samples are resampled and filtered (0.5-50 Hz Butterworth band-pass)
+- Z-axis acceleration samples are resampled and filtered with a 0.5–50 Hz Butterworth band-pass filter
 - RMS acceleration calculation for roughness scoring
 - Speed filtering (ignores data below 5 km/h)
 - Additional metrics: VDV and crest factor (computed but not stored)
