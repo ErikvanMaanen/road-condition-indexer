@@ -78,6 +78,15 @@
             color: #666;
             margin-left: 16px;
         }
+        #wake-lock-container {
+            transition: background-color 0.3s ease;
+        }
+        #wake-lock-container:hover {
+            background: #f0f0f0;
+        }
+        #manual-wake-lock:hover {
+            background: #e0e0e0;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +107,11 @@
         <div id="database-indicator" class="status-indicator status-red"></div>
         <span>Database</span>
         <div id="database-explanation" class="status-explanation">Checking DB connection...</div>
+    </div>
+    <div class="status-item">
+        <div id="wakelock-indicator" class="status-indicator status-red"></div>
+        <span>Wake Lock</span>
+        <div id="wakelock-explanation" class="status-explanation">Screen may turn off</div>
     </div>
 </div>
 <nav id="page-links" style="margin-bottom:1rem;">
@@ -145,7 +159,15 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </div>
 <section id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
-    <div id="wake-lock-status" style="font-size: 0.9rem; margin: 0.5rem 0;">💤 Screen may turn off</div>
+    <div id="wake-lock-container" style="border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin: 0.5rem 0; background: #f9f9f9;">
+        <div id="wake-lock-status" style="font-size: 0.9rem; font-weight: bold;">💤 Screen may turn off</div>
+        <div style="font-size: 0.8rem; color: #666; margin-top: 4px;">
+            Wake lock prevents screen from turning off during recording
+        </div>
+        <button id="manual-wake-lock" style="margin-top: 4px; padding: 4px 8px; font-size: 0.8rem; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">
+            Toggle Wake Lock
+        </button>
+    </div>
     <div id="button-bar">
         <button id="toggle">Start</button>
         <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
@@ -904,24 +926,41 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 let wakeLock = null;
+let wakeLockSupported = false;
 
 async function requestWakeLock() {
     if (!('wakeLock' in navigator)) {
-        addDebug('Wake Lock API not supported');
+        addDebug('Wake Lock API not supported in this browser');
+        updateWakeLockStatus();
         return false;
     }
     
     try {
+        // Check if we already have an active wake lock
+        if (wakeLock !== null && !wakeLock.released) {
+            addDebug('Wake lock already active');
+            return true;
+        }
+        
         wakeLock = await navigator.wakeLock.request('screen');
+        wakeLockSupported = true;
+        
         wakeLock.addEventListener('release', () => {
-            addDebug('Wake lock released');
+            addDebug('Wake lock released (may have been due to tab switch or battery saving)');
             updateWakeLockStatus();
         });
-        addDebug('Wake lock acquired - screen will stay on');
+        
+        addDebug('Wake lock acquired - screen will stay on during recording');
         updateWakeLockStatus();
         return true;
     } catch (err) {
-        addDebug('Wake lock error: ' + err.message);
+        if (err.name === 'NotAllowedError') {
+            addDebug('Wake lock denied - user may need to grant permission');
+        } else if (err.name === 'NotSupportedError') {
+            addDebug('Wake lock not supported on this device');
+        } else {
+            addDebug('Wake lock error: ' + err.message);
+        }
         updateWakeLockStatus();
         return false;
     }
@@ -932,7 +971,7 @@ async function releaseWakeLock() {
         try {
             await wakeLock.release();
             wakeLock = null;
-            addDebug('Wake lock manually released');
+            addDebug('Wake lock manually released - screen may turn off');
         } catch (err) {
             addDebug('Wake lock release error: ' + err.message);
         }
@@ -942,21 +981,81 @@ async function releaseWakeLock() {
 
 function updateWakeLockStatus() {
     const statusElement = document.getElementById('wake-lock-status');
-    if (statusElement) {
-        const isActive = wakeLock !== null && !wakeLock.released;
-        statusElement.textContent = isActive ? '🔆 Screen locked on' : '💤 Screen may turn off';
-        statusElement.style.color = isActive ? 'green' : 'orange';
+    const manualButton = document.getElementById('manual-wake-lock');
+    const indicator = document.getElementById('wakelock-indicator');
+    const explanation = document.getElementById('wakelock-explanation');
+    
+    if (!statusElement) return;
+    
+    if (!('wakeLock' in navigator)) {
+        statusElement.innerHTML = '❌ Wake Lock not supported in this browser';
+        statusElement.style.color = 'red';
+        if (manualButton) manualButton.disabled = true;
+        if (indicator) {
+            indicator.className = 'status-indicator status-red';
+            explanation.textContent = 'Not supported';
+        }
+        return;
+    }
+    
+    const isActive = wakeLock !== null && !wakeLock.released;
+    
+    if (isActive) {
+        statusElement.innerHTML = '🔆 Screen locked on - won\'t turn off during recording';
+        statusElement.style.color = 'green';
+        if (indicator) {
+            indicator.className = 'status-indicator status-green';
+            explanation.textContent = 'Screen stays on';
+        }
+    } else {
+        statusElement.innerHTML = '💤 Screen may turn off - tap "Toggle Wake Lock" to prevent';
+        statusElement.style.color = 'orange';
+        if (indicator) {
+            indicator.className = 'status-indicator status-red';
+            explanation.textContent = 'Screen may turn off';
+        }
+    }
+    
+    if (manualButton) {
+        manualButton.textContent = isActive ? 'Release Wake Lock' : 'Request Wake Lock';
+        manualButton.disabled = false;
+    }
+}
+
+// Manual wake lock toggle
+async function toggleWakeLock() {
+    if (wakeLock !== null && !wakeLock.released) {
+        await releaseWakeLock();
+    } else {
+        await requestWakeLock();
     }
 }
 
 // Initialize wake lock status display
 updateWakeLockStatus();
 
+// Add manual wake lock button event listener
+document.getElementById('manual-wake-lock').addEventListener('click', toggleWakeLock);
+
 // Re-request wake lock when page becomes visible again (only if recording)
 if ('wakeLock' in navigator) {
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && loggingEnabled && (wakeLock === null || wakeLock.released)) {
-            requestWakeLock();
+    document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && loggingEnabled) {
+            // Small delay to ensure the page is fully visible
+            setTimeout(async () => {
+                if (wakeLock === null || wakeLock.released) {
+                    addDebug('Page became visible during recording - requesting wake lock');
+                    await requestWakeLock();
+                }
+            }, 100);
+        }
+    });
+    
+    // Also handle page focus events for additional reliability
+    window.addEventListener('focus', async () => {
+        if (loggingEnabled && (wakeLock === null || wakeLock.released)) {
+            addDebug('Window focused during recording - requesting wake lock');
+            await requestWakeLock();
         }
     });
 }
