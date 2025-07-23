@@ -13,7 +13,7 @@ This is a FastAPI-based application that collects road roughness data from mobil
 ### Frontend (HTML/JavaScript)
 - **Main Interface**: `static/index.html` - Primary data collection interface
 - **Device View**: `static/device.html` - Leaflet.js map visualization with device filtering
-- **Database View**: `static/db.html` - Database query interface
+- **Database View**: `static/database.html` - Database query interface
 - **Maintenance**: `static/maintenance.html` - Admin tools and API documentation
 - **Login**: `static/login.html` - Authentication interface
 
@@ -98,6 +98,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 2. **Connection Leaks**: Fixed with proper context management patterns
 3. **Logging Performance**: Enhanced with database-level filtering
 4. **Device Page Load Failure**: Fixed misplaced closing tags in `static/device.html` that broke script execution and prevented devices and map from loading correctly
+5. **Database Page Missing Route**: Added `/database.html` endpoint so the page loads properly
 
 ### Current Issues
 - No critical bugs currently identified

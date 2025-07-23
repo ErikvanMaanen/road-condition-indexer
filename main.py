@@ -192,6 +192,14 @@ def read_maintenance(request: Request):
         return RedirectResponse(url="/static/login.html?next=/maintenance.html")
     return FileResponse(BASE_DIR / "static" / "maintenance.html")
 
+
+@app.get("/database.html")
+def read_database(request: Request):
+    """Serve the database management page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/database.html")
+    return FileResponse(BASE_DIR / "static" / "database.html")
+
 # In-memory debug log
 DEBUG_LOG: List[str] = []
 
