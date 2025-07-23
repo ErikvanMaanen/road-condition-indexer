@@ -945,9 +945,18 @@ async function requestWakeLock() {
         wakeLock = await navigator.wakeLock.request('screen');
         wakeLockSupported = true;
         
-        wakeLock.addEventListener('release', () => {
+        wakeLock.addEventListener('release', async () => {
             addDebug('Wake lock released (may have been due to tab switch or battery saving)');
             updateWakeLockStatus();
+            if (loggingEnabled) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    addDebug('Wake lock re-acquired automatically');
+                    updateWakeLockStatus();
+                } catch (err) {
+                    addDebug('Failed to re-acquire wake lock: ' + err.message);
+                }
+            }
         });
         
         addDebug('Wake lock acquired - screen will stay on during recording');
