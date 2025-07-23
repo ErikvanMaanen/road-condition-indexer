@@ -135,6 +135,9 @@ let roughAvg = 0;
 let roughScales = {};
 let sliderMin = 0;
 let sliderMax = 0;
+const pageRefreshTime = Date.now();
+let loadedRows = [];
+let markers = [];
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -188,10 +191,8 @@ function setDateRange() {
             document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
             sliderMin = Date.parse(data.start);
         }
-        if (data.end) {
-            document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
-            sliderMax = Date.parse(data.end);
-        }
+        document.getElementById('endDate').value = toCESTDateTimeLocal(pageRefreshTime);
+        sliderMax = pageRefreshTime;
         syncRanges();
     }).catch(console.error);
 }
@@ -427,6 +428,44 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
         if (nickname) popup = `Device: ${nickname}<br>` + popup;
     }
     marker.bindPopup(popup);
+    return marker;
+}
+
+async function updateMarkers(showProgress = false) {
+    const startVal = Date.parse(document.getElementById('startDate').value);
+    const endVal = Date.parse(document.getElementById('endDate').value);
+    const loadBox = document.getElementById('loading');
+    const prog = document.getElementById('load-progress');
+    const label = document.getElementById('load-label');
+    if (showProgress) {
+        loadBox.style.display = 'block';
+        prog.max = loadedRows.length;
+        prog.value = 0;
+        label.textContent = `0 / ${loadedRows.length}`;
+    }
+    for (let i = loadedRows.length - 1; i >= 0; i--) {
+        const row = loadedRows[i];
+        const ts = Date.parse(row.timestamp);
+        const within = (!isNaN(startVal) ? ts >= startVal : true) &&
+                       (!isNaN(endVal) ? ts <= endVal : true) &&
+                       filterRoughness(row.roughness);
+        if (within) {
+            if (!markers[i]) {
+                const name = deviceNicknames[row.device_id] || '';
+                const scale = roughScales[row.device_id] || {min:0,max:1};
+                markers[i] = addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+            }
+        } else if (markers[i]) {
+            map.removeLayer(markers[i]);
+            markers[i] = null;
+        }
+        if (showProgress) {
+            prog.value = loadedRows.length - i;
+            label.textContent = `${loadedRows.length - i} / ${loadedRows.length}`;
+            if ((loadedRows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
+        }
+    }
+    if (showProgress) loadBox.style.display = 'none';
 }
 
 function loadData() {
@@ -441,45 +480,21 @@ function loadData() {
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(async data => {
-            const loadBox = document.getElementById('loading');
-            const prog = document.getElementById('load-progress');
-            const label = document.getElementById('load-label');
-            const rows = data.rows || [];
-            prog.max = rows.length;
-            prog.value = 0;
-            label.textContent = `0 / ${rows.length}`;
-            loadBox.style.display = 'block';
-            map.eachLayer(layer => {
-                if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
-                    map.removeLayer(layer);
-                }
-            });
+            markers.forEach(m => { if (m) map.removeLayer(m); });
+            markers = [];
+            loadedRows = data.rows || [];
             roughAvg = data.average || 0;
             roughMin = 0;
             roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
             roughScales = {};
-            rows.forEach(row => {
+            loadedRows.forEach(row => {
                 const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
                 s.min = Math.min(s.min, row.roughness);
                 s.max = Math.max(s.max, row.roughness);
                 roughScales[row.device_id] = s;
             });
             updateRoughnessLabels();
-            
-            // Remove the code that overwrites the date inputs with loaded data range
-            // The date inputs should maintain the full available range from setDateRange()
-            
-            for (let i = rows.length - 1; i >= 0; i--) {
-                const row = rows[i];
-                if (!filterRoughness(row.roughness)) continue;
-                const name = deviceNicknames[row.device_id] || '';
-                const scale = roughScales[row.device_id] || {min:0,max:1};
-                addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
-                prog.value = rows.length - i;
-                label.textContent = `${rows.length - i} / ${rows.length}`;
-                if ((rows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
-            }
-            loadBox.style.display = 'none';
+            await updateMarkers(true);
         })
         .catch(console.error);
 }
@@ -492,7 +507,9 @@ document.getElementById('deviceId').addEventListener('change', () => {
         .map(o => o.value).filter(v => v);
     setDateRange().then(loadData);
 });
-document.getElementById('roughness-filter').addEventListener('change', loadData);
+document.getElementById('roughness-filter').addEventListener('change', () => {
+    updateMarkers();
+});
 document.getElementById('gpx-button').addEventListener('click', () => {
     addLog('Generate GPX pressed');
     generateGpx();
@@ -501,19 +518,19 @@ let sliderUpdating = false;
 document.getElementById('startDate').addEventListener('change', () => {
     if (sliderUpdating) return;
     syncRanges();
-    loadData();
+    updateMarkers();
 });
 document.getElementById('endDate').addEventListener('change', () => {
     if (sliderUpdating) return;
     syncRanges();
-    loadData();
+    updateMarkers();
 });
 document.getElementById('startRange').addEventListener('input', () => {
     sliderUpdating = true;
     const v = parseInt(document.getElementById('startRange').value, 10);
     document.getElementById('startDate').value = toCESTDateTimeLocal(v);
     syncRanges();
-    loadData();
+    updateMarkers();
     sliderUpdating = false;
 });
 document.getElementById('endRange').addEventListener('input', () => {
@@ -521,7 +538,7 @@ document.getElementById('endRange').addEventListener('input', () => {
     const v = parseInt(document.getElementById('endRange').value, 10);
     document.getElementById('endDate').value = toCESTDateTimeLocal(v);
     syncRanges();
-    loadData();
+    updateMarkers();
     sliderUpdating = false;
 });
 
