@@ -42,6 +42,11 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 
+# Thresholds for log filtering
+MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
+MAX_DISTANCE_M = float(os.getenv("RCI_MAX_DISTANCE_M", "100"))
+MIN_SPEED_KMH = float(os.getenv("RCI_MIN_SPEED_KMH", "7"))
+
 def get_azure_credential():
     """Return an Azure credential if environment variables are set."""
     if ClientSecretCredential is None:
@@ -332,7 +337,7 @@ def compute_roughness(
         freq_max=freq_max,
     )
 
-    if speed_kmh < 5.0:
+    if speed_kmh < MIN_SPEED_KMH:
         return 0.0
 
     return metrics["rms"]
@@ -405,16 +410,25 @@ def post_log(entry: LogEntry, request: Request):
         if dt_sec <= 0:
             dt_sec = 2.0
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
-        avg_speed = dist_km / (dt_sec / 3600)
-        log_debug(f"Calculated avg speed: {avg_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m", device_id=entry.device_id)
+        computed_speed = dist_km / (dt_sec / 3600)
+        log_debug(
+            f"Calculated avg speed: {computed_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m",
+            device_id=entry.device_id,
+        )
 
-    if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
-        log_warning(f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m", device_id=entry.device_id)
+    if dt_sec > MAX_INTERVAL_SEC or dist_km * 1000.0 > MAX_DISTANCE_M:
+        log_warning(
+            f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m",
+            device_id=entry.device_id,
+        )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "interval too long"}
 
-    if avg_speed < 5.0:
-        log_debug(f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h", device_id=entry.device_id)
+    if avg_speed < MIN_SPEED_KMH:
+        log_debug(
+            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h",
+            device_id=entry.device_id,
+        )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "low speed"}
 

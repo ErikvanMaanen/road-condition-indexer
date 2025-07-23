@@ -7,8 +7,8 @@ This project collects road roughness data from mobile devices and stores it in a
 - `POST /log` – Submit a new measurement. Requires JSON payload with latitude,
   longitude, **speed in km/h**, direction, a device identifier, and a list of
   Z-axis acceleration values. The server computes the
-  average speed since the previous update and ignores submissions when that
-  speed is below **5 km/h**.
+  average speed reported by the client and ignores submissions when that
+  speed is below **7 km/h** by default (configurable via `RCI_MIN_SPEED_KMH`).
 - `GET /logs` – Fetch recent measurements. Accepts an optional `limit` query
   parameter (default 100).
 - `GET /debuglog` – Retrieve backend debug messages.
@@ -56,8 +56,8 @@ Submitted Z-axis samples are resampled to a constant rate and filtered with a
 root‑mean‑square acceleration which forms the stored roughness value. Additional
 metrics like the vibration dose value (VDV) and crest factor are computed for
 future analysis, although they are not currently stored in the database. To
-avoid noise during stops, reports with an average speed below 5 km/h still yield
-a roughness score of zero.
+avoid noise during stops, reports with an average speed below the configured
+threshold (7 km/h by default) still yield a roughness score of zero.
 
 ## Database Schema
 

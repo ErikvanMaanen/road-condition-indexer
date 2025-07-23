@@ -42,7 +42,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 ### Data Processing Pipeline
 - Z-axis acceleration samples are resampled and filtered with a 0.5–50 Hz Butterworth band-pass filter
 - RMS acceleration calculation for roughness scoring
-- Speed filtering (ignores data below 5 km/h)
+- Speed filtering (ignores data below 7 km/h)
 - Additional metrics: VDV and crest factor (computed but not stored)
 
 ### Device Management
@@ -69,7 +69,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 ## API Endpoints
 
 ### Public Endpoints
-- `POST /log` - Submit measurement data (requires speed ≥5 km/h)
+- `POST /log` - Submit measurement data (requires speed ≥7 km/h)
 - `GET /logs` - Fetch recent measurements (limit parameter)
 - `GET /filteredlogs` - Filtered data retrieval with device/date filters
 - `GET /device_ids` - Device list with nicknames
