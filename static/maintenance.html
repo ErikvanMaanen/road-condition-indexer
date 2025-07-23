@@ -199,6 +199,9 @@
                 <option value="GENERAL">General</option>
             </select>
             
+            <label>Device ID:</label>
+            <input type="text" id="log-device-filter" placeholder="Filter by device ID" style="width: 120px;">
+            
             <label>Limit:</label>
             <select id="log-limit">
                 <option value="50">50 entries</option>
@@ -453,6 +456,7 @@ function toCESTDateTimeLocal(timestamp) {
 async function loadDatabaseLogs() {
     const levelFilter = document.getElementById('log-level-filter').value;
     const categoryFilter = document.getElementById('log-category-filter').value;
+    const deviceFilter = document.getElementById('log-device-filter').value;
     const limit = document.getElementById('log-limit').value;
     const sortOrder = document.getElementById('log-sort-order').value;
     try {
@@ -460,6 +464,7 @@ async function loadDatabaseLogs() {
         const params = new URLSearchParams();
         if (levelFilter) params.append('level_filter', levelFilter);
         if (categoryFilter) params.append('category_filter', categoryFilter);
+        if (deviceFilter) params.append('device_id_filter', deviceFilter);
         if (limit) params.append('limit', limit);
         // No backend sort param, so sort client-side
         const response = await authFetch(`/manage/debug_logs?${params.toString()}`);
@@ -497,12 +502,14 @@ function displayLogs(logs) {
         const timestamp = formatDutchTime(log.timestamp);
         const level = log.level || 'INFO';
         const category = log.category || 'GENERAL';
-        // Only 3 rows: header, message, stack (if present)
+        const deviceId = log.device_id || '';
+        // Header, message, device info, stack (if present)
         html += `<div class="log-entry">
             <div>
                 <span class="log-timestamp">${timestamp}</span>
                 <span class="log-level log-level-${level}">${level}</span>
                 <span class="log-category">${category}</span>
+                ${deviceId ? `<span class="log-device" style="background: #e6f3ff; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; margin-left: 5px;">Device: ${escapeHtml(deviceId)}</span>` : ''}
             </div>
             <div class="log-message">${escapeHtml(log.message || '')}</div>
             ${log.stack_trace ? `<div class="log-stack">${escapeHtml(log.stack_trace)}</div>` : ''}
@@ -639,7 +646,26 @@ async function repairDatabase() {
 // Load logs on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadDatabaseLogs();
+    
+    // Add event listeners for log filters
+    document.getElementById('log-level-filter').addEventListener('change', loadDatabaseLogs);
+    document.getElementById('log-category-filter').addEventListener('change', loadDatabaseLogs);
+    document.getElementById('log-device-filter').addEventListener('input', debounce(loadDatabaseLogs, 300));
+    document.getElementById('log-limit').addEventListener('change', loadDatabaseLogs);
 });
+
+// Debounce function to avoid too many API calls while typing
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
 
 function toggleApiReference() {
     const content = document.getElementById('api-content');

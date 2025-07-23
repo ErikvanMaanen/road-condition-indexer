@@ -37,12 +37,13 @@ All database operations now include comprehensive logging:
 
 ### Enhanced Debug Log Retrieval
 ```
-GET /debuglog/enhanced?level=INFO&category=QUERY&limit=100
+GET /debuglog/enhanced?level=INFO&category=QUERY&device_id=device123&limit=100
 ```
 
 Parameters:
 - `level` (optional): Minimum log level to retrieve
 - `category` (optional): Filter by specific category
+- `device_id` (optional): Filter by specific device ID
 - `limit` (optional): Maximum number of logs (default: 100)
 
 ### Log Configuration Management
@@ -72,6 +73,10 @@ from database import log_info, log_warning, log_error
 log_info("Application started successfully")
 log_warning("Low disk space detected")
 log_error("Failed to connect to external service")
+
+# With device context
+log_info("Data processed successfully", device_id="device123")
+log_error("Upload failed", device_id="device456")
 ```
 
 ### Advanced Logging with Categories
@@ -82,6 +87,10 @@ db = DatabaseManager()
 db.log_debug("Query executed in 0.15s", LogLevel.INFO, LogCategory.QUERY)
 db.log_debug("Connection pool exhausted", LogLevel.WARNING, LogCategory.CONNECTION)
 db.log_debug("Migration failed", LogLevel.ERROR, LogCategory.MIGRATION, include_stack=True)
+
+# With device context
+db.log_debug("Data inserted successfully", LogLevel.INFO, LogCategory.DATABASE, device_id="device123")
+db.log_debug("Connection timeout", LogLevel.WARNING, LogCategory.CONNECTION, device_id="device456")
 ```
 
 ### Configuration
@@ -112,10 +121,14 @@ error_logs = get_debug_logs(level_filter=LogLevel.ERROR)
 # Filter by category
 query_logs = get_debug_logs(category_filter=LogCategory.QUERY)
 
+# Filter by device ID
+device_logs = get_debug_logs(device_id_filter="device123")
+
 # Combined filtering with limit
 recent_errors = get_debug_logs(
     level_filter=LogLevel.ERROR,
     category_filter=LogCategory.DATABASE,
+    device_id_filter="device123",
     limit=50
 )
 ```
@@ -131,6 +144,7 @@ CREATE TABLE RCI_debug_log (
     timestamp DATETIME DEFAULT GETDATE(),
     level NVARCHAR(20),
     category NVARCHAR(50),
+    device_id NVARCHAR(100),
     message NVARCHAR(4000),
     stack_trace NVARCHAR(MAX)
 )
@@ -143,6 +157,7 @@ CREATE TABLE RCI_debug_log (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     level TEXT,
     category TEXT,
+    device_id TEXT,
     message TEXT,
     stack_trace TEXT
 )

@@ -347,6 +347,7 @@ class DatabaseManager:
                     timestamp DATETIME DEFAULT GETDATE(),
                     level NVARCHAR(20),
                     category NVARCHAR(50),
+                    device_id NVARCHAR(100),
                     message NVARCHAR(4000),
                     stack_trace NVARCHAR(MAX)
                 )
@@ -405,6 +406,14 @@ class DatabaseManager:
             f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'distance_m') IS NULL
                 ALTER TABLE {TABLE_BIKE_DATA} ADD distance_m FLOAT
+            """
+        )
+        
+        # Add device_id column to debug log table if it doesn't exist
+        cursor.execute(
+            f"""
+            IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'device_id') IS NULL
+                ALTER TABLE {TABLE_DEBUG_LOG} ADD device_id NVARCHAR(100)
             """
         )
         
@@ -486,6 +495,7 @@ class DatabaseManager:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 level TEXT,
                 category TEXT,
+                device_id TEXT,
                 message TEXT,
                 stack_trace TEXT
             )
@@ -501,10 +511,26 @@ class DatabaseManager:
             )
             """
         )
+        
+        # Apply SQLite schema migrations
+        self._apply_sqlite_migrations(cursor)
+
+    def _apply_sqlite_migrations(self, cursor):
+        """Apply schema migrations for SQLite."""
+        # Check if device_id column exists in debug log table
+        cursor.execute(f"PRAGMA table_info({TABLE_DEBUG_LOG})")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'device_id' not in columns:
+            try:
+                cursor.execute(f"ALTER TABLE {TABLE_DEBUG_LOG} ADD COLUMN device_id TEXT")
+                self.logger.info("Added device_id column to debug log table")
+            except Exception as e:
+                self.logger.error(f"Failed to add device_id column: {e}")
 
     def log_debug(self, message: str, level: LogLevel = LogLevel.INFO, 
                   category: LogCategory = LogCategory.GENERAL,
-                  include_stack: bool = False) -> None:
+                  include_stack: bool = False, device_id: Optional[str] = None) -> None:
         """Insert a debug message into the debug log table with filtering support.
         
         Args:
@@ -512,6 +538,7 @@ class DatabaseManager:
             level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
             category: Log category for filtering
             include_stack: Whether to include stack trace information
+            device_id: Optional device ID to associate with the log entry
         """
         if not self._should_log(level, category):
             return
@@ -525,9 +552,9 @@ class DatabaseManager:
         
         try:
             self.execute_non_query(
-                f"""INSERT INTO {TABLE_DEBUG_LOG} (timestamp, level, category, message, stack_trace) 
-                   VALUES (?, ?, ?, ?, ?)""",
-                (timestamp, level.value, category.value, message, stack_trace)
+                f"""INSERT INTO {TABLE_DEBUG_LOG} (timestamp, level, category, device_id, message, stack_trace) 
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (timestamp, level.value, category.value, device_id, message, stack_trace)
             )
         except Exception as e:
             # Check for database corruption
@@ -554,12 +581,14 @@ class DatabaseManager:
     
     def get_debug_logs(self, level_filter: Optional[LogLevel] = None,
                       category_filter: Optional[LogCategory] = None,
+                      device_id_filter: Optional[str] = None,
                       limit: Optional[int] = 100) -> List[Dict[str, Any]]:
         """Retrieve debug logs with optional filtering.
         
         Args:
             level_filter: Filter by minimum log level
             category_filter: Filter by specific category
+            device_id_filter: Filter by specific device ID
             limit: Maximum number of logs to return
             
         Returns:
@@ -580,6 +609,10 @@ class DatabaseManager:
             if category_filter:
                 query += " AND category = ?"
                 params.append(category_filter.value)
+            
+            if device_id_filter:
+                query += " AND device_id = ?"
+                params.append(device_id_filter)
             
             query += " ORDER BY id DESC"
             if limit:
@@ -1348,18 +1381,19 @@ def set_log_categories(categories: List[LogCategory]) -> None:
 
 def get_debug_logs(level_filter: Optional[LogLevel] = None,
                   category_filter: Optional[LogCategory] = None,
+                  device_id_filter: Optional[str] = None,
                   limit: Optional[int] = 100) -> List[Dict[str, Any]]:
     """Get debug logs with filtering."""
-    return db_manager.get_debug_logs(level_filter, category_filter, limit)
+    return db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
 
-def log_info(message: str, category: LogCategory = LogCategory.GENERAL) -> None:
+def log_info(message: str, category: LogCategory = LogCategory.GENERAL, device_id: Optional[str] = None) -> None:
     """Log an info message."""
-    db_manager.log_debug(message, LogLevel.INFO, category)
+    db_manager.log_debug(message, LogLevel.INFO, category, device_id=device_id)
 
-def log_warning(message: str, category: LogCategory = LogCategory.GENERAL) -> None:
+def log_warning(message: str, category: LogCategory = LogCategory.GENERAL, device_id: Optional[str] = None) -> None:
     """Log a warning message."""
-    db_manager.log_debug(message, LogLevel.WARNING, category)
+    db_manager.log_debug(message, LogLevel.WARNING, category, device_id=device_id)
 
-def log_error(message: str, category: LogCategory = LogCategory.GENERAL, include_stack: bool = True) -> None:
+def log_error(message: str, category: LogCategory = LogCategory.GENERAL, include_stack: bool = True, device_id: Optional[str] = None) -> None:
     """Log an error message."""
-    db_manager.log_debug(message, LogLevel.ERROR, category, include_stack)
+    db_manager.log_debug(message, LogLevel.ERROR, category, include_stack, device_id=device_id)

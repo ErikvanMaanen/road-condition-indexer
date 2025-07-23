@@ -219,7 +219,7 @@ def get_dutch_time(utc_time: datetime = None) -> str:
         return (utc_time or datetime.utcnow()).isoformat()
 
 
-def log_debug(message: str) -> None:
+def log_debug(message: str, device_id: Optional[str] = None) -> None:
     """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
     timestamp = get_dutch_time()
     DEBUG_LOG.append(f"{timestamp} - {message}")
@@ -229,9 +229,9 @@ def log_debug(message: str) -> None:
     # Log to DB as error if message contains 'error' or 'exception', else as debug
     lower_msg = message.lower()
     if 'error' in lower_msg or 'exception' in lower_msg:
-        log_error(message)
+        log_error(message, device_id=device_id)
     else:
-        db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL)
+        db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -376,8 +376,8 @@ class LogEntry(BaseModel):
 
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
-    log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL)
-    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}")
+    log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL, device_id=entry.device_id)
+    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}", device_id=entry.device_id)
 
     now = datetime.utcnow()
     avg_speed = entry.speed
@@ -388,7 +388,7 @@ def post_log(entry: LogEntry, request: Request):
         try:
             prev_info = db_manager.get_last_bike_data_point(entry.device_id)
         except Exception as exc:
-            log_error(f"Failed to fetch previous data point for device {entry.device_id}: {exc}")
+            log_error(f"Failed to fetch previous data point for device {entry.device_id}: {exc}", device_id=entry.device_id)
 
     if prev_info:
         prev_ts, prev_lat, prev_lon = prev_info
@@ -397,23 +397,23 @@ def post_log(entry: LogEntry, request: Request):
             dt_sec = 2.0
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
         avg_speed = dist_km / (dt_sec / 3600)
-        log_debug(f"Calculated avg speed: {avg_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m")
+        log_debug(f"Calculated avg speed: {avg_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m", device_id=entry.device_id)
 
     if dt_sec > 5.0 or dist_km * 1000.0 > 25.0:
-        log_warning(f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m")
+        log_warning(f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m", device_id=entry.device_id)
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < 5.0:
-        log_debug(f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h")
+        log_debug(f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h", device_id=entry.device_id)
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         return {"status": "ignored", "reason": "low speed"}
 
     elevation = get_elevation(entry.latitude, entry.longitude)
     if elevation is not None:
-        log_debug(f"Elevation: {elevation} m")
+        log_debug(f"Elevation: {elevation} m", device_id=entry.device_id)
     else:
-        log_debug("Elevation not available")
+        log_debug("Elevation not available", device_id=entry.device_id)
     roughness = compute_roughness(
         entry.z_values,
         avg_speed,
@@ -422,7 +422,7 @@ def post_log(entry: LogEntry, request: Request):
         freq_max=entry.freq_max if entry.freq_max is not None else 50.0,
     )
     distance_m = dist_km * 1000.0
-    log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}")
+    log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}", device_id=entry.device_id)
     ip_address = get_client_ip(request)
     
     try:
@@ -441,9 +441,9 @@ def post_log(entry: LogEntry, request: Request):
         # Update device info
         db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
         
-        log_info(f"Successfully stored data for device {entry.device_id}")
+        log_info(f"Successfully stored data for device {entry.device_id}", device_id=entry.device_id)
     except Exception as exc:
-        log_error(f"Database error while storing data for device {entry.device_id}: {exc}")
+        log_error(f"Database error while storing data for device {entry.device_id}: {exc}", device_id=entry.device_id)
         raise HTTPException(status_code=500, detail="Database error") from exc
         
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
@@ -591,6 +591,7 @@ def get_debuglog():
 def get_enhanced_debuglog(
     level: Optional[str] = Query(None, description="Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     category: Optional[str] = Query(None, description="Log category filter"),
+    device_id: Optional[str] = Query(None, description="Device ID filter"),
     limit: Optional[int] = Query(100, description="Maximum number of logs to return")
 ):
     """Get enhanced debug logs with filtering capabilities."""
@@ -611,8 +612,8 @@ def get_enhanced_debuglog(
                 log_warning(f"Invalid log category filter: {category}")
                 raise HTTPException(status_code=400, detail=f"Invalid log category: {category}")
         
-        logs = db_manager.get_debug_logs(level_filter, category_filter, limit)
-        log_debug(f"Retrieved {len(logs)} enhanced debug logs with filters: level={level}, category={category}")
+        logs = db_manager.get_debug_logs(level_filter, category_filter, device_id, limit)
+        log_debug(f"Retrieved {len(logs)} enhanced debug logs with filters: level={level}, category={category}, device_id={device_id}")
         
         return {
             "logs": logs,
@@ -620,6 +621,7 @@ def get_enhanced_debuglog(
             "filters": {
                 "level": level,
                 "category": category,
+                "device_id": device_id,
                 "limit": limit
             }
         }
@@ -632,6 +634,7 @@ def get_enhanced_debuglog(
 def get_manage_debug_logs(
     level_filter: Optional[str] = Query(None, description="Log level filter"),
     category_filter: Optional[str] = Query(None, description="Log category filter"),
+    device_id_filter: Optional[str] = Query(None, description="Device ID filter"),
     limit: Optional[int] = Query(100, description="Maximum number of logs to return"),
     dep: None = Depends(password_dependency)
 ):
@@ -651,7 +654,7 @@ def get_manage_debug_logs(
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid log category: {category_filter}")
         
-        logs = db_manager.get_debug_logs(level_enum, category_enum, limit)
+        logs = db_manager.get_debug_logs(level_enum, category_enum, device_id_filter, limit)
         log_debug(f"Retrieved {len(logs)} debug logs via manage endpoint")
         
         return logs
