@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 # Import database constants and manager
 from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES,
+    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS,
     LogLevel, LogCategory, log_info, log_warning, log_error
 )
 
@@ -1341,3 +1341,15 @@ def clear_debug_logs(dep: None = Depends(password_dependency)):
     except Exception as exc:
         log_error(f"Failed to clear debug logs: {exc}")
         raise HTTPException(status_code=500, detail="Failed to clear debug logs") from exc
+
+
+@app.post("/manage/archive_logs")
+def archive_logs(dep: None = Depends(password_dependency)):
+    """Archive all current logs to the archive table and clear the main logs table."""
+    try:
+        result = db_manager.archive_logs()
+        log_info(f"Archive operation completed: {result['message']}")
+        return result
+    except Exception as exc:
+        log_error(f"Failed to archive logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to archive logs") from exc

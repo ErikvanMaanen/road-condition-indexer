@@ -227,6 +227,7 @@
             <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
             <button onclick="exportLogs()">📥 Export CSV</button>
             <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
+            <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Logs</button>
             <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
         </div>
     </div>
@@ -411,6 +412,13 @@
                 <td>GET</td>
                 <td>None</td>
                 <td>JSON {name, sku, capacity}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/archive_logs</td>
+                <td>POST</td>
+                <td>None</td>
+                <td>JSON {status, message, archived_count}</td>
                 <td>Password</td>
             </tr>
         </tbody>
@@ -666,6 +674,41 @@ async function repairDatabase() {
         
     } catch (error) {
         alert(`Database repair failed: ${error.message}`);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function archiveLogs() {
+    if (!confirm('This will move all current logs to the RCI_archive_logs table and clear the main logs table. This action cannot be undone. Continue?')) {
+        return;
+    }
+    
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.textContent = '📦 Archiving...';
+    btn.disabled = true;
+    
+    try {
+        const response = await authFetch('/manage/archive_logs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        alert(`Archive operation completed: ${result.message}\nArchived records: ${result.archived_count || 'Unknown'}`);
+        
+        // Refresh logs and summary after archiving
+        loadDatabaseLogs();
+        loadSummary();
+        
+    } catch (error) {
+        alert(`Archive operation failed: ${error.message}`);
     } finally {
         btn.textContent = originalText;
         btn.disabled = false;

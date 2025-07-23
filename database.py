@@ -58,6 +58,7 @@ TABLE_BIKE_DATA = "RCI_bike_data"
 TABLE_DEBUG_LOG = "RCI_debug_log" 
 TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
+TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -395,6 +396,28 @@ class DatabaseManager:
             """
         )
         
+        # Create archive logs table (same structure as bike data for archived records)
+        cursor.execute(
+            f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_ARCHIVE_LOGS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_ARCHIVE_LOGS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    latitude FLOAT NOT NULL,
+                    longitude FLOAT NOT NULL,
+                    speed FLOAT NOT NULL,
+                    direction FLOAT NOT NULL,
+                    roughness FLOAT NOT NULL,
+                    timestamp DATETIME2 DEFAULT GETDATE(),
+                    device_id NVARCHAR(255) NOT NULL,
+                    ip_address NVARCHAR(45)
+                )
+            END
+            """
+        )
+        
         # Schema migration statements
         self._apply_sqlserver_migrations(cursor)
 
@@ -545,6 +568,21 @@ class DatabaseManager:
                 freq_min REAL,
                 freq_max REAL,
                 FOREIGN KEY (bike_data_id) REFERENCES {TABLE_BIKE_DATA}(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_ARCHIVE_LOGS} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                speed REAL NOT NULL,
+                direction REAL NOT NULL,
+                roughness REAL NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                device_id TEXT NOT NULL,
+                ip_address TEXT
             )
             """
         )
@@ -1302,6 +1340,68 @@ class DatabaseManager:
             self.log_debug(f"Failed to backup table '{table_name}': {e}", 
                           LogLevel.ERROR, LogCategory.BACKUP, include_stack=True)
             raise
+
+    def archive_logs(self) -> Dict[str, Any]:
+        """Move all logs from the main bike data table to the archive table."""
+        self.log_debug("Starting log archiving operation", LogLevel.INFO, LogCategory.MANAGEMENT)
+        
+        try:
+            # Get count of records to be archived
+            count_result = self.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
+            record_count = count_result if count_result else 0
+            
+            if record_count == 0:
+                self.log_debug("No records to archive", LogLevel.INFO, LogCategory.MANAGEMENT)
+                return {
+                    "status": "success",
+                    "message": "No records to archive",
+                    "archived_count": 0
+                }
+            
+            # Insert all bike data into archive table
+            if self.use_sqlserver:
+                # SQL Server syntax
+                archive_query = f"""
+                    INSERT INTO {TABLE_ARCHIVE_LOGS} 
+                    (latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address)
+                    SELECT latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address
+                    FROM {TABLE_BIKE_DATA}
+                """
+            else:
+                # SQLite syntax
+                archive_query = f"""
+                    INSERT INTO {TABLE_ARCHIVE_LOGS} 
+                    (latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address)
+                    SELECT latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address
+                    FROM {TABLE_BIKE_DATA}
+                """
+            
+            self.execute_non_query(archive_query)
+            
+            # Clear the main bike data table
+            self.execute_non_query(f"DELETE FROM {TABLE_BIKE_DATA}")
+            
+            # Also clear related source data if it exists
+            try:
+                self.execute_non_query(f"DELETE FROM {TABLE_BIKE_SOURCE_DATA}")
+                self.log_debug("Cleared related source data", LogLevel.INFO, LogCategory.MANAGEMENT)
+            except Exception as e:
+                self.log_debug(f"Note: Could not clear source data (table may not exist): {e}", 
+                              LogLevel.WARNING, LogCategory.MANAGEMENT)
+            
+            success_msg = f"Successfully archived {record_count} records to {TABLE_ARCHIVE_LOGS}"
+            self.log_debug(success_msg, LogLevel.INFO, LogCategory.MANAGEMENT)
+            
+            return {
+                "status": "success",
+                "message": success_msg,
+                "archived_count": record_count
+            }
+            
+        except Exception as e:
+            error_msg = f"Failed to archive logs: {e}"
+            self.log_debug(error_msg, LogLevel.ERROR, LogCategory.MANAGEMENT, include_stack=True)
+            raise Exception(error_msg) from e
 
     def rename_table(self, old_name: str, new_name: str) -> None:
         """Rename a table."""
