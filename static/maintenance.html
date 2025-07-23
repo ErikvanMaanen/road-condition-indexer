@@ -436,6 +436,19 @@ function formatDutchTime(isoString) {
     }
 }
 
+// Utility function to convert timestamp to CEST datetime-local format
+function toCESTDateTimeLocal(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        // Convert to Europe/Amsterdam timezone
+        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
+        return cesTime.toISOString().slice(0, 16);
+    } catch (error) {
+        // Fallback to UTC
+        return new Date(timestamp).toISOString().slice(0, 16);
+    }
+}
+
 // Database log viewer functions
 async function loadDatabaseLogs() {
     const levelFilter = document.getElementById('log-level-filter').value;
@@ -562,7 +575,8 @@ function exportLogs() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `database_logs_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    const cesTime = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }).replace(/[:\s]/g, '-');
+    a.download = `database_logs_${cesTime}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
 }
@@ -697,7 +711,8 @@ async function showRecords(name) {
 
 function addLog(msg){
     const div = document.getElementById('log');
-    div.textContent += new Date().toISOString() + ' - ' + msg + '\n';
+    const cesTime = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' });
+    div.textContent += cesTime + ' - ' + msg + '\n';
     div.scrollTop = div.scrollHeight;
 }
 

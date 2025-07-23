@@ -346,6 +346,38 @@ function formatDutchTime(isoString) {
     }
 }
 
+// Utility function to convert timestamp to CEST datetime-local format
+function toCESTDateTimeLocal(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        // Convert to Europe/Amsterdam timezone
+        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
+        return cesTime.toISOString().slice(0, 16);
+    } catch (error) {
+        // Fallback to UTC
+        return new Date(timestamp).toISOString().slice(0, 16);
+    }
+}
+
+// Utility function to convert CEST datetime-local input value back to UTC ISO
+function fromCESTDateTimeLocal(datetimeLocalValue) {
+    if (!datetimeLocalValue) return '';
+    try {
+        // Parse the datetime-local value as if it's in Europe/Amsterdam timezone
+        const localDate = new Date(datetimeLocalValue);
+        // Get the timezone offset for Europe/Amsterdam
+        const cesDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }));
+        const utcDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const offset = cesDate.getTime() - utcDate.getTime();
+        // Adjust for the timezone difference
+        const utcTime = new Date(localDate.getTime() - offset);
+        return utcTime.toISOString();
+    } catch (error) {
+        // Fallback to treating as UTC
+        return new Date(datetimeLocalValue).toISOString();
+    }
+}
+
 function updateRoughnessLabels() {
     const select = document.getElementById('roughness-filter');
     if (select) {
@@ -396,8 +428,8 @@ function loadData() {
     const end = document.getElementById('endDate').value;
     const params = new URLSearchParams();
     ids.forEach(id => params.append('device_id', id));
-    if (start) params.append('start', start);
-    if (end) params.append('end', end);
+    if (start) params.append('start', fromCESTDateTimeLocal(start));
+    if (end) params.append('end', fromCESTDateTimeLocal(end));
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(async data => {
@@ -467,7 +499,7 @@ document.getElementById('endDate').addEventListener('change', () => {
 document.getElementById('startRange').addEventListener('input', () => {
     sliderUpdating = true;
     const v = parseInt(document.getElementById('startRange').value, 10);
-    document.getElementById('startDate').value = new Date(v).toISOString().slice(0,16);
+    document.getElementById('startDate').value = toCESTDateTimeLocal(v);
     syncRanges();
     loadData();
     sliderUpdating = false;
@@ -475,7 +507,7 @@ document.getElementById('startRange').addEventListener('input', () => {
 document.getElementById('endRange').addEventListener('input', () => {
     sliderUpdating = true;
     const v = parseInt(document.getElementById('endRange').value, 10);
-    document.getElementById('endDate').value = new Date(v).toISOString().slice(0,16);
+    document.getElementById('endDate').value = toCESTDateTimeLocal(v);
     syncRanges();
     loadData();
     sliderUpdating = false;

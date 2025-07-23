@@ -594,6 +594,19 @@ function formatDutchTime(isoString) {
     }
 }
 
+// Utility function to convert timestamp to CEST datetime-local format
+function toCESTDateTimeLocal(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        // Convert to Europe/Amsterdam timezone
+        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
+        return cesTime.toISOString().slice(0, 16);
+    } catch (error) {
+        // Fallback to UTC
+        return new Date(timestamp).toISOString().slice(0, 16);
+    }
+}
+
 function filterRoughness(r) {
     const sel = document.getElementById('roughness-filter');
     if (!sel) return true;
@@ -763,7 +776,7 @@ function handlePosition(pos) {
                 const scale = roughScales[deviceId] || {min: data.roughness, max: data.roughness};
                 if (filterRoughness(data.roughness)) {
                     addPoint(latitude, longitude, data.roughness, {
-                        timestamp: new Date().toISOString(),
+                        timestamp: new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }),
                         speed: lastSpeed,
                         direction: lastDir,
                         roughness: data.roughness

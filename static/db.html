@@ -249,6 +249,56 @@ function colorForRoughness(r) {
     return `rgb(${red},${green},0)`;
 }
 
+// Utility function to format time in Dutch timezone
+function formatDutchTime(isoString) {
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleString('nl-NL', {
+            timeZone: 'Europe/Amsterdam',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (error) {
+        return isoString; // Fallback to original string
+    }
+}
+
+// Utility function to convert timestamp to CEST datetime-local format
+function toCESTDateTimeLocal(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        // Convert to Europe/Amsterdam timezone
+        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
+        return cesTime.toISOString().slice(0, 16);
+    } catch (error) {
+        // Fallback to UTC
+        return new Date(timestamp).toISOString().slice(0, 16);
+    }
+}
+
+// Utility function to convert CEST datetime-local input value back to UTC ISO
+function fromCESTDateTimeLocal(datetimeLocalValue) {
+    if (!datetimeLocalValue) return '';
+    try {
+        // Parse the datetime-local value as if it's in Europe/Amsterdam timezone
+        const localDate = new Date(datetimeLocalValue);
+        // Get the timezone offset for Europe/Amsterdam
+        const cesDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }));
+        const utcDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const offset = cesDate.getTime() - utcDate.getTime();
+        // Adjust for the timezone difference
+        const utcTime = new Date(localDate.getTime() - offset);
+        return utcTime.toISOString();
+    } catch (error) {
+        // Fallback to treating as UTC
+        return new Date(datetimeLocalValue).toISOString();
+    }
+}
+
 function roughnessLabel(r) {
     let min = roughMin;
     let max = roughMax;
@@ -317,7 +367,7 @@ function addPoint(lat, lon, info) {
         { radius:4, weight:1, opacity:0.9, fillOpacity:0.9, color: colorForRoughness(rough) }
     ).addTo(map);
     if (info) {
-        const timeStr = info.timestamp ? new Date(info.timestamp).toLocaleString() : '';
+        const timeStr = info.timestamp ? formatDutchTime(info.timestamp) : '';
         let popup = '';
         if (timeStr) popup += `Time: ${timeStr}<br>`;
         if ('speed' in info) popup += `Speed: ${Number(info.speed).toFixed(1)} km/h<br>`;
@@ -361,12 +411,10 @@ function setDateLimits(rows) {
         .map(r => Date.parse(r.timestamp))
         .filter(t => !isNaN(t));
     if (stamps.length === 0) return;
-    const min = new Date(Math.min(...stamps));
-    const max = new Date(Math.max(...stamps));
-    const toLocalIso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-            .toISOString().slice(0,16);
-    const minStr = toLocalIso(min);
-    const maxStr = toLocalIso(max);
+    const min = Math.min(...stamps);
+    const max = Math.max(...stamps);
+    const minStr = toCESTDateTimeLocal(min);
+    const maxStr = toCESTDateTimeLocal(max);
     startInput.min = minStr;
     startInput.max = maxStr;
     endInput.min = minStr;
@@ -405,8 +453,8 @@ async function setDateRange() {
     const res = await authFetch('/manage/table_range?table=' + encodeURIComponent(tableName));
     if (!res.ok) return;
     const data = await res.json();
-    if (data.start) document.getElementById('filter-start').value = data.start.slice(0,19);
-    if (data.end) document.getElementById('filter-end').value = data.end.slice(0,19);
+    if (data.start) document.getElementById('filter-start').value = toCESTDateTimeLocal(new Date(data.start).getTime());
+    if (data.end) document.getElementById('filter-end').value = toCESTDateTimeLocal(new Date(data.end).getTime());
 }
 async function insertTest() {
     const t = document.getElementById('table-select').value; if(!t) return;
@@ -571,8 +619,8 @@ function buildFilterParams() {
     }
     const start = document.getElementById('filter-start').value;
     const end = document.getElementById('filter-end').value;
-    if (start) params.append('start', start);
-    if (end) params.append('end', end);
+    if (start) params.append('start', fromCESTDateTimeLocal(start));
+    if (end) params.append('end', fromCESTDateTimeLocal(end));
     const ids = document.getElementById('filter-ids').value.trim();
     if (ids) {
         const m = ids.match(/^(\d+)\s*-\s*(\d+)$/);
