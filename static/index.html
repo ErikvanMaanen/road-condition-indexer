@@ -226,10 +226,13 @@ const LOG_ENDPOINT = '/log';
 function loadNickname() {
     const nickInput = document.getElementById('nickname');
     const saveBtn = document.getElementById('save-nickname');
+    
+    // Main page doesn't have nickname controls, so just return silently
     if (!nickInput || !saveBtn) {
         currentNickname = '';
         return;
     }
+    
     if (selectedIds.length !== 1) {
         nickInput.value = '';
         nickInput.placeholder = selectedIds.length === 0 ? 'Device nickname' : 'Select single device to edit nickname';
@@ -922,10 +925,16 @@ if (updateBtn) {
         loadLogs();
     });
 }
-document.getElementById('save-nickname').addEventListener('click', () => {
-    addLog('Save Nickname pressed');
-    saveNickname();
-});
+
+// Only add nickname event listener if the elements exist
+const saveNicknameBtn = document.getElementById('save-nickname');
+if (saveNicknameBtn) {
+    saveNicknameBtn.addEventListener('click', () => {
+        addLog('Save Nickname pressed');
+        saveNickname();
+    });
+}
+
 document.getElementById('device-filter').addEventListener('change', () => {
     selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
         .map(o => o.value).filter(v => v);
