@@ -48,7 +48,6 @@
 <nav id="page-links" style="margin-bottom:1rem;">
     <a href="/">Main</a>
 </nav>
-</body>
 <!-- Hidden maintenance link as a square at bottom right -->
 <a href="maintenance.html" id="maintenance-link" style="position:fixed;bottom:24px;right:24px;width:32px;height:32px;display:block;z-index:9999;opacity:0.2;background:#888;border-radius:6px;text-align:center;line-height:32px;text-decoration:none;font-size:1.5rem;transition:opacity 0.2s;" title="Maintenance">🛠️</a>
 <script>
@@ -168,10 +167,12 @@ function populateDeviceIds() {
             loadData();
         })
     ).catch(console.error);
+}
+</script>
 <section id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
     <strong>Roughness Calculation</strong> – Each acceleration sample is rotated so the device's Z axis aligns with the real-world up direction (using orientation angles). The vertical acceleration is filtered to keep vibrations between 1 and 20 Hz. The root-mean-square (RMS) of this filtered signal is divided by the average speed over the sample window. Records taken while traveling under 5&nbsp;km/h are ignored. This produces a roughness value that is higher for bumpier, rougher roads and lower for smooth surfaces.
 </section>
-}
+<script>
 
 function setDateRange() {
     const sel = document.getElementById('deviceId');
