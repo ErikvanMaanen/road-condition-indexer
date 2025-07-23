@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Management</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
+        #controls { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
+        button { padding: 0.5rem 1rem; font-size: 1rem; }
+        button.danger { background: #dc3545; color: white; }
+        button.danger:hover { background: #c82333; }
+        button.warning { background: #ffc107; color: black; }
+        button.warning:hover { background: #e0a800; }
+        #map { width: 100%; height: 40vh; margin-top: 1rem; }
+        #map:fullscreen { width: 100%; height: 100%; }
+        #controls input { margin-right: 0.5rem; }
+        #range-container { position:relative; height:30px; }
+        #range-container input { position:absolute; left:0; right:0; width:100%; }
+        #startRange { z-index:2; }
+        #endRange { z-index:1; }
+        #scale-container {
+            display: flex;
+            align-items: center;
+            margin-top: 0.5rem;
+            gap: 0.5rem;
+        }
+        #scale-bar {
+            flex: 1;
+            height: 12px;
+            background: linear-gradient(to right, green, yellow, red);
+            border: 1px solid #ccc;
+        }
+        #log {
+            width: 100%;
+            height: 150px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+            white-space: pre;
+        }
+        #debug {
+            width: 100%;
+            height: 150px;
+            margin-top: 1rem;
+        }
+        .data-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        .data-info h3 {
+            margin-top: 0;
+        }
+        .confirmation-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 1rem 0;
+            display: none;
+        }
+        .confirmation-box.danger {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .form-group textarea {
+            height: 100px;
+        }
+        #loading {
+            display: none;
+            text-align: center;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+<h1>Database Management</h1>
+<nav id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a> |
+    <a href="device.html">Device View</a> |
+    <a href="maintenance.html">Maintenance</a>
+</nav>
+
+<section id="filter-dev" style="margin-bottom:1rem;">
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <select id="roughness-filter" multiple style="min-width:180px;">
+            <option value="">[All Roughness]</option>
+            <option value="1">1 - Smooth road</option>
+            <option value="2">2 - Even surface</option>
+            <option value="3">3 - Light texture</option>
+            <option value="4">4 - Coarse texture</option>
+            <option value="5">5 - Moderate roughness</option>
+            <option value="6">6 - Bumpy cobbles</option>
+            <option value="7">7 - Fine gravel</option>
+            <option value="8">8 - Coarse gravel</option>
+            <option value="9">9 - Severely uneven</option>
+            <option value="10">10 - Extremely rough</option>
+        </select>
+        <select id="deviceId" multiple></select>
+        <button onclick="refreshSelection()">Refresh Selection</button>
+    </div>
+</section>
+
+<section id="filter-time" style="margin-bottom:1rem;">
+    <label>Time Range:</label>
+    <input id="startDate" type="datetime-local">
+    <input id="endDate" type="datetime-local">
+    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
+        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+    </div>
+</section>
+
+<div id="map"></div>
+<div id="scale-container">
+    <span>Smooth</span>
+    <div id="scale-bar"></div>
+    <span>Rough</span>
+</div>
+
+<div id="loading">Loading data...</div>
+
+<div class="data-info">
+    <h3>Selected Data Summary</h3>
+    <p id="data-summary">Select devices and time range to see data summary</p>
+</div>
+
+<section id="database-operations" style="margin-bottom:1rem;">
+    <h3>Database Operations</h3>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <button onclick="showUpdateForm()" class="warning">Update Selected Data</button>
+        <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
+        <button onclick="exportSelectedData()">Export Selected Data</button>
+    </div>
+</section>
+
+<!-- Update Form -->
+<div id="update-form" class="confirmation-box">
+    <h4>Update Selected Records</h4>
+    <p>Update the following fields for all selected records:</p>
+    <div class="form-group">
+        <label for="update-roughness">Roughness Value:</label>
+        <input type="number" id="update-roughness" step="0.001" placeholder="Leave empty to keep current values">
+    </div>
+    <div class="form-group">
+        <label for="update-speed">Speed (km/h):</label>
+        <input type="number" id="update-speed" step="0.1" placeholder="Leave empty to keep current values">
+    </div>
+    <div class="form-group">
+        <label for="update-direction">Direction (degrees):</label>
+        <input type="number" id="update-direction" min="0" max="360" placeholder="Leave empty to keep current values">
+    </div>
+    <div style="margin-top: 1rem;">
+        <button onclick="executeUpdate()" class="warning">Execute Update</button>
+        <button onclick="hideUpdateForm()">Cancel</button>
+    </div>
+</div>
+
+<!-- Delete Confirmation -->
+<div id="delete-confirmation" class="confirmation-box danger">
+    <h4>⚠️ Confirm Deletion</h4>
+    <p>You are about to permanently delete <span id="delete-count">0</span> records.</p>
+    <p><strong>This action cannot be undone!</strong></p>
+    <div style="margin-top: 1rem;">
+        <button onclick="executeDelete()" class="danger">DELETE RECORDS</button>
+        <button onclick="hideDeleteConfirmation()">Cancel</button>
+    </div>
+</div>
+
+<section id="logs" style="margin-bottom:1rem; display:none;">
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+    <h3>Debug Messages</h3>
+    <textarea id="debug" readonly></textarea>
+</section>
+<div style="margin-bottom:1rem;">
+    <button id="toggle-logs" onclick="toggleLogs()">Show Logs</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let selectedIds = [];
+let map;
+let deviceNicknames = {};
+let roughMin = 0;
+const LABEL_COUNT = 10;
+const ROUGHNESS_NAMES = [
+    'Smooth road',
+    'Even surface',
+    'Light texture',
+    'Coarse texture',
+    'Moderate roughness',
+    'Bumpy cobbles',
+    'Fine gravel',
+    'Coarse gravel',
+    'Severely uneven',
+    'Extremely rough'
+];
+let roughMax = LABEL_COUNT;
+let roughAvg = 0;
+let roughScales = {};
+let sliderMin = 0;
+let sliderMax = 0;
+let selectedData = [];
+
+function populateDeviceIds() {
+    fetch('/device_ids').then(r => r.json()).then(data => {
+        const sel = document.getElementById('deviceId');
+        sel.innerHTML = '';
+        const optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = '[All Devices]';
+        sel.appendChild(optAll);
+        deviceNicknames = {};
+        data.ids.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
+            deviceNicknames[item.id] = item.nickname || item.id;
+            sel.appendChild(opt);
+        });
+        Array.from(sel.options).forEach(o => {
+            if (selectedIds.includes(o.value)) o.selected = true;
+        });
+        selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    }).then(() =>
+        setDateRange().then(() => {
+            loadData();
+        })
+    ).catch(console.error);
+}
+
+function setDateRange() {
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    let url = '/date_range';
+    if (ids.length > 0) {
+        const params = new URLSearchParams();
+        ids.forEach(id => params.append('device_id', id));
+        url = '/date_range?' + params.toString();
+    }
+    return fetch(url).then(r => r.json()).then(data => {
+        if (data.start) document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
+        if (data.end) document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
+        sliderMin = Date.parse(data.start);
+        sliderMax = Date.parse(data.end);
+        syncRanges();
+    }).catch(console.error);
+}
+
+function syncRanges() {
+    const startVal = Date.parse(document.getElementById('startDate').value);
+    const endVal = Date.parse(document.getElementById('endDate').value);
+    if (!isNaN(startVal) && !isNaN(endVal)) {
+        const startR = document.getElementById('startRange');
+        const endR = document.getElementById('endRange');
+        startR.min = sliderMin; startR.max = sliderMax;
+        endR.min = sliderMin; endR.max = sliderMax;
+        startR.value = startVal; endR.value = endVal;
+    }
+}
+
+function initMap() {
+    const defaultPos = [52.028, 5.168]; // Houten, NL
+    const zoom = 12;
+    map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'})
+        .addTo(map);
+    map.setView(defaultPos, zoom);
+}
+
+// Utility function to convert timestamp to CEST datetime-local format
+function toCESTDateTimeLocal(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        // Convert to Europe/Amsterdam timezone
+        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
+        return cesTime.toISOString().slice(0, 16);
+    } catch (error) {
+        // Fallback to UTC
+        return new Date(timestamp).toISOString().slice(0, 16);
+    }
+}
+
+function fromCESTDateTimeLocal(datetimeLocalValue) {
+    try {
+        // Parse the datetime-local value as if it's in Amsterdam timezone
+        const localDate = new Date(datetimeLocalValue);
+        // Get the timezone offset for Amsterdam
+        const amsterdamTime = new Date(localDate.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }));
+        const offset = amsterdamTime.getTime() - localDate.getTime();
+        // Adjust for the timezone difference
+        const utcTime = new Date(localDate.getTime() - offset);
+        return utcTime.toISOString();
+    } catch (error) {
+        // Fallback to treating as UTC
+        return new Date(datetimeLocalValue).toISOString();
+    }
+}
+
+function addLog(msg) {
+    const div = document.getElementById('log');
+    if (div) {
+        const time = new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+        div.textContent += `[${time}] ${msg}\n`;
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+function addDebug(msg) {
+    const el = document.getElementById('debug');
+    if (el) {
+        const time = new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+        el.value += `[${time}] ${msg}\n`;
+        el.scrollTop = el.scrollHeight;
+    }
+}
+
+function colorForRoughness(r, min, max) {
+    let ratio = 0;
+    if (typeof min === 'number' && typeof max === 'number' && max !== min) {
+        ratio = (r - min) / (max - min);
+    } else if (roughAvg > 0) {
+        ratio = r / (roughAvg * 2);
+    } else if (roughMax !== roughMin) {
+        ratio = (r - roughMin) / (roughMax - roughMin);
+    }
+    ratio = Math.min(Math.max(ratio, 0), 1);
+    const red = Math.floor(255 * ratio);
+    const green = Math.floor(255 * (1 - ratio));
+    return `rgb(${red},${green},0)`;
+}
+
+function directionToCompass(deg) {
+    if (deg === null || isNaN(deg)) return 'N/A';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round((deg % 360) / 45) % 8;
+    return directions[idx];
+}
+
+function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
+    if (!map || (lat === 0 && lon === 0)) return;
+    const opts = {
+        color: colorForRoughness(roughness, min, max),
+        radius: 4,
+        weight: 1,
+        opacity: 0.9,
+        fillOpacity: 0.9
+    };
+    const marker = L.circleMarker([lat, lon], opts).addTo(map);
+    
+    let popup = `Roughness: ${roughness.toFixed(2)}`;
+    if (nickname) popup = `Device: ${nickname}<br>` + popup;
+    if (info) {
+        const timeStr = new Date(info.timestamp).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+        popup = `Time: ${timeStr}<br>` +
+                `Speed: ${info.speed.toFixed(1)} km/h<br>` +
+                `Dir: ${directionToCompass(info.direction)}<br>` +
+                `Roughness: ${roughness.toFixed(2)}<br>` +
+                `ID: ${info.id}`;
+        if (nickname) popup = `Device: ${nickname}<br>` + popup;
+    }
+    marker.bindPopup(popup);
+}
+
+function loadData() {
+    const sel = document.getElementById('deviceId');
+    const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
+    const params = new URLSearchParams();
+    ids.forEach(id => params.append('device_id', id));
+    if (start) params.append('start', fromCESTDateTimeLocal(start));
+    if (end) params.append('end', fromCESTDateTimeLocal(end));
+    
+    document.getElementById('loading').style.display = 'block';
+    
+    fetch('/filteredlogs?' + params.toString())
+        .then(r => r.json())
+        .then(async data => {
+            const rows = data.rows || [];
+            selectedData = rows;
+            roughAvg = data.average || 0;
+            
+            // Clear map
+            if (map) {
+                map.eachLayer(layer => {
+                    if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                        map.removeLayer(layer);
+                    }
+                });
+            }
+            
+            roughMin = 0;
+            roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
+            roughScales = {};
+            rows.forEach(row => {
+                const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
+                s.min = Math.min(s.min, row.roughness);
+                s.max = Math.max(s.max, row.roughness);
+                roughScales[row.device_id] = s;
+            });
+            
+            // Add points to map
+            for (let i = rows.length - 1; i >= 0; i--) {
+                const row = rows[i];
+                const name = deviceNicknames[row.device_id] || '';
+                const scale = roughScales[row.device_id] || {min:0,max:1};
+                addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+            updateDataSummary(rows);
+            addLog(`Loaded ${rows.length} records`);
+        })
+        .catch(error => {
+            document.getElementById('loading').style.display = 'none';
+            console.error(error);
+            addDebug('Error loading data: ' + error.message);
+        });
+}
+
+function updateDataSummary(data) {
+    const summary = document.getElementById('data-summary');
+    if (data.length === 0) {
+        summary.textContent = 'No records found for selected criteria';
+        return;
+    }
+    
+    const deviceCounts = {};
+    let minTime = null;
+    let maxTime = null;
+    
+    data.forEach(record => {
+        deviceCounts[record.device_id] = (deviceCounts[record.device_id] || 0) + 1;
+        const recordTime = new Date(record.timestamp);
+        if (!minTime || recordTime < minTime) minTime = recordTime;
+        if (!maxTime || recordTime > maxTime) maxTime = recordTime;
+    });
+    
+    const deviceList = Object.entries(deviceCounts)
+        .map(([id, count]) => `${deviceNicknames[id] || id}: ${count} records`)
+        .join(', ');
+    
+    const timeRange = minTime && maxTime ? 
+        `${minTime.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} - ${maxTime.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}` : 
+        'Unknown';
+    
+    summary.innerHTML = `
+        <strong>Total Records:</strong> ${data.length}<br>
+        <strong>Devices:</strong> ${deviceList}<br>
+        <strong>Time Range:</strong> ${timeRange}<br>
+        <strong>Average Roughness:</strong> ${roughAvg.toFixed(3)}
+    `;
+}
+
+function refreshSelection() {
+    setDateRange().then(loadData);
+}
+
+function showUpdateForm() {
+    if (selectedData.length === 0) {
+        alert('No data selected. Please select devices and time range first.');
+        return;
+    }
+    document.getElementById('update-form').style.display = 'block';
+    document.getElementById('delete-confirmation').style.display = 'none';
+}
+
+function hideUpdateForm() {
+    document.getElementById('update-form').style.display = 'none';
+    // Clear form
+    document.getElementById('update-roughness').value = '';
+    document.getElementById('update-speed').value = '';
+    document.getElementById('update-direction').value = '';
+}
+
+function showDeleteConfirmation() {
+    if (selectedData.length === 0) {
+        alert('No data selected. Please select devices and time range first.');
+        return;
+    }
+    document.getElementById('delete-count').textContent = selectedData.length;
+    document.getElementById('delete-confirmation').style.display = 'block';
+    document.getElementById('update-form').style.display = 'none';
+}
+
+function hideDeleteConfirmation() {
+    document.getElementById('delete-confirmation').style.display = 'none';
+}
+
+async function executeUpdate() {
+    const roughness = document.getElementById('update-roughness').value;
+    const speed = document.getElementById('update-speed').value;
+    const direction = document.getElementById('update-direction').value;
+    
+    if (!roughness && !speed && !direction) {
+        alert('Please specify at least one field to update.');
+        return;
+    }
+    
+    const updates = {};
+    if (roughness) updates.roughness = parseFloat(roughness);
+    if (speed) updates.speed = parseFloat(speed);
+    if (direction) updates.direction = parseFloat(direction);
+    
+    if (!confirm(`Update ${selectedData.length} records with the specified values?`)) {
+        return;
+    }
+    
+    try {
+        const recordIds = selectedData.map(record => record.id);
+        
+        for (const id of recordIds) {
+            const response = await authFetch('/manage/update_record', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, ...updates })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to update record ${id}`);
+            }
+        }
+        
+        addLog(`Successfully updated ${recordIds.length} records`);
+        hideUpdateForm();
+        loadData(); // Refresh the data
+        
+    } catch (error) {
+        addDebug('Update failed: ' + error.message);
+        alert('Update failed: ' + error.message);
+    }
+}
+
+async function executeDelete() {
+    if (!confirm('ARE YOU SURE? This will permanently delete all selected records!')) {
+        return;
+    }
+    
+    try {
+        const recordIds = selectedData.map(record => record.id);
+        
+        for (const id of recordIds) {
+            const response = await authFetch(`/manage/delete_record?record_id=${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to delete record ${id}`);
+            }
+        }
+        
+        addLog(`Successfully deleted ${recordIds.length} records`);
+        hideDeleteConfirmation();
+        loadData(); // Refresh the data
+        
+    } catch (error) {
+        addDebug('Delete failed: ' + error.message);
+        alert('Delete failed: ' + error.message);
+    }
+}
+
+function exportSelectedData() {
+    if (selectedData.length === 0) {
+        alert('No data selected to export.');
+        return;
+    }
+    
+    const headers = ['ID', 'Timestamp', 'Device ID', 'Latitude', 'Longitude', 'Speed', 'Direction', 'Roughness', 'Distance'];
+    const csvContent = [
+        headers.join(','),
+        ...selectedData.map(record => [
+            record.id,
+            `"${record.timestamp}"`,
+            `"${record.device_id}"`,
+            record.latitude,
+            record.longitude,
+            record.speed,
+            record.direction,
+            record.roughness,
+            record.distance_m || ''
+        ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    a.download = `bike_data_export_${timestamp}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    addLog(`Exported ${selectedData.length} records to CSV`);
+}
+
+function toggleLogs() {
+    const logs = document.getElementById('logs');
+    const btn = document.getElementById('toggle-logs');
+    if (logs.style.display === 'none') {
+        logs.style.display = 'block';
+        btn.textContent = 'Hide Logs';
+    } else {
+        logs.style.display = 'none';
+        btn.textContent = 'Show Logs';
+    }
+}
+
+async function authFetch(url, options) {
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+        const pw = prompt('Password:');
+        if (!pw) throw new Error('Password required');
+        const loginRes = await fetch('/login', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({password: pw})
+        });
+        if (!loginRes.ok) throw new Error('Login failed');
+        res = await fetch(url, options);
+    }
+    return res;
+}
+
+// Initialize page
+initMap();
+populateDeviceIds();
+syncRanges();
+
+// Event listeners
+document.getElementById('deviceId').addEventListener('change', () => {
+    selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
+        .map(o => o.value).filter(v => v);
+    setDateRange().then(loadData);
+});
+document.getElementById('roughness-filter').addEventListener('change', loadData);
+document.getElementById('startDate').addEventListener('change', () => {
+    syncRanges();
+    loadData();
+});
+document.getElementById('endDate').addEventListener('change', () => {
+    syncRanges();
+    loadData();
+});
+document.getElementById('startRange').addEventListener('input', () => {
+    const v = parseInt(document.getElementById('startRange').value, 10);
+    document.getElementById('startDate').value = toCESTDateTimeLocal(v);
+    syncRanges();
+    loadData();
+});
+document.getElementById('endRange').addEventListener('input', () => {
+    const v = parseInt(document.getElementById('endRange').value, 10);
+    document.getElementById('endDate').value = toCESTDateTimeLocal(v);
+    syncRanges();
+    loadData();
+});
+</script>
+</body>
+</html>
