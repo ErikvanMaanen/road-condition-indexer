@@ -97,6 +97,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 1. **SQLite Journal Cycling**: Resolved with WAL mode and context managers (documented in SQLITE_JOURNAL_FIX.md)
 2. **Connection Leaks**: Fixed with proper context management patterns
 3. **Logging Performance**: Enhanced with database-level filtering
+4. **Device Page Load Failure**: Fixed misplaced closing tags in `static/device.html` that broke script execution and prevented devices and map from loading correctly
 
 ### Current Issues
 - No critical bugs currently identified

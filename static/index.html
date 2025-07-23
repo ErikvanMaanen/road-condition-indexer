@@ -117,7 +117,6 @@
 <nav id="page-links" style="margin-bottom:1rem;">
     <a href="device.html">Device View</a>
 </nav>
-</body>
 <!-- Hidden maintenance link as a square at bottom right -->
 <a href="maintenance.html" id="maintenance-link" style="position:fixed;bottom:24px;right:24px;width:32px;height:32px;display:block;z-index:9999;opacity:0.2;background:#888;border-radius:6px;text-align:center;line-height:32px;text-decoration:none;font-size:1.5rem;transition:opacity 0.2s;" title="Maintenance">🛠️</a>
 <script>
@@ -968,9 +967,18 @@ async function requestWakeLock() {
         wakeLock = await navigator.wakeLock.request('screen');
         wakeLockSupported = true;
         
-        wakeLock.addEventListener('release', () => {
+        wakeLock.addEventListener('release', async () => {
             addDebug('Wake lock released (may have been due to tab switch or battery saving)');
             updateWakeLockStatus();
+            if (loggingEnabled) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    addDebug('Wake lock re-acquired automatically');
+                    updateWakeLockStatus();
+                } catch (err) {
+                    addDebug('Failed to re-acquire wake lock: ' + err.message);
+                }
+            }
         });
         
         addDebug('Wake lock acquired - screen will stay on during recording');
