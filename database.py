@@ -923,8 +923,14 @@ class DatabaseManager:
             row = cursor.fetchone()
             start, end = row if row else (None, None)
             
-            start_str = start.isoformat() if start else None
-            end_str = end.isoformat() if end else None
+            if start is not None:
+                start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
+            else:
+                start_str = None
+            if end is not None:
+                end_str = end.isoformat() if hasattr(end, "isoformat") else str(end)
+            else:
+                end_str = None
             return start_str, end_str
         finally:
             conn.close()

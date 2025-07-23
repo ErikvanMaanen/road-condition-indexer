@@ -184,8 +184,8 @@ function setDateRange() {
         url = '/date_range?' + params.toString();
     }
     return fetch(url).then(r => r.json()).then(data => {
-        if (data.start) document.getElementById('startDate').value = data.start.slice(0,19);
-        if (data.end) document.getElementById('endDate').value = data.end.slice(0,19);
+        if (data.start) document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
+        if (data.end) document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
         sliderMin = Date.parse(data.start);
         sliderMax = Date.parse(data.end);
         syncRanges();
