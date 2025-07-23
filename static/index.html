@@ -207,7 +207,7 @@ if (!deviceId) {
 }
 
 // Initialize source data recording toggle from localStorage
-recordSourceData = localStorage.getItem('recordSourceData') === 'true';
+let recordSourceData = localStorage.getItem('recordSourceData') === 'true';
 // Set the initial checkbox state
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('record-source-data').checked = recordSourceData;
@@ -312,7 +312,6 @@ let lastSpeed = 0;
 let lastDir = 0;
 let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
-let recordSourceData = false; // Toggle for recording source data
 let map;
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
