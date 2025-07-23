@@ -95,6 +95,11 @@
             padding: 8px 0;
             margin-bottom: 8px;
         }
+        .log-entry.compact {
+            padding: 4px 0;
+            margin-bottom: 2px;
+            border-bottom: 1px solid #f5f5f5;
+        }
         .log-entry:last-child {
             border-bottom: none;
             margin-bottom: 0;
@@ -503,17 +508,40 @@ function displayLogs(logs) {
         const level = log.level || 'INFO';
         const category = log.category || 'GENERAL';
         const deviceId = log.device_id || '';
-        // Header, message, device info, stack (if present)
-        html += `<div class="log-entry">
-            <div>
+        const message = (log.message || '').trim();
+        const stackTrace = (log.stack_trace || '').trim();
+        
+        // Skip entries with no meaningful content
+        if (!message && !stackTrace) {
+            return;
+        }
+        
+        // Compact single-line format when possible
+        const hasStack = stackTrace && stackTrace.length > 0;
+        const isLongMessage = message.length > 80 || message.includes('\n');
+        
+        if (!hasStack && !isLongMessage) {
+            // Single line compact format
+            html += `<div class="log-entry compact">
                 <span class="log-timestamp">${timestamp}</span>
                 <span class="log-level log-level-${level}">${level}</span>
                 <span class="log-category">${category}</span>
                 ${deviceId ? `<span class="log-device" style="background: #e6f3ff; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; margin-left: 5px;">Device: ${escapeHtml(deviceId)}</span>` : ''}
-            </div>
-            <div class="log-message">${escapeHtml(log.message || '')}</div>
-            ${log.stack_trace ? `<div class="log-stack">${escapeHtml(log.stack_trace)}</div>` : ''}
-        </div>`;
+                <span class="log-message-inline" style="margin-left: 8px;">${escapeHtml(message)}</span>
+            </div>`;
+        } else {
+            // Multi-line format for complex entries
+            html += `<div class="log-entry">
+                <div>
+                    <span class="log-timestamp">${timestamp}</span>
+                    <span class="log-level log-level-${level}">${level}</span>
+                    <span class="log-category">${category}</span>
+                    ${deviceId ? `<span class="log-device" style="background: #e6f3ff; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; margin-left: 5px;">Device: ${escapeHtml(deviceId)}</span>` : ''}
+                </div>
+                ${message ? `<div class="log-message">${escapeHtml(message)}</div>` : ''}
+                ${hasStack ? `<div class="log-stack">${escapeHtml(stackTrace)}</div>` : ''}
+            </div>`;
+        }
     });
     display.innerHTML = html;
 }
