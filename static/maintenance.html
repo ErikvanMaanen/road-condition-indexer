@@ -227,7 +227,7 @@
             <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
             <button onclick="exportLogs()">📥 Export CSV</button>
             <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
-            <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Logs</button>
+            <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Debug Logs</button>
             <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
         </div>
     </div>
@@ -681,7 +681,7 @@ async function repairDatabase() {
 }
 
 async function archiveLogs() {
-    if (!confirm('This will move all current logs to the RCI_archive_logs table and clear the main logs table. This action cannot be undone. Continue?')) {
+    if (!confirm('This will move all current debug logs to the RCI_debug_log_archive table and clear the main debug log table. This action cannot be undone. Continue?')) {
         return;
     }
     
@@ -701,14 +701,14 @@ async function archiveLogs() {
         }
         
         const result = await response.json();
-        alert(`Archive operation completed: ${result.message}\nArchived records: ${result.archived_count || 'Unknown'}`);
+        alert(`Debug log archive operation completed: ${result.message}\nArchived debug log entries: ${result.archived_count || 'Unknown'}`);
         
         // Refresh logs and summary after archiving
         loadDatabaseLogs();
         loadSummary();
         
     } catch (error) {
-        alert(`Archive operation failed: ${error.message}`);
+        alert(`Debug log archive operation failed: ${error.message}`);
     } finally {
         btn.textContent = originalText;
         btn.disabled = false;

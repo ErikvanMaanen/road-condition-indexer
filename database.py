@@ -1342,54 +1342,75 @@ class DatabaseManager:
             raise
 
     def archive_logs(self) -> Dict[str, Any]:
-        """Move all logs from the main bike data table to the archive table."""
-        self.log_debug("Starting log archiving operation", LogLevel.INFO, LogCategory.MANAGEMENT)
+        """Move all debug logs from the main debug log table to an archive table."""
+        self.log_debug("Starting debug log archiving operation", LogLevel.INFO, LogCategory.MANAGEMENT)
         
         try:
-            # Get count of records to be archived
-            count_result = self.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
+            # Get count of debug log records to be archived
+            count_result = self.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_DEBUG_LOG}")
             record_count = count_result if count_result else 0
             
             if record_count == 0:
-                self.log_debug("No records to archive", LogLevel.INFO, LogCategory.MANAGEMENT)
+                self.log_debug("No debug logs to archive", LogLevel.INFO, LogCategory.MANAGEMENT)
                 return {
                     "status": "success",
-                    "message": "No records to archive",
+                    "message": "No debug logs to archive",
                     "archived_count": 0
                 }
             
-            # Insert all bike data into archive table
+            # Create archive table for debug logs if it doesn't exist
+            archive_table_name = "RCI_debug_log_archive"
+            
             if self.use_sqlserver:
                 # SQL Server syntax
+                create_archive_query = f"""
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'{archive_table_name}') AND type in (N'U'))
+                    CREATE TABLE {archive_table_name} (
+                        id INT IDENTITY PRIMARY KEY,
+                        timestamp DATETIME DEFAULT GETDATE(),
+                        level NVARCHAR(20),
+                        category NVARCHAR(50),
+                        device_id NVARCHAR(100),
+                        message NVARCHAR(4000),
+                        stack_trace NVARCHAR(MAX)
+                    )
+                """
                 archive_query = f"""
-                    INSERT INTO {TABLE_ARCHIVE_LOGS} 
-                    (latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address)
-                    SELECT latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address
-                    FROM {TABLE_BIKE_DATA}
+                    INSERT INTO {archive_table_name} 
+                    (timestamp, level, category, device_id, message, stack_trace)
+                    SELECT timestamp, level, category, device_id, message, stack_trace
+                    FROM {TABLE_DEBUG_LOG}
                 """
             else:
                 # SQLite syntax
+                create_archive_query = f"""
+                    CREATE TABLE IF NOT EXISTS {archive_table_name} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        level TEXT,
+                        category TEXT,
+                        device_id TEXT,
+                        message TEXT,
+                        stack_trace TEXT
+                    )
+                """
                 archive_query = f"""
-                    INSERT INTO {TABLE_ARCHIVE_LOGS} 
-                    (latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address)
-                    SELECT latitude, longitude, speed, direction, roughness, timestamp, device_id, ip_address
-                    FROM {TABLE_BIKE_DATA}
+                    INSERT INTO {archive_table_name} 
+                    (timestamp, level, category, device_id, message, stack_trace)
+                    SELECT timestamp, level, category, device_id, message, stack_trace
+                    FROM {TABLE_DEBUG_LOG}
                 """
             
+            # Create archive table
+            self.execute_non_query(create_archive_query)
+            
+            # Insert all debug logs into archive table
             self.execute_non_query(archive_query)
             
-            # Clear the main bike data table
-            self.execute_non_query(f"DELETE FROM {TABLE_BIKE_DATA}")
+            # Clear the main debug log table
+            self.execute_non_query(f"DELETE FROM {TABLE_DEBUG_LOG}")
             
-            # Also clear related source data if it exists
-            try:
-                self.execute_non_query(f"DELETE FROM {TABLE_BIKE_SOURCE_DATA}")
-                self.log_debug("Cleared related source data", LogLevel.INFO, LogCategory.MANAGEMENT)
-            except Exception as e:
-                self.log_debug(f"Note: Could not clear source data (table may not exist): {e}", 
-                              LogLevel.WARNING, LogCategory.MANAGEMENT)
-            
-            success_msg = f"Successfully archived {record_count} records to {TABLE_ARCHIVE_LOGS}"
+            success_msg = f"Successfully archived {record_count} debug log entries to {archive_table_name}"
             self.log_debug(success_msg, LogLevel.INFO, LogCategory.MANAGEMENT)
             
             return {
@@ -1399,7 +1420,7 @@ class DatabaseManager:
             }
             
         except Exception as e:
-            error_msg = f"Failed to archive logs: {e}"
+            error_msg = f"Failed to archive debug logs: {e}"
             self.log_debug(error_msg, LogLevel.ERROR, LogCategory.MANAGEMENT, include_stack=True)
             raise Exception(error_msg) from e
 
