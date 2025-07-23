@@ -156,6 +156,13 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
     <label>
         <input type="checkbox" id="center-on-user" checked> Keep map centered on my location
     </label>
+    <br>
+    <label>
+        <input type="checkbox" id="record-source-data"> Record source data for retrospective analysis
+    </label>
+    <div style="font-size: 0.8rem; color: #666; margin-top: 4px; margin-left: 20px;">
+        When enabled, stores raw acceleration data for recalculating roughness values later
+    </div>
 </div>
 <section id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
@@ -199,6 +206,13 @@ if (!deviceId) {
     localStorage.setItem('deviceId', deviceId);
     setCookie('deviceId', deviceId, 365);
 }
+
+// Initialize source data recording toggle from localStorage
+recordSourceData = localStorage.getItem('recordSourceData') === 'true';
+// Set the initial checkbox state
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('record-source-data').checked = recordSourceData;
+});
 const userAgent = navigator.userAgent;
 const fingerprint = [
     navigator.userAgent,
@@ -296,6 +310,7 @@ let lastSpeed = 0;
 let lastDir = 0;
 let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
+let recordSourceData = false; // Toggle for recording source data
 let map;
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
@@ -777,19 +792,22 @@ function handlePosition(pos) {
     updateStatus();
     addLog(`Location: ${latitude}, ${longitude} speed: ${lastSpeed.toFixed(1)} km/h`);
     if (loggingEnabled && zValues.length > 0) {
+        const requestBody = {
+            latitude,
+            longitude,
+            speed: lastSpeed,
+            direction: lastDir,
+            z_values: zValues,
+            device_id: deviceId,
+            user_agent: userAgent,
+            device_fp: fingerprint,
+            record_source_data: recordSourceData
+        };
+        
         fetch(LOG_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                latitude,
-                longitude,
-                speed: lastSpeed,
-                direction: lastDir,
-                z_values: zValues,
-                device_id: deviceId,
-                user_agent: userAgent,
-                device_fp: fingerprint
-            })
+            body: JSON.stringify(requestBody)
         }).then(r => r.json()).then(data => {
             if (data.roughness !== undefined) {
                 lastRoughness = data.roughness;
@@ -917,6 +935,11 @@ document.getElementById('device-filter').addEventListener('change', () => {
 });
 document.getElementById('roughness-filter').addEventListener('change', () => {
     loadLogs();
+});
+document.getElementById('record-source-data').addEventListener('change', (e) => {
+    recordSourceData = e.target.checked;
+    addLog(`Source data recording ${recordSourceData ? 'enabled' : 'disabled'}`);
+    localStorage.setItem('recordSourceData', recordSourceData);
 });
 
 document.addEventListener('fullscreenchange', () => {

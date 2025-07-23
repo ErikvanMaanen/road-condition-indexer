@@ -8,6 +8,7 @@ This module handles all database operations including:
 
 import os
 import sqlite3
+import json
 import logging
 import traceback
 from pathlib import Path
@@ -56,6 +57,7 @@ class LogCategory(Enum):
 TABLE_BIKE_DATA = "RCI_bike_data"
 TABLE_DEBUG_LOG = "RCI_debug_log" 
 TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
+TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -372,6 +374,27 @@ class DatabaseManager:
             """
         )
         
+        # Create bike source data table for retrospective analysis
+        cursor.execute(
+            f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_BIKE_SOURCE_DATA}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_BIKE_SOURCE_DATA} (
+                    id INT IDENTITY PRIMARY KEY,
+                    bike_data_id INT NOT NULL,
+                    z_values NVARCHAR(MAX),
+                    speed FLOAT,
+                    interval_seconds FLOAT,
+                    freq_min FLOAT,
+                    freq_max FLOAT,
+                    FOREIGN KEY (bike_data_id) REFERENCES {TABLE_BIKE_DATA}(id) ON DELETE CASCADE
+                )
+            END
+            """
+        )
+        
         # Schema migration statements
         self._apply_sqlserver_migrations(cursor)
 
@@ -508,6 +531,20 @@ class DatabaseManager:
                 nickname TEXT,
                 user_agent TEXT,
                 device_fp TEXT
+            )
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_BIKE_SOURCE_DATA} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bike_data_id INTEGER NOT NULL,
+                z_values TEXT,
+                speed REAL,
+                interval_seconds REAL,
+                freq_min REAL,
+                freq_max REAL,
+                FOREIGN KEY (bike_data_id) REFERENCES {TABLE_BIKE_DATA}(id) ON DELETE CASCADE
             )
             """
         )
@@ -693,8 +730,8 @@ class DatabaseManager:
 
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,
-                        device_id: str, ip_address: Optional[str]) -> None:
-        """Insert bike data into the database."""
+                        device_id: str, ip_address: Optional[str]) -> int:
+        """Insert bike data into the database and return the ID."""
         self.log_debug(f"Inserting bike data for device {device_id}: lat={latitude}, lon={longitude}, speed={speed}, roughness={roughness}", 
                       LogLevel.DEBUG, LogCategory.QUERY)
         
@@ -706,13 +743,22 @@ class DatabaseManager:
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
                 )
-                if self.use_sqlserver and cursor.rowcount != 1:
-                    error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
-                    self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
-                    raise Exception(error_msg)
+                
+                # Get the inserted ID
+                if self.use_sqlserver:
+                    cursor.execute("SELECT @@IDENTITY")
+                    bike_data_id = cursor.fetchone()[0]
+                    if cursor.rowcount != 1:
+                        error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
+                        self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
+                        raise Exception(error_msg)
+                else:
+                    bike_data_id = cursor.lastrowid
+                
                 conn.commit()
-                self.log_debug(f"Successfully inserted bike data for device {device_id}", 
+                self.log_debug(f"Successfully inserted bike data for device {device_id} with ID {bike_data_id}", 
                               LogLevel.DEBUG, LogCategory.QUERY)
+                return bike_data_id
         except Exception as e:
             self.log_debug(f"Failed to insert bike data for device {device_id}: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
@@ -753,6 +799,32 @@ class DatabaseManager:
                               LogLevel.DEBUG, LogCategory.QUERY)
         except Exception as e:
             self.log_debug(f"Failed to upsert device info for {device_id}: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
+
+    def insert_bike_source_data(self, bike_data_id: int, z_values: List[float], 
+                               speed: float, interval_seconds: float, 
+                               freq_min: float, freq_max: float) -> None:
+        """Insert bike source data for retrospective analysis."""
+        self.log_debug(f"Inserting source data for bike_data_id {bike_data_id}: z_values count={len(z_values)}", 
+                      LogLevel.DEBUG, LogCategory.QUERY)
+        
+        try:
+            # Serialize z_values as JSON
+            z_values_json = json.dumps(z_values)
+            
+            with self.get_connection_context() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"INSERT INTO {TABLE_BIKE_SOURCE_DATA} (bike_data_id, z_values, speed, interval_seconds, freq_min, freq_max)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (bike_data_id, z_values_json, speed, interval_seconds, freq_min, freq_max)
+                )
+                conn.commit()
+                self.log_debug(f"Successfully inserted source data for bike_data_id {bike_data_id}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+        except Exception as e:
+            self.log_debug(f"Failed to insert source data for bike_data_id {bike_data_id}: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
 

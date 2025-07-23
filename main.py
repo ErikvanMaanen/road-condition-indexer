@@ -372,6 +372,7 @@ class LogEntry(BaseModel):
     z_values: List[float] = Field(..., alias="z_values")
     freq_min: Optional[float] = None
     freq_max: Optional[float] = None
+    record_source_data: Optional[bool] = False
 
 
 @app.post("/log")
@@ -427,7 +428,7 @@ def post_log(entry: LogEntry, request: Request):
     
     try:
         # Insert bike data
-        db_manager.insert_bike_data(
+        bike_data_id = db_manager.insert_bike_data(
             entry.latitude,
             entry.longitude,
             entry.speed,
@@ -437,6 +438,18 @@ def post_log(entry: LogEntry, request: Request):
             entry.device_id,
             ip_address
         )
+        
+        # Insert source data if requested
+        if entry.record_source_data:
+            db_manager.insert_bike_source_data(
+                bike_data_id,
+                entry.z_values,
+                avg_speed,
+                dt_sec,
+                entry.freq_min if entry.freq_min is not None else 0.5,
+                entry.freq_max if entry.freq_max is not None else 50.0
+            )
+            log_info(f"Source data recorded for device {entry.device_id} (bike_data_id: {bike_data_id})", device_id=entry.device_id)
         
         # Update device info
         db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
