@@ -184,10 +184,14 @@ function setDateRange() {
         url = '/date_range?' + params.toString();
     }
     return fetch(url).then(r => r.json()).then(data => {
-        if (data.start) document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
-        if (data.end) document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
-        sliderMin = Date.parse(data.start);
-        sliderMax = Date.parse(data.end);
+        if (data.start) {
+            document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
+            sliderMin = Date.parse(data.start);
+        }
+        if (data.end) {
+            document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
+            sliderMax = Date.parse(data.end);
+        }
         syncRanges();
     }).catch(console.error);
 }
@@ -462,21 +466,8 @@ function loadData() {
             });
             updateRoughnessLabels();
             
-            // Find the oldest and newest timestamps from the loaded data
-            if (rows.length > 0) {
-                const timestamps = rows.map(row => new Date(row.timestamp)).sort((a, b) => a - b);
-                const oldestTimestamp = timestamps[0];
-                const newestTimestamp = timestamps[timestamps.length - 1];
-                
-                // Update the date input fields with actual data range
-                document.getElementById('startDate').value = toCESTDateTimeLocal(oldestTimestamp.toISOString());
-                document.getElementById('endDate').value = toCESTDateTimeLocal(newestTimestamp.toISOString());
-                
-                // Update slider ranges
-                sliderMin = oldestTimestamp.getTime();
-                sliderMax = newestTimestamp.getTime();
-                syncRanges();
-            }
+            // Remove the code that overwrites the date inputs with loaded data range
+            // The date inputs should maintain the full available range from setDateRange()
             
             for (let i = rows.length - 1; i >= 0; i--) {
                 const row = rows[i];
