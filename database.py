@@ -1172,7 +1172,7 @@ class DatabaseManager:
             if self.use_sqlserver:
                 cursor.execute(
                     f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC",
-                    device_id
+                    (device_id,)
                 )
             else:
                 cursor.execute(
