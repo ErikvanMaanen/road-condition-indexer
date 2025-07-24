@@ -25,11 +25,13 @@
 <body>
 <h1>Login</h1>
 <section id="controls" style="margin-bottom:1rem;">
-<div id="login-box">
-    <h2>Please enter password</h2>
-    <input type="password" id="pw" />
-    <button onclick="doLogin()">Login</button>
-</div>
+<form id="login-form" onsubmit="event.preventDefault(); doLogin();">
+    <div id="login-box">
+        <h2>Please enter password</h2>
+        <input type="password" id="pw" />
+        <button type="submit">Login</button>
+    </div>
+</form>
 </section>
 <section id="logs" style="margin-bottom:1rem;">
     <h3>Activity Log</h3>
