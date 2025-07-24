@@ -184,8 +184,7 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
     </div>
 </section>
 
-<!-- Include Activity Log and Debug Messages Partial -->
-<div id="logs-container"></div>
+
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -206,6 +205,28 @@ let recordSourceData = localStorage.getItem('recordSourceData') === 'true';
 // Set the initial checkbox state
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('record-source-data').checked = recordSourceData;
+    
+    // Load logs partial
+    loadLogsPartial();
+    
+    // Initialize toggle functionality
+    const button = document.getElementById('toggle-explanation');
+    const info = document.getElementById('roughness-info');
+    const scale = document.getElementById('roughness-scale');
+    
+    if (button && info && scale) {
+        button.addEventListener('click', () => {
+            if (info.style.display === 'none' || !info.style.display) {
+                info.style.display = 'block';
+                scale.style.display = 'block';
+                button.textContent = '➖ Hide Roughness Explanation and Scale Reference';
+            } else {
+                info.style.display = 'none';
+                scale.style.display = 'none';
+                button.textContent = '➕ Show Roughness Explanation and Scale Reference';
+            }
+        });
+    }
 });
 const userAgent = navigator.userAgent;
 const fingerprint = [
@@ -422,8 +443,7 @@ async function loadLogsPartial() {
     }
 }
 
-// Load logs partial when DOM is ready
-document.addEventListener('DOMContentLoaded', loadLogsPartial);
+
 
 if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', (event) => {
@@ -983,22 +1003,7 @@ document.addEventListener('fullscreenchange', () => {
     }
 });
 
-// Add explanation toggle functionality
-document.getElementById('toggle-explanation').addEventListener('click', () => {
-    const button = document.getElementById('toggle-explanation');
-    const info = document.getElementById('roughness-info');
-    const scale = document.getElementById('roughness-scale');
-    
-    if (info.style.display === 'none') {
-        info.style.display = 'block';
-        scale.style.display = 'block';
-        button.textContent = '➖ Hide Roughness Explanation and Scale Reference';
-    } else {
-        info.style.display = 'none';
-        scale.style.display = 'none';
-        button.textContent = '➕ Show Roughness Explanation and Scale Reference';
-    }
-});
+
 
 let wakeLock = null;
 let wakeLockSupported = false;
@@ -1172,5 +1177,9 @@ if ('wakeLock' in navigator) {
         ➕ Show Roughness Explanation and Scale Reference
     </button>
 </div>
+
+<!-- Include Activity Log and Debug Messages Partial -->
+<div id="logs-container"></div>
+
 </body>
 </html>
