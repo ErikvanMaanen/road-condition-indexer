@@ -12,7 +12,12 @@
         border: 1px solid #ccc;
         margin-bottom: 1rem;
         white-space: pre;
-        padding: 0.5rem;
+       // Add a button to toggle logs visibility at the bottom of each page
+const logsToggleButton = document.createElement('button');
+logsToggleButton.id = 'toggle-logs-button';
+logsToggleButton.style.cssText = 'position:fixed; bottom:80px; right:20px; background:#2196F3; color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 5px rgba(0,0,0,0.3); cursor:pointer; z-index:1000;';
+logsToggleButton.innerHTML = '🗂️';
+logsToggleButton.title = 'Hide Logs Display';ng: 0.5rem;
         background: white;
         font-family: monospace;
         font-size: 0.9rem;
@@ -349,8 +354,8 @@ if (document.readyState === 'loading') {
 // Add a button to toggle logs visibility at the bottom of each page
 const logsToggleButton = document.createElement('button');
 logsToggleButton.id = 'toggle-logs-button';
-logsToggleButton.style.cssText = 'position:fixed; bottom:80px; right:20px; background:#2196F3; color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 5px rgba(0,0,0,0.3); cursor:pointer; z-index:1000;';
-logsToggleButton.innerHTML = '🗂️';
+logsToggleButton.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#2196F3; color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 5px rgba(0,0,0,0.3); cursor:pointer; z-index:1000;';
+logsToggleButton.innerHTML = '�️';
 logsToggleButton.title = 'Hide Logs Display';
 document.body.appendChild(logsToggleButton);
 

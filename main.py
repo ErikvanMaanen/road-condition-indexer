@@ -205,6 +205,12 @@ def read_database(request: Request):
         return RedirectResponse(url="/static/login.html?next=/database.html")
     return FileResponse(BASE_DIR / "static" / "database.html")
 
+
+@app.get("/logs-partial.html")
+def read_logs_partial():
+    """Serve the logs partial file."""
+    return FileResponse(BASE_DIR / "static" / "logs-partial.html")
+
 # In-memory debug log
 DEBUG_LOG: List[str] = []
 
