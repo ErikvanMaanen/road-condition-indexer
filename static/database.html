@@ -335,8 +335,11 @@ async function loadLogsPartial() {
         window.addLog = function(msg) {
             console.log('Log:', msg);
         };
-        window.addDebug = function(msg) {
-            console.log('Debug:', msg);
+        window.addDebug = function(msg, category = 'Debug', level = 'DEBUG') {
+            console.log(`Debug [${level}] [${category}]:`, msg);
+        };
+        window.addMessage = function(msg, level = 'INFO', category = 'General') {
+            console.log(`Message [${level}] [${category}]:`, msg);
         };
         window.toggleLogs = function() {
             console.log('Logs toggle requested but partial not loaded');
