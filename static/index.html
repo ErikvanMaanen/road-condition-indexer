@@ -254,12 +254,29 @@ function saveNickname() {
     const saveBtn = document.getElementById('save-nickname');
     if (!nickInput || !saveBtn || selectedIds.length !== 1 || nickInput.disabled || saveBtn.disabled) return;
     const name = nickInput.value;
+    const deviceId = selectedIds[0];
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: selectedIds[0], nickname: name })
-    }).then(() => populateDeviceFilter())
-      .catch(console.error);
+        body: JSON.stringify({ device_id: deviceId, nickname: name })
+    }).then(() => {
+        // Update local nickname without reloading all devices
+        deviceNicknames[deviceId] = name;
+        currentNickname = name;
+        
+        // Update the device option in the select dropdown
+        const select = document.getElementById('device-filter');
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === deviceId) {
+                select.options[i].textContent = name ? `${name} (${deviceId})` : deviceId;
+                break;
+            }
+        }
+        addLog(`Saved nickname: ${name}`);
+    }).catch(err => {
+        addLog('Failed to save nickname: ' + err);
+        console.error(err);
+    });
 }
 
 function populateDeviceFilter() {

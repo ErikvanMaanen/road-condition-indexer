@@ -604,7 +604,21 @@ document.getElementById('save-rename').addEventListener('click', () => {
     .then(response => response.json())
     .then(() => {
         document.getElementById('rename-section').style.display = 'none';
-        populateDeviceIds(); // Refresh the device list
+        
+        // Update local nickname without reloading all devices
+        deviceNicknames[deviceId] = nickname;
+        
+        // Update the device option in the select dropdown
+        const select = document.getElementById('deviceId');
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === deviceId) {
+                select.options[i].textContent = nickname ? `${nickname} (${deviceId})` : deviceId;
+                break;
+            }
+        }
+        
+        // Update markers on the map with the new nickname
+        updateMarkers();
     })
     .catch(error => {
         console.error('Error saving nickname:', error);
