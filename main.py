@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Tuple
 # Import database constants and manager
 from database import (
     DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS,
-    LogLevel, LogCategory, log_info, log_warning, log_error
+    TABLE_USER_ACTIONS, LogLevel, LogCategory, log_info, log_warning, log_error
 )
 
 try:
@@ -156,26 +156,104 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
     """Set auth cookie if password is correct."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log login attempt
+    db_manager.log_user_action(
+        action_type="LOGIN_ATTEMPT",
+        action_description="User attempted to log in",
+        user_ip=client_ip,
+        user_agent=user_agent
+    )
+    
     if verify_password(req.password):
+        # Successful login
         resp = Response(status_code=204)
         resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
+        
+        # Log successful login
+        db_manager.log_user_action(
+            action_type="LOGIN_SUCCESS",
+            action_description="User successfully logged in",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=True
+        )
+        
+        log_info(f"Successful login from IP: {client_ip}", LogCategory.USER_ACTION)
         return resp
-    raise HTTPException(status_code=401, detail="Unauthorized")
+    else:
+        # Failed login
+        db_manager.log_user_action(
+            action_type="LOGIN_FAILED",
+            action_description="User login failed - incorrect password",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Incorrect password"
+        )
+        
+        log_warning(f"Failed login attempt from IP: {client_ip}", LogCategory.USER_ACTION)
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.get("/auth_check")
 def auth_check(request: Request):
     """Return 204 if auth cookie valid else 401."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if is_authenticated(request):
+        # Log successful auth check (for session validation)
+        db_manager.log_user_action(
+            action_type="AUTH_CHECK_SUCCESS",
+            action_description="User session validation successful",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=True
+        )
         return Response(status_code=204)
-    raise HTTPException(status_code=401, detail="Unauthorized")
+    else:
+        # Log failed auth check
+        db_manager.log_user_action(
+            action_type="AUTH_CHECK_FAILED",
+            action_description="User session validation failed - no valid auth cookie",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="No valid auth cookie"
+        )
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.get("/")
 def read_index(request: Request):
     """Serve the main application page and ensure DB is ready."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if not is_authenticated(request):
+        # Log unauthorized access attempt
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to main page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
         return RedirectResponse(url="/static/login.html?next=/")
+    
+    # Log successful page access
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed main application page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "index", "url": "/"}
+    )
+    
     db_manager.init_tables()
     return FileResponse(BASE_DIR / "static" / "index.html")
 
@@ -183,16 +261,54 @@ def read_index(request: Request):
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if not is_authenticated(request):
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to welcome page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
         return RedirectResponse(url="/static/login.html?next=/welcome.html")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed welcome page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "welcome", "url": "/welcome.html"}
+    )
     return FileResponse(BASE_DIR / "static" / "welcome.html")
 
 
 @app.get("/device.html")
 def read_device(request: Request):
     """Serve the device filter page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if not is_authenticated(request):
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to device filter page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
         return RedirectResponse(url="/static/login.html?next=/device.html")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed device filter page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "device", "url": "/device.html"}
+    )
     return FileResponse(BASE_DIR / "static" / "device.html")
 
 
@@ -203,23 +319,98 @@ def read_device(request: Request):
 @app.get("/maintenance.html")
 def read_maintenance(request: Request):
     """Serve the maintenance page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if not is_authenticated(request):
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to maintenance page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
         return RedirectResponse(url="/static/login.html?next=/maintenance.html")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed maintenance page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "maintenance", "url": "/maintenance.html"}
+    )
     return FileResponse(BASE_DIR / "static" / "maintenance.html")
 
 
 @app.get("/database.html")
 def read_database(request: Request):
     """Serve the database management page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     if not is_authenticated(request):
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to database management page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
         return RedirectResponse(url="/static/login.html?next=/database.html")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed database management page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "database", "url": "/database.html"}
+    )
     return FileResponse(BASE_DIR / "static" / "database.html")
 
 
 @app.get("/logs-partial.html")
-def read_logs_partial():
+def read_logs_partial(request: Request):
     """Serve the logs partial file."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed logs partial page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "logs-partial", "url": "/logs-partial.html"}
+    )
     return FileResponse(BASE_DIR / "static" / "logs-partial.html")
+
+
+@app.get("/comprehensive-logs.html")
+def read_comprehensive_logs(request: Request):
+    """Serve the comprehensive logs page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    if not is_authenticated(request):
+        db_manager.log_user_action(
+            action_type="UNAUTHORIZED_ACCESS",
+            action_description="Unauthorized access attempt to comprehensive logs page",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message="Not authenticated"
+        )
+        return RedirectResponse(url="/static/login.html?next=/comprehensive-logs.html")
+    
+    db_manager.log_user_action(
+        action_type="PAGE_ACCESS",
+        action_description="User accessed comprehensive logs page",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"page": "comprehensive-logs", "url": "/comprehensive-logs.html"}
+    )
+    return FileResponse(BASE_DIR / "static" / "comprehensive-logs.html")
 
 # In-memory debug log
 DEBUG_LOG: List[str] = []
@@ -390,52 +581,160 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 @app.on_event("startup")
 def startup_init():
-    """Initialize the database on startup."""
-    log_info("🚀 Application startup initiated")
+    """Initialize the database on startup with optimized logging."""
+    import time
+    startup_start_time = time.time()
+    
+    # Single startup initiation log
+    log_info("🚀 Application startup initiated", LogCategory.STARTUP)
     
     try:
-        log_debug("Initializing database tables...")
-        db_manager.init_tables()
-        log_info("✅ Database tables initialized successfully")
+        # Step 1: Database Table Initialization (minimal logging)
+        log_info("🔧 Initializing database tables...", LogCategory.STARTUP)
         
-        # Test database connectivity
-        log_debug("Testing database connectivity...")
+        db_manager.init_tables()
+        log_info("✅ Database tables initialized successfully", LogCategory.STARTUP)
+        
+        # Step 2: Quick connectivity test
+        log_info("🔍 Testing database connectivity...", LogCategory.STARTUP)
         conn = db_manager.get_connection()
         cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        log_info("✅ Database connectivity verified", LogCategory.STARTUP)
         
-        # Check table existence and structure
+        # Step 3: Table verification
         if db_manager.use_sqlserver:
             cursor.execute("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
         else:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
         
         tables = [row[0] for row in cursor.fetchall()]
-        log_info(f"✅ Found database tables: {tables}")
+        expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_USER_ACTIONS]
         
-        # Check record count
+        missing_tables = [table for table in expected_tables if table not in tables]
+        if missing_tables:
+            log_error(f"❌ Missing required tables: {missing_tables}", LogCategory.STARTUP)
+        else:
+            log_info(f"✅ All required tables found: {len(tables)} tables", LogCategory.STARTUP)
+        
+        # Step 4: Quick data check
         cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
-        record_count = cursor.fetchone()[0]
-        log_info(f"📊 Current record count in {TABLE_BIKE_DATA}: {record_count}")
+        bike_data_count = cursor.fetchone()[0]
+        
+        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_USER_ACTIONS}")
+        user_actions_count = cursor.fetchone()[0]
+        
+        log_info(f"📊 Data summary: {bike_data_count} bike records, {user_actions_count} user actions", LogCategory.STARTUP)
+        
+        # Step 5: Database integrity check
+        try:
+            integrity_ok = db_manager.check_database_integrity()
+            if integrity_ok:
+                log_info("✅ Database integrity check passed", LogCategory.STARTUP)
+            else:
+                log_warning("⚠️ Database integrity issues detected", LogCategory.STARTUP)
+        except Exception as e:
+            log_error(f"❌ Database integrity check failed: {e}", LogCategory.STARTUP)
         
         conn.close()
         
+        # Final startup summary
+        total_time = (time.time() - startup_start_time) * 1000
+        log_info(f"🎉 Application startup completed successfully in {total_time:.2f}ms", LogCategory.STARTUP)
+        
+        # Single comprehensive startup event log
+        db_manager.log_startup_event(
+            "STARTUP_COMPLETE", 
+            f"Application startup completed successfully",
+            additional_data={
+                "duration_ms": total_time,
+                "tables_count": len(tables),
+                "bike_data_records": bike_data_count,
+                "user_actions_records": user_actions_count
+            }
+        )
+        
     except Exception as e:
-        log_error(f"❌ Database initialization error: {e}")
-        log_error(f"Error type: {type(e).__name__}")
+        total_time = (time.time() - startup_start_time) * 1000
+        error_msg = f"Application startup failed after {total_time:.2f}ms: {e}"
+        log_error(error_msg, LogCategory.STARTUP)
+        
+        # Log failure event
+        db_manager.log_startup_event(
+            "STARTUP_FAILED", 
+            "Application startup failed", 
+            success=False, 
+            error_message=str(e),
+            additional_data={"duration_ms": total_time}
+        )
+        raise
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                data_stats[table] = count
+                log_info(f"� {table}: {count} records", LogCategory.STARTUP)
+            except Exception as table_error:
+                log_error(f"❌ Failed to count records in {table}: {table_error}", LogCategory.STARTUP)
+                data_stats[table] = f"Error: {table_error}"
+        
+        step_duration = (time.time() - step_start_time) * 1000
+        log_info(f"✅ Step 4 Complete: Data integrity check completed ({step_duration:.2f}ms)", LogCategory.STARTUP)
+        db_manager.log_startup_event("DATA_INTEGRITY_SUCCESS", f"Data integrity check completed in {step_duration:.2f}ms", additional_data={"record_counts": data_stats})
+        
+        conn.close()
+        
+        # Step 5: System Configuration Check
+        step_start_time = time.time()
+        log_info("⚙️ Step 5: Checking system configuration...", LogCategory.STARTUP)
+        db_manager.log_startup_event("CONFIG_CHECK_START", "Starting system configuration check")
+        
+        config_info = {
+            "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite",
+            "thresholds": current_thresholds,
+            "base_dir": str(BASE_DIR),
+            "password_hash_set": bool(PASSWORD_HASH)
+        }
+        
+        step_duration = (time.time() - step_start_time) * 1000
+        log_info(f"✅ Step 5 Complete: System configuration verified ({step_duration:.2f}ms)", LogCategory.STARTUP)
+        db_manager.log_startup_event("CONFIG_CHECK_SUCCESS", f"System configuration verified in {step_duration:.2f}ms", additional_data=config_info)
+        
+    except Exception as e:
+        error_duration = (time.time() - startup_start_time) * 1000
+        error_msg = f"Database initialization error: {e}"
+        log_error(f"❌ {error_msg}", LogCategory.STARTUP)
+        log_error(f"Error type: {type(e).__name__}", LogCategory.STARTUP)
+        db_manager.log_startup_event("INIT_FAILED", error_msg, success=False, error_message=str(e), additional_data={"error_type": type(e).__name__, "duration_ms": error_duration})
         # Don't stop startup, but log the error
     
-    # Check database integrity at startup
+    # Step 6: Database Integrity Verification
     try:
-        log_debug("Checking database integrity...")
+        step_start_time = time.time()
+        log_info("🔍 Step 6: Running database integrity verification...", LogCategory.STARTUP)
+        db_manager.log_startup_event("INTEGRITY_CHECK_START", "Starting database integrity verification")
+        
         integrity_ok = db_manager.check_database_integrity()
+        step_duration = (time.time() - step_start_time) * 1000
+        
         if not integrity_ok:
-            log_error("❌ Database integrity issues detected at startup")
+            error_msg = "Database integrity issues detected"
+            log_error(f"❌ {error_msg}", LogCategory.STARTUP)
+            db_manager.log_startup_event("INTEGRITY_CHECK_FAILED", error_msg, success=False, additional_data={"duration_ms": step_duration})
         else:
-            log_info("✅ Database integrity check passed at startup")
+            log_info(f"✅ Step 6 Complete: Database integrity verification passed ({step_duration:.2f}ms)", LogCategory.STARTUP)
+            db_manager.log_startup_event("INTEGRITY_CHECK_SUCCESS", f"Database integrity verification passed in {step_duration:.2f}ms")
+            
     except Exception as e:
-        log_error(f"❌ Failed to check database integrity at startup: {e}")
+        error_msg = f"Failed to check database integrity: {e}"
+        log_error(f"❌ {error_msg}", LogCategory.STARTUP)
+        db_manager.log_startup_event("INTEGRITY_CHECK_ERROR", error_msg, success=False, error_message=str(e))
     
-    log_info("🎉 Application startup completed")
+    # Final startup completion
+    total_startup_time = (time.time() - startup_start_time) * 1000
+    log_info(f"🎉 Application startup completed successfully in {total_startup_time:.2f}ms", LogCategory.STARTUP)
+    db_manager.log_startup_event("STARTUP_COMPLETE", f"Application startup completed successfully in {total_startup_time:.2f}ms", additional_data={"total_duration_ms": total_startup_time})
 
 
 class LogEntry(BaseModel):
@@ -454,6 +753,26 @@ class LogEntry(BaseModel):
 
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log data submission
+    db_manager.log_user_action(
+        action_type="DATA_SUBMISSION",
+        action_description=f"Device {entry.device_id} submitted sensor data",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        device_id=entry.device_id,
+        additional_data={
+            "endpoint": "/log",
+            "latitude": entry.latitude,
+            "longitude": entry.longitude,
+            "speed": entry.speed,
+            "z_values_count": len(entry.z_values),
+            "record_source": entry.record_source_data
+        }
+    )
+    
     log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL, device_id=entry.device_id)
     log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}, device_id={entry.device_id}", device_id=entry.device_id)
 
@@ -468,6 +787,8 @@ def post_log(entry: LogEntry, request: Request):
     dist_km = 0.0
     dt_sec = 2.0
     computed_speed = 0.0
+    roughness = 0.0  # Initialize roughness variable
+    bike_data_id = None  # Initialize bike_data_id variable
     prev_info = LAST_POINT.get(entry.device_id)
     log_debug(f"Previous info from memory cache: {prev_info}", device_id=entry.device_id)
     
@@ -612,6 +933,23 @@ def post_log(entry: LogEntry, request: Request):
             log_error(f"❌ Data verification error: {verify_exc}", device_id=entry.device_id)
         
     except Exception as exc:
+        # Log failed data submission
+        db_manager.log_user_action(
+            action_type="DATA_SUBMISSION_FAILED",
+            action_description=f"Device {entry.device_id} data submission failed",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            device_id=entry.device_id,
+            success=False,
+            error_message=str(exc),
+            additional_data={
+                "endpoint": "/log",
+                "error_type": type(exc).__name__,
+                "latitude": entry.latitude,
+                "longitude": entry.longitude
+            }
+        )
+        
         log_error(f"❌ Database error while storing data for device {entry.device_id}: {exc}", device_id=entry.device_id)
         log_error(f"Exception type: {type(exc).__name__}", device_id=entry.device_id)
         log_error(f"Exception args: {exc.args}", device_id=entry.device_id)
@@ -626,6 +964,21 @@ def post_log(entry: LogEntry, request: Request):
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
     log_debug(f"Updated LAST_POINT cache: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
     
+    # Log successful data submission
+    db_manager.log_user_action(
+        action_type="DATA_SUBMISSION_SUCCESS",
+        action_description=f"Device {entry.device_id} data submission completed successfully",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        device_id=entry.device_id,
+        additional_data={
+            "endpoint": "/log",
+            "roughness": roughness,
+            "bike_data_id": bike_data_id,
+            "processing_time_ms": (datetime.utcnow() - now).total_seconds() * 1000
+        }
+    )
+    
     # Final success logging
     log_info(f"🚀 POST /log completed successfully for device {entry.device_id} - returning roughness: {roughness:.3f}", device_id=entry.device_id)
     return {"status": "ok", "roughness": roughness}
@@ -634,16 +987,41 @@ def post_log(entry: LogEntry, request: Request):
 
 
 @app.get("/logs")
-def get_logs(limit: Optional[int] = None):
+def get_logs(request: Request, limit: Optional[int] = None):
     """Return recent log entries.
 
     If ``limit`` is not provided, all rows are returned. When supplied it must be
     between 1 and 1000.
     """
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log API access
+    db_manager.log_user_action(
+        action_type="API_CALL",
+        action_description=f"GET /logs API called with limit={limit}",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"endpoint": "/logs", "method": "GET", "limit": limit}
+    )
+    
     log_debug(f"GET /logs called with limit={limit}")
     
     if limit is not None and (limit < 1 or limit > 1000):
-        log_warning(f"Invalid limit parameter: {limit}, must be between 1 and 1000")
+        error_msg = f"Invalid limit parameter: {limit}, must be between 1 and 1000"
+        log_warning(error_msg)
+        
+        # Log API error
+        db_manager.log_user_action(
+            action_type="API_ERROR",
+            action_description="GET /logs failed due to invalid limit parameter",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            success=False,
+            error_message=error_msg,
+            additional_data={"endpoint": "/logs", "invalid_limit": limit}
+        )
+        
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     
     try:
@@ -653,6 +1031,15 @@ def get_logs(limit: Optional[int] = None):
         log_debug(f"Database manager details: use_sqlserver={getattr(db_manager, 'use_sqlserver', 'unknown')}")
         
         rows, rough_avg = db_manager.get_logs(limit)
+        
+        # Log successful API response
+        db_manager.log_user_action(
+            action_type="API_SUCCESS",
+            action_description=f"GET /logs returned {len(rows)} records successfully",
+            user_ip=client_ip,
+            user_agent=user_agent,
+            additional_data={"endpoint": "/logs", "records_returned": len(rows), "average_roughness": rough_avg}
+        )
         
         log_info(f"✅ Successfully fetched {len(rows)} log entries from database")
         log_debug(f"Average roughness: {rough_avg}")
@@ -1948,3 +2335,145 @@ def set_thresholds(settings: ThresholdSettings, request: Request):
     
     log_info(f"Threshold settings updated: {current_thresholds}")
     return {"status": "ok", "thresholds": current_thresholds}
+
+
+@app.get("/user_actions")
+def get_user_actions(request: Request,
+                    action_type: Optional[str] = Query(None, description="Filter by action type"),
+                    user_ip: Optional[str] = Query(None, description="Filter by user IP"),
+                    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+                    success: Optional[bool] = Query(None, description="Filter by success status"),
+                    limit: Optional[int] = Query(100, description="Maximum number of actions to return"),
+                    dep: None = Depends(password_dependency)):
+    """Get user actions log with filtering capabilities."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log the access to user actions
+    db_manager.log_user_action(
+        action_type="USER_ACTIONS_VIEW",
+        action_description="User accessed user actions log",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={
+            "filters": {
+                "action_type": action_type,
+                "user_ip_filter": user_ip,
+                "device_id": device_id,
+                "success": success,
+                "limit": limit
+            }
+        }
+    )
+    
+    try:
+        actions = db_manager.get_user_actions(
+            action_type_filter=action_type,
+            user_ip_filter=user_ip,
+            device_id_filter=device_id,
+            success_filter=success,
+            limit=limit
+        )
+        
+        log_info(f"Retrieved {len(actions)} user actions for display")
+        
+        return {
+            "actions": actions,
+            "total": len(actions),
+            "filters": {
+                "action_type": action_type,
+                "user_ip": user_ip,
+                "device_id": device_id,
+                "success": success,
+                "limit": limit
+            }
+        }
+    except Exception as exc:
+        log_error(f"Failed to retrieve user actions: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve user actions") from exc
+
+
+@app.get("/system_startup_log")
+def get_system_startup_log(request: Request,
+                          limit: Optional[int] = Query(50, description="Maximum number of startup events to return"),
+                          dep: None = Depends(password_dependency)):
+    """Get system startup events and logs."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log the access
+    db_manager.log_user_action(
+        action_type="STARTUP_LOG_VIEW",
+        action_description="User accessed system startup log",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"limit": limit}
+    )
+    
+    try:
+        # Get startup-related user actions
+        startup_actions = db_manager.get_user_actions(
+            action_type_filter=None,  # We'll filter in Python for STARTUP_ prefix
+            limit=limit * 2  # Get more to filter
+        )
+        
+        # Filter for startup-related actions
+        startup_events = [
+            action for action in startup_actions 
+            if action.get('action_type', '').startswith('STARTUP_')
+        ][:limit]
+        
+        # Also get startup-related debug logs
+        startup_logs = db_manager.get_debug_logs(
+            level_filter=LogLevel.INFO,
+            category_filter=LogCategory.STARTUP,
+            limit=limit
+        )
+        
+        log_info(f"Retrieved {len(startup_events)} startup events and {len(startup_logs)} startup logs")
+        
+        return {
+            "startup_events": startup_events,
+            "startup_logs": startup_logs,
+            "total_events": len(startup_events),
+            "total_logs": len(startup_logs)
+        }
+    except Exception as exc:
+        log_error(f"Failed to retrieve startup logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve startup logs") from exc
+
+
+@app.get("/sql_operations_log")
+def get_sql_operations_log(request: Request,
+                          limit: Optional[int] = Query(100, description="Maximum number of SQL operations to return"),
+                          dep: None = Depends(password_dependency)):
+    """Get SQL operations log for debugging and auditing."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log the access
+    db_manager.log_user_action(
+        action_type="SQL_LOG_VIEW",
+        action_description="User accessed SQL operations log",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"limit": limit}
+    )
+    
+    try:
+        # Get SQL operation logs
+        sql_logs = db_manager.get_debug_logs(
+            category_filter=LogCategory.SQL_OPERATION,
+            limit=limit
+        )
+        
+        log_info(f"Retrieved {len(sql_logs)} SQL operation logs")
+        
+        return {
+            "sql_operations": sql_logs,
+            "total": len(sql_logs),
+            "limit": limit
+        }
+    except Exception as exc:
+        log_error(f"Failed to retrieve SQL operations log: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve SQL operations log") from exc

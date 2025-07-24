@@ -11,12 +11,21 @@ import sqlite3
 import json
 import logging
 import traceback
+import time
 from pathlib import Path
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
 import pytz
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available, continue without it
+    pass
 
 try:
     import pyodbc
@@ -52,6 +61,9 @@ class LogCategory(Enum):
     MIGRATION = "MIGRATION"
     BACKUP = "BACKUP"
     GENERAL = "GENERAL"
+    STARTUP = "STARTUP"
+    USER_ACTION = "USER_ACTION"
+    SQL_OPERATION = "SQL_OPERATION"
 
 # Table name constants
 TABLE_BIKE_DATA = "RCI_bike_data"
@@ -59,21 +71,34 @@ TABLE_DEBUG_LOG = "RCI_debug_log"
 TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
+TABLE_USER_ACTIONS = "RCI_user_actions"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
 
+# Check if SQL Server environment variables are available
+SQLSERVER_ENV_VARS = {
+    "AZURE_SQL_SERVER": os.getenv("AZURE_SQL_SERVER"),
+    "AZURE_SQL_PORT": os.getenv("AZURE_SQL_PORT"),
+    "AZURE_SQL_USER": os.getenv("AZURE_SQL_USER"),
+    "AZURE_SQL_PASSWORD": os.getenv("AZURE_SQL_PASSWORD"),
+    "AZURE_SQL_DATABASE": os.getenv("AZURE_SQL_DATABASE"),
+}
+
 # Determine if we should use SQL Server based on environment variables
-USE_SQLSERVER = all(
-    os.getenv(var)
-    for var in (
-        "AZURE_SQL_SERVER",
-        "AZURE_SQL_PORT",
-        "AZURE_SQL_USER",
-        "AZURE_SQL_PASSWORD",
-        "AZURE_SQL_DATABASE",
-    )
-) and pyodbc is not None and bool(pyodbc.drivers())
+USE_SQLSERVER = all(SQLSERVER_ENV_VARS.values()) and pyodbc is not None
+
+# Force SQL Server usage - fail if credentials not available
+FORCE_SQLSERVER = True  # Set this to True to always require SQL Server
+
+if FORCE_SQLSERVER and not USE_SQLSERVER:
+    missing_vars = [k for k, v in SQLSERVER_ENV_VARS.items() if not v]
+    if missing_vars:
+        raise RuntimeError(f"SQL Server configuration required but missing environment variables: {missing_vars}")
+    if pyodbc is None:
+        raise RuntimeError("SQL Server configuration required but pyodbc is not available")
+
+USE_SQLSERVER = FORCE_SQLSERVER or USE_SQLSERVER
 
 
 class DatabaseManager:
@@ -135,10 +160,18 @@ class DatabaseManager:
             dutch_tz = pytz.timezone('Europe/Amsterdam')
             dutch_time = utc_time.astimezone(dutch_tz)
             
-            return dutch_time.isoformat()
+            # Return format compatible with SQL Server (remove timezone info)
+            if self.use_sqlserver:
+                return dutch_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # SQL Server likes milliseconds, not microseconds
+            else:
+                return dutch_time.isoformat()
         except Exception:
             # Fallback to UTC if timezone conversion fails
-            return (utc_time or datetime.utcnow()).isoformat()
+            fallback_time = utc_time or datetime.utcnow()
+            if self.use_sqlserver:
+                return fallback_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            else:
+                return fallback_time.isoformat()
     
     def _parse_dutch_time_display(self, iso_time_str: str) -> str:
         """Parse ISO time string and return formatted Dutch time for display."""
@@ -231,10 +264,11 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL")  # Use Write-Ahead Logging
                 cursor.execute("PRAGMA synchronous=NORMAL")  # Balanced safety/performance
-                cursor.execute("PRAGMA cache_size=-2000")  # 2MB cache (negative = KB)
+                cursor.execute("PRAGMA cache_size=-8000")  # 8MB cache (negative = KB)
                 cursor.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp tables
                 cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
                 cursor.execute("PRAGMA wal_autocheckpoint=1000")  # Checkpoint every 1000 pages
+                cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
                 cursor.close()
                 
                 self.log_debug("SQLite connection established successfully with optimized settings", 
@@ -293,8 +327,11 @@ class DatabaseManager:
 
     def init_tables(self) -> None:
         """Ensure that required tables exist."""
+        start_time = time.time()
+        
         try:
             self.log_debug("Starting table initialization", LogLevel.INFO, LogCategory.DATABASE)
+            
             self.ensure_database_exists()
             
             with self.get_connection_context() as conn:
@@ -308,8 +345,12 @@ class DatabaseManager:
                     self._create_sqlite_tables(cursor)
                 
                 conn.commit()
-                self.log_debug("Table initialization completed successfully", LogLevel.INFO, LogCategory.DATABASE)
+                
+                total_time = (time.time() - start_time) * 1000
+                self.log_debug(f"Table initialization completed successfully in {total_time:.2f}ms", LogLevel.INFO, LogCategory.DATABASE)
+                
         except Exception as exc:
+            total_time = (time.time() - start_time) * 1000
             self.log_debug(f"Database init error: {exc}", LogLevel.ERROR, LogCategory.DATABASE, include_stack=True)
             raise Exception(f"Database init error: {exc}")
 
@@ -413,6 +454,30 @@ class DatabaseManager:
                     timestamp DATETIME2 DEFAULT GETDATE(),
                     device_id NVARCHAR(255) NOT NULL,
                     ip_address NVARCHAR(45)
+                )
+            END
+            """
+        )
+        
+        # Create user actions table for tracking user behavior and system events
+        cursor.execute(
+            f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_USER_ACTIONS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_USER_ACTIONS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME2 DEFAULT GETDATE(),
+                    action_type NVARCHAR(50) NOT NULL,
+                    action_description NVARCHAR(500) NOT NULL,
+                    user_ip NVARCHAR(45),
+                    user_agent NVARCHAR(500),
+                    device_id NVARCHAR(255),
+                    session_id NVARCHAR(100),
+                    additional_data NVARCHAR(MAX),
+                    success BIT DEFAULT 1,
+                    error_message NVARCHAR(MAX)
                 )
             END
             """
@@ -583,6 +648,23 @@ class DatabaseManager:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 device_id TEXT NOT NULL,
                 ip_address TEXT
+            )
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_USER_ACTIONS} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                action_type TEXT NOT NULL,
+                action_description TEXT NOT NULL,
+                user_ip TEXT,
+                user_agent TEXT,
+                device_id TEXT,
+                session_id TEXT,
+                additional_data TEXT,
+                success INTEGER DEFAULT 1,
+                error_message TEXT
             )
             """
         )
@@ -766,21 +848,202 @@ class DatabaseManager:
             self.logger.error(f"Database integrity check failed: {e}")
             return False
 
+    def log_user_action(self, action_type: str, action_description: str,
+                       user_ip: Optional[str] = None, user_agent: Optional[str] = None,
+                       device_id: Optional[str] = None, session_id: Optional[str] = None,
+                       additional_data: Optional[Dict] = None, success: bool = True,
+                       error_message: Optional[str] = None) -> None:
+        """Log user actions to the user actions table.
+        
+        Args:
+            action_type: Type of action (LOGIN, LOGOUT, PAGE_VIEW, API_CALL, etc.)
+            action_description: Human-readable description of the action
+            user_ip: IP address of the user
+            user_agent: User agent string
+            device_id: Device ID if applicable
+            session_id: Session identifier
+            additional_data: Additional structured data as dictionary
+            success: Whether the action was successful
+            error_message: Error message if action failed
+        """
+        try:
+            timestamp = self._get_dutch_time()
+            additional_data_json = json.dumps(additional_data) if additional_data else None
+            
+            self.execute_non_query(
+                f"""INSERT INTO {TABLE_USER_ACTIONS} 
+                   (timestamp, action_type, action_description, user_ip, user_agent, 
+                    device_id, session_id, additional_data, success, error_message) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (timestamp, action_type, action_description, user_ip, user_agent,
+                 device_id, session_id, additional_data_json, success, error_message)
+            )
+            
+            # Also log to debug log for comprehensive tracking
+            status = "SUCCESS" if success else "FAILED"
+            log_message = f"USER_ACTION [{action_type}] {action_description} - {status}"
+            if error_message:
+                log_message += f" - Error: {error_message}"
+            
+            self.log_debug(log_message, LogLevel.INFO, LogCategory.USER_ACTION, device_id=device_id)
+            
+        except Exception as e:
+            # Fallback logging if user action logging fails
+            self.logger.error(f"Failed to log user action: {e}")
+            self.log_debug(f"Failed to log user action [{action_type}] {action_description}: {e}", 
+                          LogLevel.ERROR, LogCategory.USER_ACTION)
+
+    def log_sql_operation(self, operation_type: str, query: str, params: Optional[Tuple] = None,
+                         result_count: Optional[int] = None, execution_time_ms: Optional[float] = None,
+                         success: bool = True, error_message: Optional[str] = None,
+                         device_id: Optional[str] = None) -> None:
+        """Log SQL operations for auditing and debugging.
+        
+        Args:
+            operation_type: Type of SQL operation (INSERT, SELECT, UPDATE, DELETE, etc.)
+            query: The SQL query executed (will be truncated if too long)
+            params: Parameters used in the query
+            result_count: Number of rows affected/returned
+            execution_time_ms: Execution time in milliseconds
+            success: Whether the operation was successful
+            error_message: Error message if operation failed
+            device_id: Device ID if applicable
+        """
+        try:
+            # Truncate long queries for logging
+            query_for_log = query[:500] + "..." if len(query) > 500 else query
+            
+            # Create detailed log message
+            log_parts = [f"SQL_{operation_type}"]
+            log_parts.append(f"Query: {query_for_log}")
+            
+            if params:
+                # Safely represent parameters (avoid logging sensitive data)
+                params_str = str(params)[:200] + "..." if len(str(params)) > 200 else str(params)
+                log_parts.append(f"Params: {params_str}")
+            
+            if result_count is not None:
+                log_parts.append(f"Results: {result_count} rows")
+            
+            if execution_time_ms is not None:
+                log_parts.append(f"Time: {execution_time_ms:.2f}ms")
+            
+            if not success and error_message:
+                log_parts.append(f"Error: {error_message}")
+            
+            log_message = " | ".join(log_parts)
+            log_level = LogLevel.ERROR if not success else LogLevel.DEBUG
+            
+            self.log_debug(log_message, log_level, LogCategory.SQL_OPERATION, device_id=device_id)
+            
+        except Exception as e:
+            # Fallback logging if SQL operation logging fails
+            self.logger.error(f"Failed to log SQL operation: {e}")
+
+    def log_startup_event(self, event_type: str, event_description: str,
+                         success: bool = True, error_message: Optional[str] = None,
+                         additional_data: Optional[Dict] = None) -> None:
+        """Log startup events for system monitoring.
+        
+        Args:
+            event_type: Type of startup event (DB_INIT, TABLE_CREATION, MIGRATION, etc.)
+            event_description: Description of the startup event
+            success: Whether the event was successful
+            error_message: Error message if event failed
+            additional_data: Additional structured data
+        """
+        try:
+            # Log as user action for comprehensive tracking
+            self.log_user_action(
+                action_type=f"STARTUP_{event_type}",
+                action_description=event_description,
+                user_ip="SYSTEM",
+                user_agent="SERVER_STARTUP",
+                additional_data=additional_data,
+                success=success,
+                error_message=error_message
+            )
+            
+            # Also log to debug log with startup category
+            status = "SUCCESS" if success else "FAILED"
+            log_message = f"STARTUP [{event_type}] {event_description} - {status}"
+            if error_message:
+                log_message += f" - Error: {error_message}"
+            
+            log_level = LogLevel.ERROR if not success else LogLevel.INFO
+            self.log_debug(log_message, log_level, LogCategory.STARTUP)
+            
+        except Exception as e:
+            # Fallback logging if startup event logging fails
+            self.logger.error(f"Failed to log startup event: {e}")
+
+    def get_user_actions(self, action_type_filter: Optional[str] = None,
+                        user_ip_filter: Optional[str] = None,
+                        device_id_filter: Optional[str] = None,
+                        success_filter: Optional[bool] = None,
+                        limit: Optional[int] = 100) -> List[Dict[str, Any]]:
+        """Retrieve user actions with optional filtering.
+        
+        Args:
+            action_type_filter: Filter by action type
+            user_ip_filter: Filter by user IP
+            device_id_filter: Filter by device ID
+            success_filter: Filter by success status
+            limit: Maximum number of actions to return
+            
+        Returns:
+            List of user action entries as dictionaries
+        """
+        try:
+            query = f"SELECT * FROM {TABLE_USER_ACTIONS} WHERE 1=1"
+            params = []
+            
+            if action_type_filter:
+                query += " AND action_type = ?"
+                params.append(action_type_filter)
+            
+            if user_ip_filter:
+                query += " AND user_ip = ?"
+                params.append(user_ip_filter)
+            
+            if device_id_filter:
+                query += " AND device_id = ?"
+                params.append(device_id_filter)
+            
+            if success_filter is not None:
+                query += " AND success = ?"
+                params.append(1 if success_filter else 0)
+            
+            query += " ORDER BY timestamp DESC"
+            
+            if limit:
+                if self.use_sqlserver:
+                    query = query.replace("SELECT *", f"SELECT TOP {limit} *")
+                else:
+                    query += " LIMIT ?"
+                    params.append(limit)
+            
+            return self.execute_query(query, tuple(params) if params else None)
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve user actions: {e}")
+            return []
+
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,
                         device_id: str, ip_address: Optional[str]) -> int:
         """Insert bike data into the database and return the ID."""
+        start_time = time.time()
+        
         self.log_debug(f"Inserting bike data for device {device_id}: lat={latitude}, lon={longitude}, speed={speed}, roughness={roughness}", 
                       LogLevel.DEBUG, LogCategory.QUERY)
+        
+        query = f"INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        params = (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
         
         try:
             with self.get_connection_context() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    f"INSERT INTO {TABLE_BIKE_DATA} (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
-                )
+                cursor.execute(query, params)
                 
                 # Check rowcount immediately after INSERT
                 if cursor.rowcount != 1:
@@ -796,12 +1059,42 @@ class DatabaseManager:
                     bike_data_id = cursor.lastrowid
                 
                 conn.commit()
+                
+                # Calculate execution time
+                execution_time = (time.time() - start_time) * 1000
+                
+                # Log the successful SQL operation
+                self.log_sql_operation(
+                    operation_type="INSERT",
+                    query=query,
+                    params=params,
+                    result_count=1,
+                    execution_time_ms=execution_time,
+                    success=True,
+                    device_id=device_id
+                )
+                
                 self.log_debug(f"Successfully inserted bike data for device {device_id} with ID {bike_data_id}", 
                               LogLevel.DEBUG, LogCategory.QUERY)
                 return bike_data_id
         except Exception as e:
+            # Calculate execution time even for failed operations
+            execution_time = (time.time() - start_time) * 1000
+            
+            # Log the failed SQL operation
+            self.log_sql_operation(
+                operation_type="INSERT",
+                query=query,
+                params=params,
+                result_count=0,
+                execution_time_ms=execution_time,
+                success=False,
+                error_message=str(e),
+                device_id=device_id
+            )
+            
             self.log_debug(f"Failed to insert bike data for device {device_id}: {e}", 
-                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+                          LogLevel.ERROR, LogCategory.QUERY)
             raise
 
     def upsert_device_info(self, device_id: str, user_agent: Optional[str], 
@@ -822,7 +1115,7 @@ class DatabaseManager:
                         WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
                         WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
                         """,
-                        device_id, user_agent, device_fp
+                        (device_id, user_agent, device_fp)
                     )
                 else:
                     cursor.execute(
@@ -839,7 +1132,7 @@ class DatabaseManager:
                               LogLevel.DEBUG, LogCategory.QUERY)
         except Exception as e:
             self.log_debug(f"Failed to upsert device info for {device_id}: {e}", 
-                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+                          LogLevel.ERROR, LogCategory.QUERY)
             raise
 
     def insert_bike_source_data(self, bike_data_id: int, z_values: List[float], 
@@ -1179,12 +1472,31 @@ class DatabaseManager:
 
     def execute_non_query(self, query: str, params: Optional[Tuple] = None) -> int:
         """Execute a non-query (INSERT, UPDATE, DELETE) and return affected rows."""
+        import time
+        start_time = time.time()
+        
         # Only log for non-debug-log queries to avoid infinite recursion
-        is_debug_log_query = TABLE_DEBUG_LOG in query
+        is_debug_log_query = TABLE_DEBUG_LOG in query or TABLE_USER_ACTIONS in query
         
         if not is_debug_log_query:
             self.log_debug(f"Executing non-query: {query[:100]}{'...' if len(query) > 100 else ''}", 
                           LogLevel.DEBUG, LogCategory.QUERY)
+        
+        # Determine operation type
+        operation_type = "UNKNOWN"
+        query_upper = query.upper().strip()
+        if query_upper.startswith("INSERT"):
+            operation_type = "INSERT"
+        elif query_upper.startswith("UPDATE"):
+            operation_type = "UPDATE"
+        elif query_upper.startswith("DELETE"):
+            operation_type = "DELETE"
+        elif query_upper.startswith("CREATE"):
+            operation_type = "CREATE"
+        elif query_upper.startswith("ALTER"):
+            operation_type = "ALTER"
+        elif query_upper.startswith("DROP"):
+            operation_type = "DROP"
         
         try:
             with self.get_connection_context() as conn:
@@ -1196,15 +1508,40 @@ class DatabaseManager:
                 conn.commit()
                 rowcount = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
                 
+                execution_time = (time.time() - start_time) * 1000
+                
                 if not is_debug_log_query:
                     self.log_debug(f"Non-query executed successfully, {rowcount} rows affected", 
                                   LogLevel.DEBUG, LogCategory.QUERY)
+                    
+                    # Log SQL operation for auditing
+                    self.log_sql_operation(
+                        operation_type=operation_type,
+                        query=query,
+                        params=params,
+                        result_count=rowcount,
+                        execution_time_ms=execution_time,
+                        success=True
+                    )
                 
                 return rowcount
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            
             if not is_debug_log_query:
                 self.log_debug(f"Non-query execution failed: {e}", 
                               LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+                
+                # Log failed SQL operation
+                self.log_sql_operation(
+                    operation_type=operation_type,
+                    query=query,
+                    params=params,
+                    result_count=0,
+                    execution_time_ms=execution_time,
+                    success=False,
+                    error_message=str(e)
+                )
             raise
 
     def execute_management_operation(self, operation_name: str, operation_func):

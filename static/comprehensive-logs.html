@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive System Logs - Road Condition Indexer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab:hover:not(.active) {
+            background-color: #e9ecef;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .filters {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .filters input, .filters select {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .filters button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .filters button:hover {
+            background: #0056b3;
+        }
+        .log-entry {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 5px;
+            background: white;
+        }
+        .log-entry.success {
+            border-left: 4px solid #28a745;
+        }
+        .log-entry.error {
+            border-left: 4px solid #dc3545;
+        }
+        .log-entry.warning {
+            border-left: 4px solid #ffc107;
+        }
+        .log-entry.info {
+            border-left: 4px solid #17a2b8;
+        }
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .log-timestamp {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .log-type {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        .log-description {
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .log-details {
+            font-size: 0.9em;
+            color: #666;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Comprehensive System Logs</h1>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('user-actions')">User Actions</button>
+            <button class="tab" onclick="showTab('startup-logs')">Startup Logs</button>
+            <button class="tab" onclick="showTab('sql-operations')">SQL Operations</button>
+            <button class="tab" onclick="showTab('debug-logs')">Debug Logs</button>
+        </div>
+
+        <!-- User Actions Tab -->
+        <div id="user-actions" class="tab-content active">
+            <div class="filters">
+                <input type="text" id="action-type-filter" placeholder="Action Type (e.g., LOGIN, PAGE_ACCESS)">
+                <input type="text" id="user-ip-filter" placeholder="User IP">
+                <input type="text" id="device-id-filter" placeholder="Device ID">
+                <select id="success-filter">
+                    <option value="">All</option>
+                    <option value="true">Success Only</option>
+                    <option value="false">Failures Only</option>
+                </select>
+                <input type="number" id="user-actions-limit" placeholder="Limit" value="100">
+                <button onclick="loadUserActions()">🔍 Load User Actions</button>
+                <button onclick="exportUserActions()">📁 Export</button>
+            </div>
+            
+            <div class="stats" id="user-actions-stats"></div>
+            <div id="user-actions-content">
+                <div class="loading">Click "Load User Actions" to view logs</div>
+            </div>
+        </div>
+
+        <!-- Startup Logs Tab -->
+        <div id="startup-logs" class="tab-content">
+            <div class="filters">
+                <input type="number" id="startup-limit" placeholder="Limit" value="50">
+                <button onclick="loadStartupLogs()">🔍 Load Startup Logs</button>
+                <button onclick="exportStartupLogs()">📁 Export</button>
+            </div>
+            
+            <div class="stats" id="startup-stats"></div>
+            <div id="startup-content">
+                <div class="loading">Click "Load Startup Logs" to view logs</div>
+            </div>
+        </div>
+
+        <!-- SQL Operations Tab -->
+        <div id="sql-operations" class="tab-content">
+            <div class="filters">
+                <input type="number" id="sql-limit" placeholder="Limit" value="100">
+                <button onclick="loadSQLOperations()">🔍 Load SQL Operations</button>
+                <button onclick="exportSQLOperations()">📁 Export</button>
+            </div>
+            
+            <div class="stats" id="sql-stats"></div>
+            <div id="sql-content">
+                <div class="loading">Click "Load SQL Operations" to view logs</div>
+            </div>
+        </div>
+
+        <!-- Debug Logs Tab -->
+        <div id="debug-logs" class="tab-content">
+            <div class="filters">
+                <select id="debug-level-filter">
+                    <option value="">All Levels</option>
+                    <option value="DEBUG">Debug</option>
+                    <option value="INFO">Info</option>
+                    <option value="WARNING">Warning</option>
+                    <option value="ERROR">Error</option>
+                    <option value="CRITICAL">Critical</option>
+                </select>
+                <select id="debug-category-filter">
+                    <option value="">All Categories</option>
+                    <option value="DATABASE">Database</option>
+                    <option value="CONNECTION">Connection</option>
+                    <option value="QUERY">Query</option>
+                    <option value="STARTUP">Startup</option>
+                    <option value="USER_ACTION">User Action</option>
+                    <option value="SQL_OPERATION">SQL Operation</option>
+                    <option value="GENERAL">General</option>
+                </select>
+                <input type="text" id="debug-device-filter" placeholder="Device ID">
+                <input type="number" id="debug-limit" placeholder="Limit" value="100">
+                <button onclick="loadDebugLogs()">🔍 Load Debug Logs</button>
+                <button onclick="exportDebugLogs()">📁 Export</button>
+            </div>
+            
+            <div class="stats" id="debug-stats"></div>
+            <div id="debug-content">
+                <div class="loading">Click "Load Debug Logs" to view logs</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            // Hide all tab contents
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        }
+
+        function createLogEntry(log, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            
+            let detailsHtml = '';
+            if (log.additional_data) {
+                try {
+                    const data = typeof log.additional_data === 'string' ? JSON.parse(log.additional_data) : log.additional_data;
+                    detailsHtml = `<div class="log-details"><strong>Additional Data:</strong><br><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                } catch (e) {
+                    detailsHtml = `<div class="log-details"><strong>Additional Data:</strong><br>${log.additional_data}</div>`;
+                }
+            }
+            
+            if (log.error_message) {
+                detailsHtml += `<div class="log-details"><strong>Error:</strong> ${log.error_message}</div>`;
+            }
+            
+            entry.innerHTML = `
+                <div class="log-header">
+                    <span class="log-type">${log.action_type || log.level || 'LOG'}</span>
+                    <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
+                </div>
+                <div class="log-description">${log.action_description || log.message || 'No description'}</div>
+                ${log.user_ip ? `<div><strong>IP:</strong> ${log.user_ip}</div>` : ''}
+                ${log.device_id ? `<div><strong>Device:</strong> ${log.device_id}</div>` : ''}
+                ${detailsHtml}
+            `;
+            
+            return entry;
+        }
+
+        async function loadUserActions() {
+            const content = document.getElementById('user-actions-content');
+            content.innerHTML = '<div class="loading">Loading user actions...</div>';
+            
+            try {
+                const params = new URLSearchParams();
+                const actionType = document.getElementById('action-type-filter').value;
+                const userIp = document.getElementById('user-ip-filter').value;
+                const deviceId = document.getElementById('device-id-filter').value;
+                const success = document.getElementById('success-filter').value;
+                const limit = document.getElementById('user-actions-limit').value;
+                
+                if (actionType) params.append('action_type', actionType);
+                if (userIp) params.append('user_ip', userIp);
+                if (deviceId) params.append('device_id', deviceId);
+                if (success) params.append('success', success);
+                if (limit) params.append('limit', limit);
+                
+                const response = await fetch(`/user_actions?${params.toString()}`);
+                const data = await response.json();
+                
+                // Update stats
+                const stats = document.getElementById('user-actions-stats');
+                const successCount = data.actions.filter(a => a.success !== false).length;
+                const errorCount = data.actions.filter(a => a.success === false).length;
+                
+                stats.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-number">${data.total}</div>
+                        <div class="stat-label">Total Actions</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${successCount}</div>
+                        <div class="stat-label">Successful</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${errorCount}</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                `;
+                
+                // Display actions
+                content.innerHTML = '';
+                data.actions.forEach(action => {
+                    const type = action.success === false ? 'error' : 'success';
+                    content.appendChild(createLogEntry(action, type));
+                });
+                
+                if (data.actions.length === 0) {
+                    content.innerHTML = '<div class="loading">No user actions found with current filters</div>';
+                }
+                
+            } catch (error) {
+                content.innerHTML = `<div class="error-message">Error loading user actions: ${error.message}</div>`;
+            }
+        }
+
+        async function loadStartupLogs() {
+            const content = document.getElementById('startup-content');
+            content.innerHTML = '<div class="loading">Loading startup logs...</div>';
+            
+            try {
+                const limit = document.getElementById('startup-limit').value;
+                const response = await fetch(`/system_startup_log?limit=${limit}`);
+                const data = await response.json();
+                
+                // Update stats
+                const stats = document.getElementById('startup-stats');
+                stats.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-number">${data.total_events}</div>
+                        <div class="stat-label">Startup Events</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.total_logs}</div>
+                        <div class="stat-label">Debug Logs</div>
+                    </div>
+                `;
+                
+                // Display events and logs
+                content.innerHTML = '<h3>Startup Events</h3>';
+                data.startup_events.forEach(event => {
+                    const type = event.success === false ? 'error' : 'info';
+                    content.appendChild(createLogEntry(event, type));
+                });
+                
+                content.innerHTML += '<h3>Startup Debug Logs</h3>';
+                data.startup_logs.forEach(log => {
+                    const type = log.level === 'ERROR' ? 'error' : log.level === 'WARNING' ? 'warning' : 'info';
+                    content.appendChild(createLogEntry(log, type));
+                });
+                
+            } catch (error) {
+                content.innerHTML = `<div class="error-message">Error loading startup logs: ${error.message}</div>`;
+            }
+        }
+
+        async function loadSQLOperations() {
+            const content = document.getElementById('sql-content');
+            content.innerHTML = '<div class="loading">Loading SQL operations...</div>';
+            
+            try {
+                const limit = document.getElementById('sql-limit').value;
+                const response = await fetch(`/sql_operations_log?limit=${limit}`);
+                const data = await response.json();
+                
+                // Update stats
+                const stats = document.getElementById('sql-stats');
+                stats.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-number">${data.total}</div>
+                        <div class="stat-label">SQL Operations</div>
+                    </div>
+                `;
+                
+                // Display operations
+                content.innerHTML = '';
+                data.sql_operations.forEach(op => {
+                    const type = op.message && op.message.includes('Error:') ? 'error' : 'info';
+                    content.appendChild(createLogEntry(op, type));
+                });
+                
+                if (data.sql_operations.length === 0) {
+                    content.innerHTML = '<div class="loading">No SQL operations found</div>';
+                }
+                
+            } catch (error) {
+                content.innerHTML = `<div class="error-message">Error loading SQL operations: ${error.message}</div>`;
+            }
+        }
+
+        async function loadDebugLogs() {
+            const content = document.getElementById('debug-content');
+            content.innerHTML = '<div class="loading">Loading debug logs...</div>';
+            
+            try {
+                const params = new URLSearchParams();
+                const level = document.getElementById('debug-level-filter').value;
+                const category = document.getElementById('debug-category-filter').value;
+                const deviceId = document.getElementById('debug-device-filter').value;
+                const limit = document.getElementById('debug-limit').value;
+                
+                if (level) params.append('level', level);
+                if (category) params.append('category', category);
+                if (deviceId) params.append('device_id', deviceId);
+                if (limit) params.append('limit', limit);
+                
+                const response = await fetch(`/debuglog/enhanced?${params.toString()}`);
+                const data = await response.json();
+                
+                // Update stats
+                const stats = document.getElementById('debug-stats');
+                const errorCount = data.logs.filter(l => l.level === 'ERROR').length;
+                const warningCount = data.logs.filter(l => l.level === 'WARNING').length;
+                
+                stats.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-number">${data.total}</div>
+                        <div class="stat-label">Total Logs</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${errorCount}</div>
+                        <div class="stat-label">Errors</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${warningCount}</div>
+                        <div class="stat-label">Warnings</div>
+                    </div>
+                `;
+                
+                // Display logs
+                content.innerHTML = '';
+                data.logs.forEach(log => {
+                    const type = log.level === 'ERROR' ? 'error' : log.level === 'WARNING' ? 'warning' : 'info';
+                    content.appendChild(createLogEntry(log, type));
+                });
+                
+                if (data.logs.length === 0) {
+                    content.innerHTML = '<div class="loading">No debug logs found with current filters</div>';
+                }
+                
+            } catch (error) {
+                content.innerHTML = `<div class="error-message">Error loading debug logs: ${error.message}</div>`;
+            }
+        }
+
+        // Export functions
+        function exportUserActions() {
+            // Implementation for exporting user actions to CSV/JSON
+            alert('Export functionality will be implemented');
+        }
+
+        function exportStartupLogs() {
+            // Implementation for exporting startup logs
+            alert('Export functionality will be implemented');
+        }
+
+        function exportSQLOperations() {
+            // Implementation for exporting SQL operations
+            alert('Export functionality will be implemented');
+        }
+
+        function exportDebugLogs() {
+            // Implementation for exporting debug logs
+            alert('Export functionality will be implemented');
+        }
+
+        // Auto-refresh functionality (optional)
+        setInterval(() => {
+            const activeTab = document.querySelector('.tab-content.active');
+            if (activeTab && activeTab.id !== 'user-actions') {
+                // Auto-refresh non-user-actions tabs every 30 seconds
+                switch(activeTab.id) {
+                    case 'startup-logs':
+                        loadStartupLogs();
+                        break;
+                    case 'sql-operations':
+                        loadSQLOperations();
+                        break;
+                    case 'debug-logs':
+                        loadDebugLogs();
+                        break;
+                }
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

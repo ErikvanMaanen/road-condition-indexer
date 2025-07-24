@@ -199,7 +199,10 @@ class ComprehensiveDataFlowTest:
                 time.sleep(0.5)
                 
                 # Verify data was stored in database by querying for our device
-                query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC LIMIT 1"
+                if self.db_manager.use_sqlserver:
+                    query = f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC"
+                else:
+                    query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC LIMIT 1"
                 db_results = self.db_manager.execute_query(query, (api_payload["device_id"],))
                 
                 if db_results and len(db_results) > 0:
@@ -298,7 +301,10 @@ class ComprehensiveDataFlowTest:
             time.sleep(0.5)
             
             # Verify logs were stored
-            log_query = "SELECT * FROM RCI_debug_log WHERE message LIKE ? ORDER BY id DESC LIMIT 10"
+            if self.db_manager.use_sqlserver:
+                log_query = "SELECT TOP 10 * FROM RCI_debug_log WHERE message LIKE ? ORDER BY id DESC"
+            else:
+                log_query = "SELECT * FROM RCI_debug_log WHERE message LIKE ? ORDER BY id DESC LIMIT 10"
             stored_logs = self.db_manager.execute_query(log_query, ("Test % message%",))
             
             print(f"📊 Expected {len(test_logs)} logs, found {len(stored_logs)} in database")
