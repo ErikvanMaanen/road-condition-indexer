@@ -327,6 +327,9 @@ let recordSourceData = localStorage.getItem('recordSourceData') === 'true';
 // Set the initial checkbox state
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('record-source-data').checked = recordSourceData;
+
+    // Set initial state of start/stop button
+    updateToggleButton();
     
     // Load logs partial
     loadLogsPartial();
@@ -622,6 +625,13 @@ const GEO_OPTIONS = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
 let geoWatchId = null;
 let loggingEnabled = false;
 let recordCount = 0;
+
+function updateToggleButton() {
+    const btn = document.getElementById('toggle');
+    if (btn) {
+        btn.textContent = loggingEnabled ? 'Stop' : 'Start';
+    }
+}
 
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -1045,13 +1055,15 @@ async function startGeolocation() {
         );
     }
     loggingEnabled = true;
-    
+    updateToggleButton();
+
     // Request wake lock when starting recording
     await requestWakeLock();
 }
 
 async function stopGeolocation() {
     loggingEnabled = false;
+    updateToggleButton();
     if (motionPermissionTimer !== null) {
         clearTimeout(motionPermissionTimer);
         motionPermissionTimer = null;
@@ -1085,13 +1097,12 @@ setInterval(checkDatabaseStatus, 30000);
 document.getElementById('toggle').addEventListener('click', async () => {
     if (loggingEnabled) {
         await stopGeolocation();
-        document.getElementById('toggle').textContent = 'Start';
         addLog('Logging stopped');
     } else {
         await startGeolocation();
-        document.getElementById('toggle').textContent = 'Stop';
         addLog('Logging started');
     }
+    updateToggleButton();
 });
 
 const updateBtn = document.getElementById('update-button');
