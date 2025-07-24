@@ -87,6 +87,86 @@
         #manual-wake-lock:hover {
             background: #e0e0e0;
         }
+        /* Settings panel styles */
+        #settings-panel {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 1rem 0;
+            background: #f9f9f9;
+        }
+        #settings-header {
+            padding: 8px 12px;
+            background: #e9e9e9;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #settings-header:hover {
+            background: #ddd;
+        }
+        #settings-content {
+            padding: 12px;
+            display: none;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .setting-item label {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .setting-item input {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+        .setting-item .help-text {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 2px;
+        }
+        .settings-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            border-top: 1px solid #ddd;
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+        .settings-buttons button {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border-radius: 3px;
+        }
+        #settings-save {
+            background: #4CAF50;
+            color: white;
+            border: 1px solid #45a049;
+        }
+        #settings-save:hover {
+            background: #45a049;
+        }
+        #settings-reset {
+            background: #f44336;
+            color: white;
+            border: 1px solid #d32f2f;
+        }
+        #settings-reset:hover {
+            background: #d32f2f;
+        }
     </style>
 </head>
 <body>
@@ -163,7 +243,49 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
         When enabled, stores raw acceleration data for recalculating roughness values later
     </div>
 </div>
-<section id="controls" style="margin-bottom:1rem;">
+
+<!-- Settings Panel -->
+<div id="settings-panel">
+    <div id="settings-header" onclick="toggleSettings()">
+        <span>⚙️ Recording Thresholds</span>
+        <span id="settings-toggle">▼</span>
+    </div>
+    <div id="settings-content">
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label for="max-interval">Max Time Interval (sec)</label>
+                <input type="number" id="max-interval" min="1" max="300" step="1" value="15">
+                <div class="help-text">Maximum time between data points before ignoring</div>
+            </div>
+            <div class="setting-item">
+                <label for="max-distance">Max Distance (m)</label>
+                <input type="number" id="max-distance" min="10" max="10000" step="10" value="100">
+                <div class="help-text">Maximum distance between points before ignoring</div>
+            </div>
+            <div class="setting-item">
+                <label for="min-speed">Min Speed (km/h)</label>
+                <input type="number" id="min-speed" min="0" max="200" step="0.1" value="0">
+                <div class="help-text">Minimum speed for recording data (0 = no limit)</div>
+            </div>
+            <div class="setting-item">
+                <label for="freq-min">Min Frequency (Hz)</label>
+                <input type="number" id="freq-min" min="0.1" max="10" step="0.1" value="0.5">
+                <div class="help-text">Minimum frequency for vibration filtering</div>
+            </div>
+            <div class="setting-item">
+                <label for="freq-max">Max Frequency (Hz)</label>
+                <input type="number" id="freq-max" min="10" max="100" step="1" value="50">
+                <div class="help-text">Maximum frequency for vibration filtering</div>
+            </div>
+        </div>
+        <div class="settings-buttons">
+            <button id="settings-reset" onclick="resetSettings()">Reset to Defaults</button>
+            <button id="settings-save" onclick="saveSettings()">Save Settings</button>
+        </div>
+    </div>
+</div>
+
+<div id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
     <div id="wake-lock-container" style="border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin: 0.5rem 0; background: #f9f9f9;">
         <div id="wake-lock-status" style="font-size: 0.9rem; font-weight: bold;">💤 Screen may turn off</div>
@@ -208,6 +330,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load logs partial
     loadLogsPartial();
+    
+    // Load current threshold settings
+    loadSettings();
     
     // Initialize toggle functionality
     const button = document.getElementById('toggle-explanation');
@@ -1147,6 +1272,86 @@ if ('wakeLock' in navigator) {
             await requestWakeLock();
         }
     });
+}
+
+// Settings panel functions
+function toggleSettings() {
+    const content = document.getElementById('settings-content');
+    const toggle = document.getElementById('settings-toggle');
+    
+    if (content.style.display === 'none' || !content.style.display) {
+        content.style.display = 'block';
+        toggle.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▼';
+    }
+}
+
+function loadSettings() {
+    fetch('/api/thresholds')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('max-interval').value = data.max_interval_sec;
+            document.getElementById('max-distance').value = data.max_distance_m;
+            document.getElementById('min-speed').value = data.min_speed_kmh;
+            document.getElementById('freq-min').value = data.freq_min;
+            document.getElementById('freq-max').value = data.freq_max;
+        })
+        .catch(err => {
+            console.error('Failed to load settings:', err);
+            addLog('Failed to load threshold settings');
+        });
+}
+
+function saveSettings() {
+    const settings = {
+        max_interval_sec: parseFloat(document.getElementById('max-interval').value),
+        max_distance_m: parseFloat(document.getElementById('max-distance').value),
+        min_speed_kmh: parseFloat(document.getElementById('min-speed').value),
+        freq_min: parseFloat(document.getElementById('freq-min').value),
+        freq_max: parseFloat(document.getElementById('freq-max').value)
+    };
+    
+    // Validate frequency range
+    if (settings.freq_min >= settings.freq_max) {
+        alert('Minimum frequency must be less than maximum frequency');
+        return;
+    }
+    
+    fetch('/api/thresholds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.json().then(err => Promise.reject(err));
+        }
+        return r.json();
+    })
+    .then(data => {
+        addLog('✅ Threshold settings saved successfully');
+        console.log('Settings saved:', data.thresholds);
+    })
+    .catch(err => {
+        console.error('Failed to save settings:', err);
+        addLog('❌ Failed to save threshold settings: ' + (err.detail || err.message || 'Unknown error'));
+    });
+}
+
+function resetSettings() {
+    if (confirm('Reset all threshold settings to default values?')) {
+        // Default values from the backend
+        document.getElementById('max-interval').value = 15;
+        document.getElementById('max-distance').value = 100;
+        document.getElementById('min-speed').value = 0;
+        document.getElementById('freq-min').value = 0.5;
+        document.getElementById('freq-max').value = 50;
+        
+        // Save the defaults
+        saveSettings();
+    }
 }
 </script>
 <div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem; display:none;">

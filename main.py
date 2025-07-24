@@ -43,10 +43,19 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 
-# Thresholds for log filtering
+# Configuration variables
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
 MAX_DISTANCE_M = float(os.getenv("RCI_MAX_DISTANCE_M", "100"))
 MIN_SPEED_KMH = float(os.getenv("RCI_MIN_SPEED_KMH", "7"))
+
+# Runtime threshold settings (can be updated via API)
+current_thresholds = {
+    "max_interval_sec": MAX_INTERVAL_SEC,
+    "max_distance_m": MAX_DISTANCE_M,
+    "min_speed_kmh": MIN_SPEED_KMH,
+    "freq_min": 0.5,  # Frequency filtering min
+    "freq_max": 50.0,  # Frequency filtering max
+}
 
 def get_azure_credential():
     """Return an Azure credential if environment variables are set."""
@@ -352,14 +361,13 @@ def compute_roughness(
     if sample_rate <= 0:
         return 0.0
 
-    metrics = compute_vibration_metrics(
-        samples,
+    metrics = compute_vibration_metrics(        samples,
         sample_rate,
         freq_min=freq_min,
         freq_max=freq_max,
     )
 
-    if speed_kmh < MIN_SPEED_KMH:
+    if speed_kmh < current_thresholds["min_speed_kmh"]:
         return 0.0
 
     return metrics["rms"]
@@ -485,35 +493,32 @@ def post_log(entry: LogEntry, request: Request):
         log_debug(
             f"Distance calculations: {dist_km * 1000.0:.1f}m over {dt_sec:.1f}s = {computed_speed:.2f} km/h",
             device_id=entry.device_id,
-        )
-        
+        )        
         # Use calculated speed if GPS speed is insufficient or unavailable
-        if entry.speed <= 0 or entry.speed < MIN_SPEED_KMH:
-            if computed_speed >= MIN_SPEED_KMH:
+        if entry.speed <= 0 or entry.speed < current_thresholds["min_speed_kmh"]:
+            if computed_speed >= current_thresholds["min_speed_kmh"]:
                 log_info(f"Using computed speed {computed_speed:.2f} km/h instead of GPS speed {entry.speed:.2f} km/h", device_id=entry.device_id)
                 avg_speed = computed_speed
             else:
-                log_debug(f"Both GPS speed ({entry.speed:.2f}) and computed speed ({computed_speed:.2f}) are below minimum {MIN_SPEED_KMH} km/h", device_id=entry.device_id)
+                log_debug(f"Both GPS speed ({entry.speed:.2f}) and computed speed ({computed_speed:.2f}) are below minimum {current_thresholds['min_speed_kmh']} km/h", device_id=entry.device_id)
         else:
             log_debug(f"Using GPS speed {entry.speed:.2f} km/h (computed: {computed_speed:.2f} km/h)", device_id=entry.device_id)
     else:
-        log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)
-
-    # Log threshold checks
-    log_debug(f"Checking thresholds - MAX_INTERVAL_SEC: {MAX_INTERVAL_SEC}, MAX_DISTANCE_M: {MAX_DISTANCE_M}, MIN_SPEED_KMH: {MIN_SPEED_KMH}", device_id=entry.device_id)
+        log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)    # Log threshold checks
+    log_debug(f"Checking thresholds - MAX_INTERVAL_SEC: {current_thresholds['max_interval_sec']}, MAX_DISTANCE_M: {current_thresholds['max_distance_m']}, MIN_SPEED_KMH: {current_thresholds['min_speed_kmh']}", device_id=entry.device_id)
     
-    if dt_sec > MAX_INTERVAL_SEC or dist_km * 1000.0 > MAX_DISTANCE_M:
+    if dt_sec > current_thresholds["max_interval_sec"] or dist_km * 1000.0 > current_thresholds["max_distance_m"]:
         log_warning(
-            f"Ignoring log entry - interval too long: {dt_sec:.1f}s (max: {MAX_INTERVAL_SEC}), distance: {dist_km * 1000.0:.1f}m (max: {MAX_DISTANCE_M})",
+            f"Ignoring log entry - interval too long: {dt_sec:.1f}s (max: {current_thresholds['max_interval_sec']}), distance: {dist_km * 1000.0:.1f}m (max: {current_thresholds['max_distance_m']})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
         log_debug(f"Updated LAST_POINT cache for ignored entry: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
         return {"status": "ignored", "reason": "interval too long"}
 
-    if avg_speed < MIN_SPEED_KMH:
+    if avg_speed < current_thresholds["min_speed_kmh"]:
         log_warning(
-            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h (min: {MIN_SPEED_KMH})",
+            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h (min: {current_thresholds['min_speed_kmh']})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
@@ -532,8 +537,8 @@ def post_log(entry: LogEntry, request: Request):
         entry.z_values,
         avg_speed,
         dt_sec,
-        freq_min=entry.freq_min if entry.freq_min is not None else 0.5,
-        freq_max=entry.freq_max if entry.freq_max is not None else 50.0,
+        freq_min=entry.freq_min if entry.freq_min is not None else current_thresholds["freq_min"],
+        freq_max=entry.freq_max if entry.freq_max is not None else current_thresholds["freq_max"],
     )
     distance_m = dist_km * 1000.0
     log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}", device_id=entry.device_id)
@@ -1906,3 +1911,40 @@ def archive_logs(dep: None = Depends(password_dependency)):
     except Exception as exc:
         log_error(f"Failed to archive logs: {exc}")
         raise HTTPException(status_code=500, detail="Failed to archive logs") from exc
+
+
+class ThresholdSettings(BaseModel):
+    max_interval_sec: float = Field(..., ge=1, le=300, description="Maximum time interval between points (seconds)")
+    max_distance_m: float = Field(..., ge=10, le=10000, description="Maximum distance between points (meters)")
+    min_speed_kmh: float = Field(..., ge=0, le=200, description="Minimum speed for recording (km/h)")
+    freq_min: float = Field(..., ge=0.1, le=10, description="Minimum frequency for filtering (Hz)")
+    freq_max: float = Field(..., ge=10, le=100, description="Maximum frequency for filtering (Hz)")
+
+
+@app.get("/api/thresholds")
+def get_thresholds():
+    """Get current threshold settings."""
+    return current_thresholds
+
+
+@app.post("/api/thresholds")
+def set_thresholds(settings: ThresholdSettings, request: Request):
+    """Update threshold settings."""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Validate frequency range
+    if settings.freq_min >= settings.freq_max:
+        raise HTTPException(status_code=400, detail="freq_min must be less than freq_max")
+    
+    # Update global settings
+    current_thresholds.update({
+        "max_interval_sec": settings.max_interval_sec,
+        "max_distance_m": settings.max_distance_m,
+        "min_speed_kmh": settings.min_speed_kmh,
+        "freq_min": settings.freq_min,
+        "freq_max": settings.freq_max,
+    })
+    
+    log_info(f"Threshold settings updated: {current_thresholds}")
+    return {"status": "ok", "thresholds": current_thresholds}
