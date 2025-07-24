@@ -1020,7 +1020,7 @@ function handleGeoError(err) {
     updateStatusIndicator('location', false, `GPS error: ${err.message}`);
 }
 
-function startGeolocation() {
+async function startGeolocation() {
     if (!navigator.geolocation) {
         addDebug('Geolocation not supported');
         locationStatus = false;
@@ -1043,10 +1043,10 @@ function startGeolocation() {
     loggingEnabled = true;
     
     // Request wake lock when starting recording
-    requestWakeLock();
+    await requestWakeLock();
 }
 
-function stopGeolocation() {
+async function stopGeolocation() {
     loggingEnabled = false;
     if (motionPermissionTimer !== null) {
         clearTimeout(motionPermissionTimer);
@@ -1058,7 +1058,7 @@ function stopGeolocation() {
     }
     
     // Release wake lock when stopping recording
-    releaseWakeLock();
+    await releaseWakeLock();
 }
 
 function pollDebug() {
@@ -1078,13 +1078,13 @@ checkDatabaseStatus();
 // Check database status periodically
 setInterval(checkDatabaseStatus, 30000);
 
-document.getElementById('toggle').addEventListener('click', () => {
+document.getElementById('toggle').addEventListener('click', async () => {
     if (loggingEnabled) {
-        stopGeolocation();
+        await stopGeolocation();
         document.getElementById('toggle').textContent = 'Start';
         addLog('Logging stopped');
     } else {
-        startGeolocation();
+        await startGeolocation();
         document.getElementById('toggle').textContent = 'Stop';
         addLog('Logging started');
     }
