@@ -1,4 +1,5 @@
 import os
+import os
 from pathlib import Path
 from datetime import datetime
 import math
@@ -458,6 +459,7 @@ def post_log(entry: LogEntry, request: Request):
     avg_speed = entry.speed
     dist_km = 0.0
     dt_sec = 2.0
+    computed_speed = 0.0
     prev_info = LAST_POINT.get(entry.device_id)
     log_debug(f"Previous info from memory cache: {prev_info}", device_id=entry.device_id)
     
@@ -479,11 +481,21 @@ def post_log(entry: LogEntry, request: Request):
             dt_sec = 2.0
             
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
-        computed_speed = dist_km / (dt_sec / 3600)
+        computed_speed = dist_km / (dt_sec / 3600) if dt_sec > 0 else 0.0
         log_debug(
             f"Distance calculations: {dist_km * 1000.0:.1f}m over {dt_sec:.1f}s = {computed_speed:.2f} km/h",
             device_id=entry.device_id,
         )
+        
+        # Use calculated speed if GPS speed is insufficient or unavailable
+        if entry.speed <= 0 or entry.speed < MIN_SPEED_KMH:
+            if computed_speed >= MIN_SPEED_KMH:
+                log_info(f"Using computed speed {computed_speed:.2f} km/h instead of GPS speed {entry.speed:.2f} km/h", device_id=entry.device_id)
+                avg_speed = computed_speed
+            else:
+                log_debug(f"Both GPS speed ({entry.speed:.2f}) and computed speed ({computed_speed:.2f}) are below minimum {MIN_SPEED_KMH} km/h", device_id=entry.device_id)
+        else:
+            log_debug(f"Using GPS speed {entry.speed:.2f} km/h (computed: {computed_speed:.2f} km/h)", device_id=entry.device_id)
     else:
         log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)
 
@@ -530,18 +542,18 @@ def post_log(entry: LogEntry, request: Request):
     log_debug(f"Client IP address: {ip_address}", device_id=entry.device_id)
     
     # Pre-database operation logging
-    log_info(f"About to store data in database - lat: {entry.latitude}, lon: {entry.longitude}, speed: {entry.speed}, direction: {entry.direction}, roughness: {roughness:.3f}, distance: {distance_m:.1f}m", device_id=entry.device_id)
+    log_info(f"About to store data in database - lat: {entry.latitude}, lon: {entry.longitude}, speed: {avg_speed}, direction: {entry.direction}, roughness: {roughness:.3f}, distance: {distance_m:.1f}m", device_id=entry.device_id)
     
     try:
         log_debug(f"Starting database transaction for device {entry.device_id}", device_id=entry.device_id)
         
         # Insert bike data
-        log_debug(f"Calling db_manager.insert_bike_data with parameters: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, direction={entry.direction}, roughness={roughness}, distance_m={distance_m}, device_id={entry.device_id}, ip_address={ip_address}", device_id=entry.device_id)
+        log_debug(f"Calling db_manager.insert_bike_data with parameters: lat={entry.latitude}, lon={entry.longitude}, speed={avg_speed}, direction={entry.direction}, roughness={roughness}, distance_m={distance_m}, device_id={entry.device_id}, ip_address={ip_address}", device_id=entry.device_id)
         
         bike_data_id = db_manager.insert_bike_data(
             entry.latitude,
             entry.longitude,
-            entry.speed,
+            avg_speed,
             entry.direction,
             roughness,
             distance_m,
