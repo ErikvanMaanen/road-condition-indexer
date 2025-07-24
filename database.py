@@ -782,14 +782,16 @@ class DatabaseManager:
                     (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address)
                 )
                 
+                # Check rowcount immediately after INSERT
+                if cursor.rowcount != 1:
+                    error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
+                    self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
+                    raise Exception(error_msg)
+                
                 # Get the inserted ID
                 if self.use_sqlserver:
                     cursor.execute("SELECT @@IDENTITY")
                     bike_data_id = cursor.fetchone()[0]
-                    if cursor.rowcount != 1:
-                        error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
-                        self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
-                        raise Exception(error_msg)
                 else:
                     bike_data_id = cursor.lastrowid
                 
