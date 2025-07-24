@@ -499,7 +499,7 @@ if (navigator.geolocation) {
 
 function initMap() {
     const defaultPos = [52.028, 5.168]; // Houten, NL
-    const zoom = 12;
+    const zoom = 16; // Street view zoom level
     map = L.map('map');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
