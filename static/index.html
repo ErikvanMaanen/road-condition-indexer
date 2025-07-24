@@ -954,6 +954,10 @@ function handlePosition(pos) {
     lastSpeed = (speed || 0) * 3.6; // convert to km/h
     lastDir = heading || 0;
     
+    // Update status indicator when GPS data is received
+    locationStatus = true;
+    updateStatusIndicator('location', true, 'GPS data received');
+
     // Update user location
     userLocation = [latitude, longitude];
     
