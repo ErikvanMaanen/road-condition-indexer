@@ -663,12 +663,35 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                       end: Optional[str] = None):
     """Return log entries filtered by device ID and date range."""
     try:
-        start_dt = datetime.fromisoformat(start) if start else None
-        end_dt = datetime.fromisoformat(end) if end else None
+        start_dt = None
+        end_dt = None
+        
+        if start:
+            try:
+                # Handle various datetime formats more robustly
+                start_clean = start.replace('Z', '+00:00')
+                start_dt = datetime.fromisoformat(start_clean)
+                log_debug(f"Parsed start datetime: {start} -> {start_dt}")
+            except ValueError as e:
+                log_debug(f"Failed to parse start datetime '{start}': {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid start datetime format: {start}")
+        
+        if end:
+            try:
+                # Handle various datetime formats more robustly
+                end_clean = end.replace('Z', '+00:00')
+                end_dt = datetime.fromisoformat(end_clean)
+                log_debug(f"Parsed end datetime: {end} -> {end_dt}")
+            except ValueError as e:
+                log_debug(f"Failed to parse end datetime '{end}': {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid end datetime format: {end}")
         
         rows, rough_avg = db_manager.get_filtered_logs(device_id, start_dt, end_dt)
         log_debug("Fetched filtered logs from database")
         return {"rows": rows, "average": rough_avg}
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as exc:
         log_debug(f"Database error on filtered fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc

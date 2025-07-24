@@ -3,20 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Device Reco    }).catch(console.error);
-}
-</script>
-<section id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem; display:none;">
-    <strong>Roughness Calculation</strong> – Each acceleration sample is rotated so the device's Z axis aligns with the real-world up direction (using orientation angles). The vertical acceleration is filtered to keep vibrations between 1 and 20 Hz. The root-mean-square (RMS) of this filtered signal is divided by the average speed over the sample window. Records taken while traveling under 5&nbsp;km/h are ignored. This produces a roughness value that is higher for bumpier, rougher roads and lower for smooth surfaces.
-</section>
-<div style="margin-top:1rem;">
-    <button id="toggle-explanation" style="background:none; border:1px solid #ccc; padding:0.5rem; cursor:pointer; font-size:0.9rem; width:100%; text-align:left;">
-        ➕ Show Roughness Explanation
-    </button>
-</div>
-<script>
-
-function setDateRange() {e>
+    <title>Device Records - Road Condition Indexer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
@@ -407,16 +394,18 @@ function toCESTDateTimeLocal(timestamp) {
 function fromCESTDateTimeLocal(datetimeLocalValue) {
     if (!datetimeLocalValue) return '';
     try {
-        // Parse the datetime-local value as if it's in Europe/Amsterdam timezone
+        // Create date object from datetime-local input (which is in local time)
         const localDate = new Date(datetimeLocalValue);
-        // Get the timezone offset for Europe/Amsterdam
-        const cesDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }));
-        const utcDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-        const offset = cesDate.getTime() - utcDate.getTime();
-        // Adjust for the timezone difference
-        const utcTime = new Date(localDate.getTime() - offset);
-        return utcTime.toISOString();
+        
+        // Convert to ISO string (which will be in UTC)
+        const isoString = localDate.toISOString();
+        
+        // Log for debugging
+        console.log(`DateTime conversion: ${datetimeLocalValue} -> ${isoString}`);
+        
+        return isoString;
     } catch (error) {
+        console.error('Error converting datetime:', error);
         // Fallback to treating as UTC
         return new Date(datetimeLocalValue).toISOString();
     }
@@ -666,42 +655,7 @@ document.getElementById('nickname-input').addEventListener('keypress', (e) => {
 // Load logs partial when DOM is ready
 document.addEventListener('DOMContentLoaded', loadLogsPartial);
 
-// Function to load logs partial
-async function loadLogsPartial() {
-    try {
-        const response = await fetch('logs-partial.html');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.text();
-        const container = document.getElementById('logs-container');
-        if (container) {
-            container.innerHTML = data;
-            // Execute any scripts in the loaded content
-            const scripts = container.querySelectorAll('script');
-            scripts.forEach(script => {
-                const newScript = document.createElement('script');
-                newScript.textContent = script.textContent;
-                document.head.appendChild(newScript);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading logs partial:', error);
-        // Fallback: create basic log functions if partial fails to load
-        window.addLog = function(msg) {
-            console.log('Log:', msg);
-        };
-        window.addDebug = function(msg, category = 'Debug', level = 'DEBUG') {
-            console.log(`Debug [${level}] [${category}]:`, msg);
-        };
-        window.addMessage = function(msg, level = 'INFO', category = 'General') {
-            console.log(`Message [${level}] [${category}]:`, msg);
-        };
-        window.toggleLogs = function() {
-            console.log('Logs toggle requested but partial not loaded');
-        };
-    }
-}
+populateDeviceIds();
 </script>
 
 <!-- Include Activity Log and Debug Messages Partial -->
