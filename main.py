@@ -235,16 +235,31 @@ def get_dutch_time(utc_time: datetime = None) -> str:
 def log_debug(message: str, device_id: Optional[str] = None) -> None:
     """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
     timestamp = get_dutch_time()
-    DEBUG_LOG.append(f"{timestamp} - {message}")
+    formatted_message = f"{timestamp} - {message}"
+    
+    # Add device ID to message if provided
+    if device_id:
+        formatted_message = f"{timestamp} - [DEVICE:{device_id}] {message}"
+    
+    DEBUG_LOG.append(formatted_message)
+    
+    # Also print to console for immediate debugging (can be removed in production)
+    print(f"DEBUG: {formatted_message}")
+    
     # keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
+        
     # Log to DB as error if message contains 'error' or 'exception', else as debug
-    lower_msg = message.lower()
-    if 'error' in lower_msg or 'exception' in lower_msg:
-        log_error(message, device_id=device_id)
-    else:
-        db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
+    try:
+        lower_msg = message.lower()
+        if 'error' in lower_msg or 'exception' in lower_msg or '❌' in message:
+            log_error(message, device_id=device_id)
+        else:
+            db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
+    except Exception as db_log_exc:
+        # If database logging fails, at least we have console output
+        print(f"DB_LOG_ERROR: Failed to log to database: {db_log_exc}")
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -361,17 +376,51 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 @app.on_event("startup")
 def startup_init():
     """Initialize the database on startup."""
-    db_manager.init_tables()
+    log_info("🚀 Application startup initiated")
+    
+    try:
+        log_debug("Initializing database tables...")
+        db_manager.init_tables()
+        log_info("✅ Database tables initialized successfully")
+        
+        # Test database connectivity
+        log_debug("Testing database connectivity...")
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        # Check table existence and structure
+        if db_manager.use_sqlserver:
+            cursor.execute("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
+        else:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+        
+        tables = [row[0] for row in cursor.fetchall()]
+        log_info(f"✅ Found database tables: {tables}")
+        
+        # Check record count
+        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
+        record_count = cursor.fetchone()[0]
+        log_info(f"📊 Current record count in {TABLE_BIKE_DATA}: {record_count}")
+        
+        conn.close()
+        
+    except Exception as e:
+        log_error(f"❌ Database initialization error: {e}")
+        log_error(f"Error type: {type(e).__name__}")
+        # Don't stop startup, but log the error
     
     # Check database integrity at startup
     try:
+        log_debug("Checking database integrity...")
         integrity_ok = db_manager.check_database_integrity()
         if not integrity_ok:
-            log_error("Database integrity issues detected at startup")
+            log_error("❌ Database integrity issues detected at startup")
         else:
-            log_debug("Database integrity check passed at startup")
+            log_info("✅ Database integrity check passed at startup")
     except Exception as e:
-        log_error(f"Failed to check database integrity at startup: {e}")
+        log_error(f"❌ Failed to check database integrity at startup: {e}")
+    
+    log_info("🎉 Application startup completed")
 
 
 class LogEntry(BaseModel):
@@ -392,51 +441,75 @@ class LogEntry(BaseModel):
 def post_log(entry: LogEntry, request: Request):
     log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL, device_id=entry.device_id)
     log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}", device_id=entry.device_id)
+    
+    # Log request details for debugging
+    log_debug(f"Request headers: {dict(request.headers)}", device_id=entry.device_id)
+    log_debug(f"Request client: {request.client}", device_id=entry.device_id)
 
     now = datetime.utcnow()
+    log_debug(f"Processing timestamp: {now.isoformat()}", device_id=entry.device_id)
+    
     avg_speed = entry.speed
     dist_km = 0.0
     dt_sec = 2.0
     prev_info = LAST_POINT.get(entry.device_id)
+    log_debug(f"Previous info from memory cache: {prev_info}", device_id=entry.device_id)
+    
     if not prev_info:
         try:
+            log_debug(f"Fetching previous data point from database for device {entry.device_id}", device_id=entry.device_id)
             prev_info = db_manager.get_last_bike_data_point(entry.device_id)
+            log_debug(f"Previous info from database: {prev_info}", device_id=entry.device_id)
         except Exception as exc:
             log_error(f"Failed to fetch previous data point for device {entry.device_id}: {exc}", device_id=entry.device_id)
 
     if prev_info:
         prev_ts, prev_lat, prev_lon = prev_info
         dt_sec = (now - prev_ts).total_seconds()
+        log_debug(f"Time difference from previous point: {dt_sec:.1f} seconds", device_id=entry.device_id)
+        
         if dt_sec <= 0:
+            log_warning(f"Invalid time difference: {dt_sec:.1f}s, setting to default 2.0s", device_id=entry.device_id)
             dt_sec = 2.0
+            
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
         computed_speed = dist_km / (dt_sec / 3600)
         log_debug(
-            f"Calculated avg speed: {computed_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m",
+            f"Distance calculations: {dist_km * 1000.0:.1f}m over {dt_sec:.1f}s = {computed_speed:.2f} km/h",
             device_id=entry.device_id,
         )
+    else:
+        log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)
 
+    # Log threshold checks
+    log_debug(f"Checking thresholds - MAX_INTERVAL_SEC: {MAX_INTERVAL_SEC}, MAX_DISTANCE_M: {MAX_DISTANCE_M}, MIN_SPEED_KMH: {MIN_SPEED_KMH}", device_id=entry.device_id)
+    
     if dt_sec > MAX_INTERVAL_SEC or dist_km * 1000.0 > MAX_DISTANCE_M:
         log_warning(
-            f"Ignoring log entry - interval too long: {dt_sec:.1f}s, distance: {dist_km * 1000.0:.1f}m",
+            f"Ignoring log entry - interval too long: {dt_sec:.1f}s (max: {MAX_INTERVAL_SEC}), distance: {dist_km * 1000.0:.1f}m (max: {MAX_DISTANCE_M})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+        log_debug(f"Updated LAST_POINT cache for ignored entry: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
         return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < MIN_SPEED_KMH:
-        log_debug(
-            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h",
+        log_warning(
+            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h (min: {MIN_SPEED_KMH})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+        log_debug(f"Updated LAST_POINT cache for low speed entry: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
         return {"status": "ignored", "reason": "low speed"}
 
+    log_debug(f"Fetching elevation for coordinates: {entry.latitude}, {entry.longitude}", device_id=entry.device_id)
     elevation = get_elevation(entry.latitude, entry.longitude)
     if elevation is not None:
-        log_debug(f"Elevation: {elevation} m", device_id=entry.device_id)
+        log_debug(f"Elevation retrieved: {elevation} m", device_id=entry.device_id)
     else:
         log_debug("Elevation not available", device_id=entry.device_id)
+        
+    log_debug(f"Computing roughness with parameters: z_values={len(entry.z_values)} samples, speed={avg_speed} km/h, dt={dt_sec}s", device_id=entry.device_id)
     roughness = compute_roughness(
         entry.z_values,
         avg_speed,
@@ -446,10 +519,19 @@ def post_log(entry: LogEntry, request: Request):
     )
     distance_m = dist_km * 1000.0
     log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}", device_id=entry.device_id)
+    
     ip_address = get_client_ip(request)
+    log_debug(f"Client IP address: {ip_address}", device_id=entry.device_id)
+    
+    # Pre-database operation logging
+    log_info(f"About to store data in database - lat: {entry.latitude}, lon: {entry.longitude}, speed: {entry.speed}, direction: {entry.direction}, roughness: {roughness:.3f}, distance: {distance_m:.1f}m", device_id=entry.device_id)
     
     try:
+        log_debug(f"Starting database transaction for device {entry.device_id}", device_id=entry.device_id)
+        
         # Insert bike data
+        log_debug(f"Calling db_manager.insert_bike_data with parameters: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, direction={entry.direction}, roughness={roughness}, distance_m={distance_m}, device_id={entry.device_id}, ip_address={ip_address}", device_id=entry.device_id)
+        
         bike_data_id = db_manager.insert_bike_data(
             entry.latitude,
             entry.longitude,
@@ -460,28 +542,69 @@ def post_log(entry: LogEntry, request: Request):
             entry.device_id,
             ip_address
         )
+        log_info(f"✅ Bike data successfully inserted with ID {bike_data_id} for device {entry.device_id}", device_id=entry.device_id)
         
         # Insert source data if requested
         if entry.record_source_data:
-            db_manager.insert_bike_source_data(
-                bike_data_id,
-                entry.z_values,
-                avg_speed,
-                dt_sec,
-                entry.freq_min if entry.freq_min is not None else 0.5,
-                entry.freq_max if entry.freq_max is not None else 50.0
-            )
-            log_info(f"Source data recorded for device {entry.device_id} (bike_data_id: {bike_data_id})", device_id=entry.device_id)
+            log_debug(f"Source data recording requested for device {entry.device_id}", device_id=entry.device_id)
+            try:
+                db_manager.insert_bike_source_data(
+                    bike_data_id,
+                    entry.z_values,
+                    avg_speed,
+                    dt_sec,
+                    entry.freq_min if entry.freq_min is not None else 0.5,
+                    entry.freq_max if entry.freq_max is not None else 50.0
+                )
+                log_info(f"✅ Source data recorded for device {entry.device_id} (bike_data_id: {bike_data_id})", device_id=entry.device_id)
+            except Exception as source_exc:
+                log_error(f"❌ Failed to insert source data for device {entry.device_id}: {source_exc}", device_id=entry.device_id)
+                # Don't fail the whole operation if source data fails
+        else:
+            log_debug(f"Source data recording not requested for device {entry.device_id}", device_id=entry.device_id)
         
         # Update device info
-        db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
+        log_debug(f"Calling db_manager.upsert_device_info for device {entry.device_id}", device_id=entry.device_id)
+        try:
+            db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
+            log_debug(f"✅ Device info updated for device {entry.device_id}", device_id=entry.device_id)
+        except Exception as device_exc:
+            log_error(f"❌ Failed to update device info for device {entry.device_id}: {device_exc}", device_id=entry.device_id)
+            # Don't fail the whole operation if device info update fails
         
-        log_info(f"Successfully stored data for device {entry.device_id}", device_id=entry.device_id)
+        log_info(f"🎉 Successfully completed all database operations for device {entry.device_id}", device_id=entry.device_id)
+        
+        # Verify the data was actually stored by attempting to read it back
+        try:
+            log_debug(f"Verifying stored data by reading back record ID {bike_data_id}", device_id=entry.device_id)
+            verification_query = f"SELECT * FROM {db_manager.TABLE_BIKE_DATA if hasattr(db_manager, 'TABLE_BIKE_DATA') else 'RCI_bike_data'} WHERE id = ?"
+            verify_result = db_manager.execute_query(verification_query, (bike_data_id,))
+            if verify_result and len(verify_result) > 0:
+                log_info(f"✅ Data verification successful - record {bike_data_id} exists in database", device_id=entry.device_id)
+                stored_record = verify_result[0]
+                log_debug(f"Stored record details: {stored_record}", device_id=entry.device_id)
+            else:
+                log_error(f"❌ Data verification failed - record {bike_data_id} NOT found in database!", device_id=entry.device_id)
+        except Exception as verify_exc:
+            log_error(f"❌ Data verification error: {verify_exc}", device_id=entry.device_id)
+        
     except Exception as exc:
-        log_error(f"Database error while storing data for device {entry.device_id}: {exc}", device_id=entry.device_id)
+        log_error(f"❌ Database error while storing data for device {entry.device_id}: {exc}", device_id=entry.device_id)
+        log_error(f"Exception type: {type(exc).__name__}", device_id=entry.device_id)
+        log_error(f"Exception args: {exc.args}", device_id=entry.device_id)
+        
+        # Log additional context for debugging
+        log_error(f"Database manager type: {type(db_manager).__name__}", device_id=entry.device_id)
+        log_error(f"Database manager use_sqlserver: {getattr(db_manager, 'use_sqlserver', 'unknown')}", device_id=entry.device_id)
+        
         raise HTTPException(status_code=500, detail="Database error") from exc
         
+    # Update memory cache
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
+    log_debug(f"Updated LAST_POINT cache: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
+    
+    # Final success logging
+    log_info(f"🚀 POST /log completed successfully for device {entry.device_id} - returning roughness: {roughness:.3f}", device_id=entry.device_id)
     return {"status": "ok", "roughness": roughness}
 
 
@@ -494,19 +617,41 @@ def get_logs(limit: Optional[int] = None):
     If ``limit`` is not provided, all rows are returned. When supplied it must be
     between 1 and 1000.
     """
+    log_debug(f"GET /logs called with limit={limit}")
+    
     if limit is not None and (limit < 1 or limit > 1000):
         log_warning(f"Invalid limit parameter: {limit}, must be between 1 and 1000")
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     
     try:
-        log_debug(f"Fetching logs with limit={limit}")
+        log_debug(f"About to call db_manager.get_logs(limit={limit})")
+        
+        # Log database connection status
+        log_debug(f"Database manager details: use_sqlserver={getattr(db_manager, 'use_sqlserver', 'unknown')}")
+        
         rows, rough_avg = db_manager.get_logs(limit)
-        log_info(f"Successfully fetched {len(rows)} log entries")
+        
+        log_info(f"✅ Successfully fetched {len(rows)} log entries from database")
+        log_debug(f"Average roughness: {rough_avg}")
+        
+        # Log some details about the retrieved data
+        if rows:
+            log_debug(f"First row details: {rows[0]}")
+            log_debug(f"Last row details: {rows[-1]}")
+            
+            # Check for recent entries
+            if len(rows) > 0:
+                latest_timestamp = rows[0].get('timestamp', 'unknown')
+                log_debug(f"Most recent entry timestamp: {latest_timestamp}")
+        else:
+            log_warning("⚠️ No rows returned from database query!")
+            
         return {"rows": rows, "average": rough_avg}
+        
     except Exception as exc:
-        log_error(f"Failed to fetch logs: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-        log_debug(f"Database error on fetch: {exc}")
+        log_error(f"❌ Failed to fetch logs from database: {exc}")
+        log_error(f"Exception type: {type(exc).__name__}")
+        log_error(f"Exception args: {exc.args}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -663,6 +808,351 @@ def get_enhanced_debuglog(
     except Exception as exc:
         log_error(f"Failed to retrieve enhanced debug logs: {exc}")
         raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
+
+
+@app.get("/debug/db_test")
+def test_database_connection():
+    """Test database connectivity and basic operations."""
+    try:
+        log_info("🔍 Starting database connection test")
+        
+        # Test basic connection
+        log_debug("Testing database connection...")
+        conn = db_manager.get_connection()
+        log_debug(f"✅ Database connection successful: {type(conn)}")
+        
+        # Test table existence
+        log_debug("Checking table existence...")
+        if db_manager.use_sqlserver:
+            tables_query = "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'"
+        else:
+            tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'"
+        
+        cursor = conn.cursor()
+        cursor.execute(tables_query)
+        tables = [row[0] for row in cursor.fetchall()]
+        log_debug(f"✅ Found tables: {tables}")
+        
+        # Test row count in main table
+        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
+        count = cursor.fetchone()[0]
+        log_debug(f"✅ Total rows in {TABLE_BIKE_DATA}: {count}")
+        
+        # Test recent data
+        if db_manager.use_sqlserver:
+            cursor.execute(f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
+        else:
+            cursor.execute(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 1")
+        
+        recent = cursor.fetchone()
+        if recent:
+            columns = [desc[0] for desc in cursor.description]
+            recent_dict = dict(zip(columns, recent))
+            log_debug(f"✅ Most recent record: {recent_dict}")
+        else:
+            log_warning("⚠️ No records found in database")
+        
+        conn.close()
+        
+        return {
+            "status": "success",
+            "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite",
+            "tables_found": tables,
+            "total_records": count,
+            "most_recent": recent_dict if recent else None,
+            "message": "Database connection and basic operations successful"
+        }
+        
+    except Exception as exc:
+        log_error(f"❌ Database test failed: {exc}")
+        return {
+            "status": "error",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "message": "Database test failed"
+        }
+
+
+@app.get("/debug/db_stats")
+def get_database_stats():
+    """Get current database statistics for debugging."""
+    try:
+        log_debug("🔍 Fetching database statistics")
+        
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        stats = {}
+        
+        # Get table counts
+        table_names = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES]
+        for table in table_names:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                stats[f"{table}_count"] = count
+                log_debug(f"📊 {table}: {count} records")
+            except Exception as e:
+                stats[f"{table}_count"] = f"Error: {e}"
+                log_error(f"❌ Failed to count {table}: {e}")
+        
+        # Get recent entries from bike data
+        try:
+            if db_manager.use_sqlserver:
+                cursor.execute(f"SELECT TOP 5 id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
+            else:
+                cursor.execute(f"SELECT id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 5")
+            
+            recent_entries = []
+            for row in cursor.fetchall():
+                recent_entries.append({
+                    "id": row[0],
+                    "timestamp": str(row[1]),
+                    "device_id": row[2],
+                    "latitude": row[3],
+                    "longitude": row[4],
+                    "roughness": row[5]
+                })
+            stats["recent_entries"] = recent_entries
+            log_debug(f"📝 Found {len(recent_entries)} recent entries")
+            
+        except Exception as e:
+            stats["recent_entries"] = f"Error: {e}"
+            log_error(f"❌ Failed to get recent entries: {e}")
+        
+        # Get unique device IDs
+        try:
+            cursor.execute(f"SELECT DISTINCT device_id FROM {TABLE_BIKE_DATA}")
+            device_ids = [row[0] for row in cursor.fetchall()]
+            stats["unique_devices"] = device_ids
+            stats["device_count"] = len(device_ids)
+            log_debug(f"📱 Found {len(device_ids)} unique devices: {device_ids}")
+            
+        except Exception as e:
+            stats["unique_devices"] = f"Error: {e}"
+            log_error(f"❌ Failed to get device IDs: {e}")
+        
+        # Get date range
+        try:
+            cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}")
+            date_range = cursor.fetchone()
+            stats["date_range"] = {
+                "earliest": str(date_range[0]) if date_range[0] else None,
+                "latest": str(date_range[1]) if date_range[1] else None
+            }
+            log_debug(f"📅 Date range: {stats['date_range']}")
+            
+        except Exception as e:
+            stats["date_range"] = f"Error: {e}"
+            log_error(f"❌ Failed to get date range: {e}")
+        
+        conn.close()
+        
+        # Add memory cache info
+        stats["memory_cache"] = {
+            "last_point_devices": list(LAST_POINT.keys()),
+            "last_point_count": len(LAST_POINT)
+        }
+        
+        stats["database_type"] = "SQL Server" if db_manager.use_sqlserver else "SQLite"
+        stats["timestamp"] = datetime.utcnow().isoformat()
+        
+        log_info(f"✅ Database statistics retrieved successfully")
+        return stats
+        
+    except Exception as exc:
+        log_error(f"❌ Failed to get database stats: {exc}")
+        return {
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+
+@app.post("/debug/test_insert")
+def test_database_insert():
+    """Test database insertion with a simple record."""
+    try:
+        log_info("🧪 Testing database insert operation")
+        
+        # Create test data
+        test_data = {
+            "latitude": 52.3676,  # Amsterdam coordinates
+            "longitude": 4.9041,
+            "speed": 15.0,
+            "direction": 90.0,
+            "roughness": 1.23,
+            "distance_m": 100.0,
+            "device_id": "test_debug_device",
+            "ip_address": "127.0.0.1"
+        }
+        
+        log_debug(f"Test data to insert: {test_data}")
+        
+        # Insert test record
+        bike_data_id = db_manager.insert_bike_data(
+            test_data["latitude"],
+            test_data["longitude"],
+            test_data["speed"],
+            test_data["direction"],
+            test_data["roughness"],
+            test_data["distance_m"],
+            test_data["device_id"],
+            test_data["ip_address"]
+        )
+        
+        log_info(f"✅ Test record inserted with ID: {bike_data_id}")
+        
+        # Verify insertion by reading back
+        verify_query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE id = ?"
+        verify_result = db_manager.execute_query(verify_query, (bike_data_id,))
+        
+        if verify_result and len(verify_result) > 0:
+            stored_record = verify_result[0]
+            log_info(f"✅ Verification successful - record found: {stored_record}")
+            
+            return {
+                "status": "success",
+                "inserted_id": bike_data_id,
+                "test_data": test_data,
+                "stored_record": stored_record,
+                "message": "Test insert successful"
+            }
+        else:
+            log_error(f"❌ Verification failed - record {bike_data_id} not found!")
+            return {
+                "status": "error",
+                "inserted_id": bike_data_id,
+                "test_data": test_data,
+                "message": "Record inserted but verification failed"
+            }
+            
+    except Exception as exc:
+        log_error(f"❌ Test insert failed: {exc}")
+        return {
+            "status": "error",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "message": "Test insert failed"
+        }
+
+
+@app.get("/debug/data_flow_test")
+def test_complete_data_flow():
+    """Test the complete data flow: insert -> retrieve -> verify."""
+    try:
+        log_info("🔄 Starting complete data flow test")
+        
+        # Step 1: Insert test data
+        test_device_id = f"flow_test_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        
+        test_data = {
+            "latitude": 52.3676 + (datetime.utcnow().microsecond / 1000000.0),  # Slight variation
+            "longitude": 4.9041,
+            "speed": 20.0,
+            "direction": 180.0,
+            "roughness": 2.45,
+            "distance_m": 150.0,
+            "device_id": test_device_id,
+            "ip_address": "192.168.1.100"
+        }
+        
+        log_debug(f"Step 1: Inserting test data: {test_data}")
+        
+        bike_data_id = db_manager.insert_bike_data(
+            test_data["latitude"],
+            test_data["longitude"],
+            test_data["speed"],
+            test_data["direction"],
+            test_data["roughness"],
+            test_data["distance_m"],
+            test_data["device_id"],
+            test_data["ip_address"]
+        )
+        
+        log_info(f"✅ Step 1 complete: Record inserted with ID {bike_data_id}")
+        
+        # Step 2: Retrieve using get_logs
+        log_debug("Step 2: Retrieving data using get_logs")
+        rows, rough_avg = db_manager.get_logs(10)  # Get last 10 records
+        
+        # Check if our test record is in the results
+        test_record_found = None
+        for row in rows:
+            if row.get('device_id') == test_device_id:
+                test_record_found = row
+                break
+        
+        if test_record_found:
+            log_info(f"✅ Step 2 complete: Test record found in get_logs results")
+        else:
+            log_error(f"❌ Step 2 failed: Test record not found in get_logs results")
+        
+        # Step 3: Direct database query
+        log_debug("Step 3: Direct database verification")
+        verify_query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE device_id = ?"
+        verify_results = db_manager.execute_query(verify_query, (test_device_id,))
+        
+        direct_query_found = len(verify_results) > 0 if verify_results else False
+        
+        if direct_query_found:
+            log_info(f"✅ Step 3 complete: Test record found via direct query")
+        else:
+            log_error(f"❌ Step 3 failed: Test record not found via direct query")
+        
+        # Step 4: Count total records before and after
+        log_debug("Step 4: Checking record counts")
+        count_query = f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}"
+        total_count = db_manager.execute_scalar(count_query)
+        
+        # Summary
+        result = {
+            "status": "completed",
+            "timestamp": datetime.utcnow().isoformat(),
+            "test_device_id": test_device_id,
+            "inserted_id": bike_data_id,
+            "test_data": test_data,
+            "steps": {
+                "step1_insert": {
+                    "success": True,
+                    "inserted_id": bike_data_id
+                },
+                "step2_get_logs": {
+                    "success": test_record_found is not None,
+                    "total_rows_returned": len(rows),
+                    "test_record_found": test_record_found
+                },
+                "step3_direct_query": {
+                    "success": direct_query_found,
+                    "records_found": len(verify_results) if verify_results else 0,
+                    "query_results": verify_results if verify_results else []
+                },
+                "step4_totals": {
+                    "total_records_in_db": total_count
+                }
+            },
+            "overall_success": all([
+                True,  # Step 1 always succeeds if we get here
+                test_record_found is not None,
+                direct_query_found
+            ])
+        }
+        
+        if result["overall_success"]:
+            log_info("🎉 Complete data flow test PASSED")
+        else:
+            log_error("❌ Complete data flow test FAILED")
+            
+        return result
+        
+    except Exception as exc:
+        log_error(f"❌ Data flow test exception: {exc}")
+        return {
+            "status": "error",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 
 @app.get("/manage/debug_logs")
