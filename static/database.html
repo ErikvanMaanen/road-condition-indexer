@@ -185,15 +185,8 @@
     </div>
 </div>
 
-<section id="logs" style="margin-bottom:1rem; display:none;">
-    <h3>Activity Log</h3>
-    <div id="log"></div>
-    <h3>Debug Messages</h3>
-    <textarea id="debug" readonly></textarea>
-</section>
-<div style="margin-bottom:1rem;">
-    <button id="toggle-logs" onclick="toggleLogs()">Show Logs</button>
-</div>
+<!-- Include Activity Log and Debug Messages Partial -->
+<div id="logs-container"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -317,23 +310,42 @@ function fromCESTDateTimeLocal(datetimeLocalValue) {
     }
 }
 
-function addLog(msg) {
-    const div = document.getElementById('log');
-    if (div) {
-        const time = new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
-        div.textContent += `[${time}] ${msg}\n`;
-        div.scrollTop = div.scrollHeight;
+// Load logs partial with improved error handling
+async function loadLogsPartial() {
+    try {
+        const response = await fetch('logs-partial.html');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.text();
+        const container = document.getElementById('logs-container');
+        if (container) {
+            container.innerHTML = data;
+            // Execute any scripts in the loaded content
+            const scripts = container.querySelectorAll('script');
+            scripts.forEach(script => {
+                const newScript = document.createElement('script');
+                newScript.textContent = script.textContent;
+                document.head.appendChild(newScript);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading logs partial:', error);
+        // Fallback: create basic log functions if partial fails to load
+        window.addLog = function(msg) {
+            console.log('Log:', msg);
+        };
+        window.addDebug = function(msg) {
+            console.log('Debug:', msg);
+        };
+        window.toggleLogs = function() {
+            console.log('Logs toggle requested but partial not loaded');
+        };
     }
 }
 
-function addDebug(msg) {
-    const el = document.getElementById('debug');
-    if (el) {
-        const time = new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
-        el.value += `[${time}] ${msg}\n`;
-        el.scrollTop = el.scrollHeight;
-    }
-}
+// Load logs partial when DOM is ready
+document.addEventListener('DOMContentLoaded', loadLogsPartial);
 
 function colorForRoughness(r, min, max) {
     let ratio = 0;
@@ -612,18 +624,6 @@ function exportSelectedData() {
     window.URL.revokeObjectURL(url);
     
     addLog(`Exported ${selectedData.length} records to CSV`);
-}
-
-function toggleLogs() {
-    const logs = document.getElementById('logs');
-    const btn = document.getElementById('toggle-logs');
-    if (logs.style.display === 'none') {
-        logs.style.display = 'block';
-        btn.textContent = 'Hide Logs';
-    } else {
-        logs.style.display = 'none';
-        btn.textContent = 'Show Logs';
-    }
 }
 
 async function authFetch(url, options) {

@@ -440,8 +440,8 @@ class LogEntry(BaseModel):
 @app.post("/log")
 def post_log(entry: LogEntry, request: Request):
     log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL, device_id=entry.device_id)
-    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}", device_id=entry.device_id)
-    
+    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}, device_id={entry.device_id}", device_id=entry.device_id)
+
     # Log request details for debugging
     log_debug(f"Request headers: {dict(request.headers)}", device_id=entry.device_id)
     log_debug(f"Request client: {request.client}", device_id=entry.device_id)
@@ -681,7 +681,7 @@ def get_device_ids():
     """Return list of unique device IDs with optional nicknames."""
     try:
         ids = db_manager.get_device_ids_with_nicknames()
-        log_debug("Fetched unique device ids")
+        log_debug("Fetched unique device ids: %s", ids)
         return {"ids": ids}
     except Exception as exc:
         log_debug(f"Database error on id fetch: {exc}")
