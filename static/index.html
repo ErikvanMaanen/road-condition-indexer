@@ -919,7 +919,7 @@ function stopGeolocation() {
 function pollDebug() {
     fetch('/debuglog').then(r => r.json()).then(data => {
         document.getElementById('debug').value = data.log.join('\n');
-    }).catch(console.error).finally(() => setTimeout(pollDebug, 2000));
+    }).catch(console.error).finally(() => setTimeout(pollDebug, 10000));
 }
 
 

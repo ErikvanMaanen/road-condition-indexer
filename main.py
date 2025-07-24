@@ -681,7 +681,7 @@ def get_device_ids():
     """Return list of unique device IDs with optional nicknames."""
     try:
         ids = db_manager.get_device_ids_with_nicknames()
-        log_debug("Fetched unique device ids: %s", ids)
+        log_debug(f"Fetched unique device ids. Count: {len(ids)}")
         return {"ids": ids}
     except Exception as exc:
         log_debug(f"Database error on id fetch: {exc}")
