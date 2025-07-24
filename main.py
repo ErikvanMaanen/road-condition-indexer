@@ -415,6 +415,8 @@ def post_log(entry: LogEntry, request: Request):
             f"Calculated avg speed: {computed_speed:.2f} km/h over {dt_sec:.1f}s and {dist_km * 1000.0:.1f}m",
             device_id=entry.device_id,
         )
+        if computed_speed > 0:
+            avg_speed = computed_speed
 
     if dt_sec > MAX_INTERVAL_SEC or dist_km * 1000.0 > MAX_DISTANCE_M:
         log_warning(
@@ -453,7 +455,7 @@ def post_log(entry: LogEntry, request: Request):
         bike_data_id = db_manager.insert_bike_data(
             entry.latitude,
             entry.longitude,
-            entry.speed,
+            avg_speed,
             entry.direction,
             roughness,
             distance_m,
