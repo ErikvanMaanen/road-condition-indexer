@@ -427,6 +427,13 @@
     <div id="table-list">Loading...</div>
     <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
 </section>
+
+<!-- FastAPI Health/Test Section -->
+<section style="margin-top:2rem;">
+    <h2>FastAPI Health/Test</h2>
+    <button id="fastapi-test-btn">Test FastAPI Server</button>
+    <div id="fastapi-test-result" style="margin-top:1rem; font-family:monospace; background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:10px; min-height:32px;"></div>
+</section>
 <script>
 // Log viewer variables
 let autoRefreshInterval = null;
@@ -848,7 +855,37 @@ function refreshAll() {
 
 loadSummary();
 loadDebug();
+
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+
+// FastAPI health/test button logic
+document.getElementById('fastapi-test-btn').addEventListener('click', async function() {
+    const btn = this;
+    const resultDiv = document.getElementById('fastapi-test-result');
+    btn.disabled = true;
+    btn.textContent = 'Testing...';
+    resultDiv.textContent = '';
+    try {
+        // Use a simple endpoint for health check, e.g. /auth_check or /logs
+        const response = await fetch('/auth_check');
+        if (response.status === 204) {
+            resultDiv.textContent = '✅ FastAPI server is running and responded with 204 (No Content)';
+            resultDiv.style.color = '#2e7d32';
+        } else if (response.status === 401) {
+            resultDiv.textContent = '⚠️ FastAPI server is running but authentication is required (401)';
+            resultDiv.style.color = '#f57c00';
+        } else {
+            resultDiv.textContent = `⚠️ FastAPI server responded with status: ${response.status} ${response.statusText}`;
+            resultDiv.style.color = '#f57c00';
+        }
+    } catch (error) {
+        resultDiv.textContent = '❌ FastAPI server test failed: ' + error;
+        resultDiv.style.color = '#d32f2f';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test FastAPI Server';
+    }
+});
 
 // Load logs partial with improved error handling
 async function loadLogsPartial() {
