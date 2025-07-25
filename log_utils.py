@@ -130,177 +130,29 @@ def get_debug_logs(level_filter: Optional[LogLevel] = None,
     from database import db_manager  # Import here to avoid circular imports
     return db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
 
-# JavaScript logging functions for frontend
-JAVASCRIPT_LOGGING_FUNCTIONS = """
-// JavaScript logging functions for frontend
+# Additional utility functions for log management
+def add_debug_message(message: str, category: LogCategory = LogCategory.GENERAL, level: LogLevel = LogLevel.DEBUG, device_id: Optional[str] = None) -> None:
+    """Add a debug message to the system (Python equivalent of addDebug)."""
+    from database import db_manager
+    db_manager.log_debug(message, level, category, device_id=device_id)
 
-function getUTCTimestamp() {
-    return new Date().toISOString();
-}
+def clear_debug_logs() -> None:
+    """Clear all debug logs from memory (Python equivalent of clearAllMessages)."""
+    global DEBUG_LOG
+    DEBUG_LOG.clear()
 
-function formatDisplayTime(utcTimestamp = null) {
-    try {
-        const date = utcTimestamp ? new Date(utcTimestamp) : new Date();
-        const amsterdamTime = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
-        const month = String(amsterdamTime.getMonth() + 1).padStart(2, '0');
-        const day = String(amsterdamTime.getDate()).padStart(2, '0');
-        const hours = String(amsterdamTime.getHours()).padStart(2, '0');
-        const minutes = String(amsterdamTime.getMinutes()).padStart(2, '0');
-        const seconds = String(amsterdamTime.getSeconds()).padStart(2, '0');
-        return `${month}/${day} ${hours}:${minutes}:${seconds}`;
-    } catch (error) {
-        return new Date().toLocaleString().slice(0, 17); // Fallback format
-    }
-}
-
-// Enhanced logging functions with device ID support
-let allLogMessages = [];
-let deviceId = '';
-
-// Initialize device ID from localStorage or generate new one
-function initializeDeviceId() {
-    deviceId = localStorage.getItem('deviceId') || '';
-    if (!deviceId) {
-        deviceId = crypto.randomUUID ? crypto.randomUUID() : 'unknown-' + Date.now();
-        localStorage.setItem('deviceId', deviceId);
-    }
-    // Take only last 8 characters for display
-    deviceId = deviceId.slice(-8);
-}
-
-// Add message to activity log (simple display)
-function addLog(msg) {
-    const div = document.getElementById('log');
-    if (div) {
-        const displayTime = formatDisplayTime();
-        div.textContent += `${displayTime} - ${msg}\\n`;
-        div.scrollTop = div.scrollHeight;
-    }
-    // Also add to all messages with INFO level
-    addMessage(msg, 'INFO', 'General');
-}
-
-// Add debug message (legacy function for compatibility)
-function addDebug(msg, category = 'Debug', level = 'DEBUG') {
-    addMessage(msg, level, category);
-}
-
-// Add message to all messages with full details
-function addMessage(msg, level = 'INFO', category = 'General') {
-    const utcTimestamp = getUTCTimestamp();
-    const displayTime = formatDisplayTime(utcTimestamp);
-    const logEntry = {
-        utcTimestamp: utcTimestamp,
-        displayTime: displayTime,
-        level: level,
-        category: category,
-        message: msg,
-        deviceId: deviceId
-    };
+def export_debug_logs(level_filter: Optional[LogLevel] = None, category_filter: Optional[LogCategory] = None, device_id_filter: Optional[str] = None) -> str:
+    """Export debug logs as CSV format (Python equivalent of exportMessages)."""
+    logs = get_debug_logs(level_filter, category_filter, device_id_filter)
+    csv_lines = ['UTC Timestamp,Display Time,Level,Category,Device ID,Message']
     
-    allLogMessages.push(logEntry);
+    for log in logs:
+        # Escape quotes in message
+        message = str(log.get('message', '')).replace('"', '""')
+        csv_line = f'"{log.get("timestamp", "")}","{log.get("display_time", "")}","{log.get("level", "")}","{log.get("category", "")}","{log.get("device_id", "")}","{message}"'
+        csv_lines.append(csv_line)
     
-    // Limit to last 1000 messages to prevent memory issues
-    if (allLogMessages.length > 1000) {
-        allLogMessages = allLogMessages.slice(-1000);
-    }
-    
-    if (typeof updateDebugDisplay === 'function') {
-        updateDebugDisplay();
-    }
-    if (typeof updateLogStats === 'function') {
-        updateLogStats();
-    }
-}
-
-// Clear all log messages
-function clearAllMessages() {
-    allLogMessages = [];
-    if (typeof updateDebugDisplay === 'function') {
-        updateDebugDisplay();
-    }
-    if (typeof updateLogStats === 'function') {
-        updateLogStats();
-    }
-}
-
-// Export messages to CSV
-function exportMessages() {
-    const levelFilter = document.getElementById('log-level-filter')?.value || '';
-    const categoryFilter = document.getElementById('log-category-filter')?.value || '';
-    
-    let filteredMessages = allLogMessages;
-    
-    if (levelFilter) {
-        filteredMessages = filteredMessages.filter(msg => msg.level === levelFilter);
-    }
-    
-    if (categoryFilter) {
-        filteredMessages = filteredMessages.filter(msg => msg.category === categoryFilter);
-    }
-    
-    const csvContent = 'UTC Timestamp,Display Time,Level,Category,Device ID,Message\\n' +
-        filteredMessages.map(msg => 
-            `"${msg.utcTimestamp}","${msg.displayTime}","${msg.level}","${msg.category}","${msg.deviceId}","${msg.message.replace(/"/g, '""')}"`
-        ).join('\\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const timestamp = formatDisplayTime().replace(/[\\/:\\s]/g, '-');
-    a.download = `log-messages-${timestamp}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-}
-
-// Toggle logs visibility
-function toggleLogs() {
-    const logsSection = document.getElementById('logs');
-    const toggleButton = document.getElementById('toggle-logs');
-    
-    if (logsSection && toggleButton) {
-        if (logsSection.style.display === 'none') {
-            logsSection.style.display = 'block';
-            toggleButton.textContent = 'Hide Logs';
-        } else {
-            logsSection.style.display = 'none';
-            toggleButton.textContent = 'Show Logs';
-        }
-    }
-}
-
-// Fallback logging functions for when partial doesn't load
-function createFallbackLogFunctions() {
-    if (!window.addLog) {
-        window.addLog = function(msg) {
-            console.log('Log:', msg);
-        };
-    }
-    if (!window.addDebug) {
-        window.addDebug = function(msg, category = 'Debug', level = 'DEBUG') {
-            console.log(`Debug [${level}] [${category}]:`, msg);
-        };
-    }
-    if (!window.addMessage) {
-        window.addMessage = function(msg, level = 'INFO', category = 'General') {
-            console.log(`Message [${level}] [${category}]:`, msg);
-        };
-    }
-    if (!window.toggleLogs) {
-        window.toggleLogs = function() {
-            console.log('Logs toggle requested but partial not loaded');
-        };
-    }
-}
-
-// Initialize device ID when script loads
-initializeDeviceId();
-"""
-
-def get_javascript_logging_functions() -> str:
-    """Return JavaScript logging functions for embedding in HTML files."""
-    return JAVASCRIPT_LOGGING_FUNCTIONS
+    return '\n'.join(csv_lines)
 
 # Export the DEBUG_LOG for compatibility
 __all__ = [
@@ -314,5 +166,7 @@ __all__ = [
     'log_warning', 
     'log_error',
     'get_debug_logs',
-    'get_javascript_logging_functions'
+    'add_debug_message',
+    'clear_debug_logs',
+    'export_debug_logs'
 ]
