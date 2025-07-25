@@ -51,6 +51,7 @@ TABLE_DEBUG_LOG = "RCI_debug_log"
 TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
+TABLE_USER_ACTIONS = "RCI_user_actions"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -418,7 +419,31 @@ class DatabaseManager:
                     roughness FLOAT NOT NULL,
                     timestamp DATETIME2 DEFAULT GETDATE(),
                     device_id NVARCHAR(255) NOT NULL,
-                    ip_address NVARCHAR(45)
+                ip_address NVARCHAR(45)
+            )
+            END
+            """
+        )
+
+        # Create user actions table for tracking user behavior and system events
+        cursor.execute(
+            f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_USER_ACTIONS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_USER_ACTIONS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME2 DEFAULT GETDATE(),
+                    action_type NVARCHAR(50) NOT NULL,
+                    action_description NVARCHAR(500) NOT NULL,
+                    user_ip NVARCHAR(45),
+                    user_agent NVARCHAR(500),
+                    device_id NVARCHAR(255),
+                    session_id NVARCHAR(100),
+                    additional_data NVARCHAR(MAX),
+                    success BIT DEFAULT 1,
+                    error_message NVARCHAR(MAX)
                 )
             END
             """
@@ -589,6 +614,23 @@ class DatabaseManager:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 device_id TEXT NOT NULL,
                 ip_address TEXT
+            )
+            """
+        )
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_USER_ACTIONS} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                action_type TEXT NOT NULL,
+                action_description TEXT NOT NULL,
+                user_ip TEXT,
+                user_agent TEXT,
+                device_id TEXT,
+                session_id TEXT,
+                additional_data TEXT,
+                success INTEGER DEFAULT 1,
+                error_message TEXT
             )
             """
         )
@@ -771,6 +813,40 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Database integrity check failed: {e}")
             return False
+
+    def log_user_action(self, action_type: str, action_description: str,
+                       user_ip: Optional[str] = None, user_agent: Optional[str] = None,
+                       device_id: Optional[str] = None, session_id: Optional[str] = None,
+                       additional_data: Optional[Dict] = None, success: bool = True,
+                       error_message: Optional[str] = None) -> None:
+        """Log user actions to the user actions table."""
+        try:
+            timestamp = self._get_utc_timestamp()
+            additional_data_json = json.dumps(additional_data) if additional_data else None
+
+            self.execute_non_query(
+                f"""INSERT INTO {TABLE_USER_ACTIONS}
+                   (timestamp, action_type, action_description, user_ip, user_agent,
+                    device_id, session_id, additional_data, success, error_message)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (timestamp, action_type, action_description, user_ip, user_agent,
+                 device_id, session_id, additional_data_json, success, error_message),
+            )
+
+            status = "SUCCESS" if success else "FAILED"
+            log_message = f"USER_ACTION [{action_type}] {action_description} - {status}"
+            if error_message:
+                log_message += f" - Error: {error_message}"
+
+            self.log_debug(log_message, LogLevel.INFO, LogCategory.USER_ACTION, device_id=device_id)
+
+        except Exception as e:
+            self.logger.error(f"Failed to log user action: {e}")
+            self.log_debug(
+                f"Failed to log user action [{action_type}] {action_description}: {e}",
+                LogLevel.ERROR,
+                LogCategory.USER_ACTION,
+            )
 
     def log_sql_operation(self, operation_type: str, query: str, params: Optional[Tuple] = None,
                          result_count: Optional[int] = None, execution_time_ms: Optional[float] = None,
