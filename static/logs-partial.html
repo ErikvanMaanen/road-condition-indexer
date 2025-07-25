@@ -1,4 +1,4 @@
-<!-- Activity Log and Debug Messages Partial -->
+<!-- Debug Messages Partial -->
 <style>
     #logs {
         border: 1px solid #ccc;
@@ -211,9 +211,7 @@
 </style>
 
 <section id="logs" style="margin-bottom:1rem; display:block;">
-    <h3>Activity Log</h3>
-    <div id="log"></div>
-    <h3>All Messages</h3>
+    <h3>Logs</h3>
     <div class="log-filters">
         <label>Level:</label>
         <select id="log-level-filter">
@@ -259,7 +257,7 @@
 </div>
 
 <script>
-// Activity Log and Debug Messages JavaScript Functions
+// Debug Messages JavaScript Functions
 let allLogMessages = [];
 let deviceId = '';
 
@@ -286,18 +284,6 @@ function formatShortDateTime() {
     return `${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
-// Add message to activity log (simple display)
-function addLog(msg) {
-    const div = document.getElementById('log');
-    if (div) {
-        const shortTime = formatShortDateTime();
-        div.textContent += `${shortTime} - ${msg}\n`;
-        div.scrollTop = div.scrollHeight;
-    }
-    // Also add to all messages with INFO level
-    addMessage(msg, 'INFO', 'General');
-}
-
 // Add debug message (legacy function for compatibility)
 function addDebug(msg, category = 'Debug', level = 'DEBUG') {
     addMessage(msg, level, category);
@@ -313,14 +299,11 @@ function addMessage(msg, level = 'INFO', category = 'General') {
         message: msg,
         deviceId: deviceId
     };
-    
     allLogMessages.push(logEntry);
-    
     // Limit to last 1000 messages to prevent memory issues
     if (allLogMessages.length > 1000) {
         allLogMessages = allLogMessages.slice(-1000);
     }
-    
     updateDebugDisplay();
     updateLogStats();
 }
@@ -443,12 +426,6 @@ function clearAllMessages() {
         allLogMessages = [];
         updateDebugDisplay();
         updateLogStats();
-        
-        // Also clear the simple activity log
-        const logDiv = document.getElementById('log');
-        if (logDiv) {
-            logDiv.textContent = '';
-        }
     }
 }
 
@@ -508,29 +485,24 @@ function toggleLogs() {
 // Initialize when partial is loaded
 function initializeLogs() {
     initializeDeviceId();
-    
     // Add event listeners for filters
     const levelFilter = document.getElementById('log-level-filter');
     const categoryFilter = document.getElementById('log-category-filter');
-    
     if (levelFilter) {
         levelFilter.addEventListener('change', () => {
             updateDebugDisplay();
             updateLogStats();
         });
     }
-    
     if (categoryFilter) {
         categoryFilter.addEventListener('change', () => {
             updateDebugDisplay();
             updateLogStats();
         });
     }
-    
     // Initialize display
     updateDebugDisplay();
     updateLogStats();
-    
     // Add initial message
     addMessage('Logs system initialized', 'INFO', 'System');
 }
