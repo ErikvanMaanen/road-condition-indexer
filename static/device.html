@@ -170,9 +170,6 @@ function populateDeviceIds() {
     ).catch(console.error);
 }
 </script>
-<section id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem;">
-    <strong>Roughness Calculation</strong> – Each acceleration sample is rotated so the device's Z axis aligns with the real-world up direction (using orientation angles). The vertical acceleration is filtered to keep vibrations between 1 and 20 Hz. The root-mean-square (RMS) of this filtered signal is divided by the average speed over the sample window. Records taken while traveling under 5&nbsp;km/h are ignored. This produces a roughness value that is higher for bumpier, rougher roads and lower for smooth surfaces.
-</section>
 <script>
 
 function setDateRange() {
@@ -537,18 +534,6 @@ document.getElementById('roughness-filter').addEventListener('change', () => {
 document.getElementById('gpx-button').addEventListener('click', () => {
     addLog('Generate GPX pressed');
     generateGpx();
-});
-document.getElementById('toggle-explanation').addEventListener('click', () => {
-    const button = document.getElementById('toggle-explanation');
-    const info = document.getElementById('roughness-info');
-    
-    if (info.style.display === 'none') {
-        info.style.display = 'block';
-        button.textContent = '➖ Hide Roughness Explanation';
-    } else {
-        info.style.display = 'none';
-        button.textContent = '➕ Show Roughness Explanation';
-    }
 });
 let sliderUpdating = false;
 document.getElementById('startDate').addEventListener('change', () => {
