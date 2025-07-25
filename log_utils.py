@@ -2,9 +2,12 @@
 
 This module centralizes all logging functionality including:
 - Log levels and categories
-- Database logging operations
-- Time formatting utilities
+- Database logging operations (stored in UTC)
+- Time formatting utilities (displayed in Europe/Amsterdam timezone)
 - JavaScript logging functions for frontend
+
+All logs are stored with UTC timestamps and displayed in Europe/Amsterdam timezone
+using a short format (MM/DD HH:MM:SS).
 """
 
 import os
@@ -50,79 +53,58 @@ class LogCategory(Enum):
 # Global debug log list for compatibility
 DEBUG_LOG = []
 
-def get_dutch_time(utc_time: datetime = None) -> str:
-    """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
-    try:
-        if utc_time is None:
-            utc_time = datetime.utcnow()
-        
-        # Set UTC timezone
-        utc_time = utc_time.replace(tzinfo=pytz.UTC)
-        
-        # Convert to Dutch time
-        dutch_tz = pytz.timezone('Europe/Amsterdam')
-        dutch_time = utc_time.astimezone(dutch_tz)
-        
-        return dutch_time.isoformat()
-    except Exception:
-        # Fallback to UTC if timezone conversion fails
-        return (utc_time or datetime.utcnow()).isoformat()
+def get_utc_timestamp() -> str:
+    """Get current UTC timestamp in ISO format for database storage."""
+    return datetime.utcnow().isoformat()
 
-def _get_dutch_time_for_db(utc_time: datetime = None, use_sqlserver: bool = False) -> str:
-    """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving for database storage."""
+def format_display_time(utc_timestamp: str = None) -> str:
+    """Convert UTC timestamp to short Amsterdam time format for display (MM/DD HH:MM:SS)."""
     try:
-        if utc_time is None:
+        if utc_timestamp is None:
             utc_time = datetime.utcnow()
+        else:
+            utc_time = datetime.fromisoformat(utc_timestamp.replace('Z', ''))
         
-        # Set UTC timezone
+        # Convert to Amsterdam time
         utc_time = utc_time.replace(tzinfo=pytz.UTC)
+        amsterdam_tz = pytz.timezone('Europe/Amsterdam')
+        amsterdam_time = utc_time.astimezone(amsterdam_tz)
         
-        # Convert to Dutch time
-        dutch_tz = pytz.timezone('Europe/Amsterdam')
-        dutch_time = utc_time.astimezone(dutch_tz)
-        
-        # Return format compatible with SQL Server (remove timezone info)
-        if use_sqlserver:
-            return dutch_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # SQL Server likes milliseconds, not microseconds
-        else:
-            return dutch_time.isoformat()
+        # Return short format: MM/DD HH:MM:SS
+        return amsterdam_time.strftime('%m/%d %H:%M:%S')
     except Exception:
-        # Fallback to UTC if timezone conversion fails
-        fallback_time = utc_time or datetime.utcnow()
-        if use_sqlserver:
-            return fallback_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        else:
-            return fallback_time.isoformat()
+        # Fallback to current UTC time in short format
+        return datetime.utcnow().strftime('%m/%d %H:%M:%S')
 
 def log_debug(message: str, device_id: Optional[str] = None) -> None:
-    """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
+    """Log a debug message. Stores in UTC, displays in Amsterdam time."""
     from database import db_manager  # Import here to avoid circular imports
     
-    timestamp = get_dutch_time()
-    formatted_message = f"{timestamp} - {message}"
+    utc_timestamp = get_utc_timestamp()
+    display_time = format_display_time(utc_timestamp)
+    formatted_message = f"{display_time} - {message}"
     
     # Add device ID to message if provided
     if device_id:
-        formatted_message = f"{timestamp} - [DEVICE:{device_id}] {message}"
+        formatted_message = f"{display_time} - [DEVICE:{device_id}] {message}"
     
     DEBUG_LOG.append(formatted_message)
     
-    # Also print to console for immediate debugging (can be removed in production)
+    # Print to console for immediate debugging
     print(f"DEBUG: {formatted_message}")
     
-    # keep only last 100 messages
+    # Keep only last 100 messages
     if len(DEBUG_LOG) > 100:
         del DEBUG_LOG[:-100]
         
-    # Log to DB as error if message contains 'error' or 'exception', else as debug
+    # Log to database with appropriate level
     try:
         lower_msg = message.lower()
         if 'error' in lower_msg or 'exception' in lower_msg or '❌' in message:
-            log_error(message, device_id=device_id)
+            db_manager.log_debug(message, LogLevel.ERROR, LogCategory.GENERAL, device_id=device_id)
         else:
             db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
     except Exception as db_log_exc:
-        # If database logging fails, at least we have console output
         print(f"DB_LOG_ERROR: Failed to log to database: {db_log_exc}")
 
 def log_info(message: str, category: LogCategory = LogCategory.GENERAL, device_id: Optional[str] = None) -> None:
@@ -152,32 +134,23 @@ def get_debug_logs(level_filter: Optional[LogLevel] = None,
 JAVASCRIPT_LOGGING_FUNCTIONS = """
 // JavaScript logging functions for frontend
 
-function formatDutchTime(isoString) {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString('nl-NL', {
-            timeZone: 'Europe/Amsterdam',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    } catch (error) {
-        return isoString; // Fallback to original string
-    }
+function getUTCTimestamp() {
+    return new Date().toISOString();
 }
 
-function formatShortDateTime() {
-    const now = new Date();
-    const cesTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
-    const month = String(cesTime.getMonth() + 1).padStart(2, '0');
-    const day = String(cesTime.getDate()).padStart(2, '0');
-    const hours = String(cesTime.getHours()).padStart(2, '0');
-    const minutes = String(cesTime.getMinutes()).padStart(2, '0');
-    const seconds = String(cesTime.getSeconds()).padStart(2, '0');
-    return `${month}/${day} ${hours}:${minutes}:${seconds}`;
+function formatDisplayTime(utcTimestamp = null) {
+    try {
+        const date = utcTimestamp ? new Date(utcTimestamp) : new Date();
+        const amsterdamTime = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
+        const month = String(amsterdamTime.getMonth() + 1).padStart(2, '0');
+        const day = String(amsterdamTime.getDate()).padStart(2, '0');
+        const hours = String(amsterdamTime.getHours()).padStart(2, '0');
+        const minutes = String(amsterdamTime.getMinutes()).padStart(2, '0');
+        const seconds = String(amsterdamTime.getSeconds()).padStart(2, '0');
+        return `${month}/${day} ${hours}:${minutes}:${seconds}`;
+    } catch (error) {
+        return new Date().toLocaleString().slice(0, 17); // Fallback format
+    }
 }
 
 // Enhanced logging functions with device ID support
@@ -199,8 +172,8 @@ function initializeDeviceId() {
 function addLog(msg) {
     const div = document.getElementById('log');
     if (div) {
-        const shortTime = formatShortDateTime();
-        div.textContent += `${shortTime} - ${msg}\\n`;
+        const displayTime = formatDisplayTime();
+        div.textContent += `${displayTime} - ${msg}\\n`;
         div.scrollTop = div.scrollHeight;
     }
     // Also add to all messages with INFO level
@@ -214,9 +187,11 @@ function addDebug(msg, category = 'Debug', level = 'DEBUG') {
 
 // Add message to all messages with full details
 function addMessage(msg, level = 'INFO', category = 'General') {
-    const timestamp = formatShortDateTime();
+    const utcTimestamp = getUTCTimestamp();
+    const displayTime = formatDisplayTime(utcTimestamp);
     const logEntry = {
-        timestamp: timestamp,
+        utcTimestamp: utcTimestamp,
+        displayTime: displayTime,
         level: level,
         category: category,
         message: msg,
@@ -264,16 +239,16 @@ function exportMessages() {
         filteredMessages = filteredMessages.filter(msg => msg.category === categoryFilter);
     }
     
-    const csvContent = 'Timestamp,Level,Category,Device ID,Message\\n' +
+    const csvContent = 'UTC Timestamp,Display Time,Level,Category,Device ID,Message\\n' +
         filteredMessages.map(msg => 
-            `"${msg.timestamp}","${msg.level}","${msg.category}","${msg.deviceId}","${msg.message.replace(/"/g, '""')}"`
+            `"${msg.utcTimestamp}","${msg.displayTime}","${msg.level}","${msg.category}","${msg.deviceId}","${msg.message.replace(/"/g, '""')}"`
         ).join('\\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const timestamp = formatShortDateTime().replace(/[\\/:\\s]/g, '-');
+    const timestamp = formatDisplayTime().replace(/[\\/:\\s]/g, '-');
     a.download = `log-messages-${timestamp}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
@@ -332,12 +307,12 @@ __all__ = [
     'LogLevel',
     'LogCategory', 
     'DEBUG_LOG',
-    'get_dutch_time',
+    'get_utc_timestamp',
+    'format_display_time',
     'log_debug',
     'log_info',
     'log_warning', 
     'log_error',
     'get_debug_logs',
-    'get_javascript_logging_functions',
-    '_get_dutch_time_for_db'
+    'get_javascript_logging_functions'
 ]

@@ -13,7 +13,7 @@ print("=" * 50)
 # Test the execute_non_query directly 
 print("1. Testing execute_non_query directly...")
 try:
-    timestamp = db_manager._get_dutch_time()
+    timestamp = db_manager._get_utc_timestamp()
     result = db_manager.execute_non_query(
         f"""INSERT INTO {TABLE_DEBUG_LOG} (timestamp, level, category, device_id, message, stack_trace) 
            VALUES (?, ?, ?, ?, ?, ?)""",
@@ -43,7 +43,7 @@ def log_debug_with_exception_capture(self, message: str, level: LogLevel = LogLe
         print(f"   Skipped logging due to level/category filter")
         return
         
-    timestamp = self._get_dutch_time()
+    timestamp = self._get_utc_timestamp()
     stack_trace = None
     
     if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:

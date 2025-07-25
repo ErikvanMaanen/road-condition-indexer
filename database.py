@@ -19,7 +19,7 @@ from contextlib import contextmanager
 import pytz
 
 # Import logging utilities
-from log_utils import LogLevel, LogCategory, _get_dutch_time_for_db
+from log_utils import LogLevel, LogCategory
 
 # Load environment variables from .env file
 try:
@@ -127,9 +127,17 @@ class DatabaseManager:
         category_ok = category in self.log_categories
         return level_ok and category_ok
     
-    def _get_dutch_time(self, utc_time: datetime = None) -> str:
-        """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
-        return _get_dutch_time_for_db(utc_time, self.use_sqlserver)
+    def _get_utc_timestamp(self, utc_time: datetime = None) -> str:
+        """Get UTC timestamp for database storage."""
+        if utc_time is None:
+            utc_time = datetime.utcnow()
+        
+        if self.use_sqlserver:
+            # SQL Server format without timezone info
+            return utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
+        else:
+            # ISO format for other databases
+            return utc_time.isoformat()
     
     def _parse_dutch_time_display(self, iso_time_str: str) -> str:
         """Parse ISO time string and return formatted Dutch time for display."""
@@ -658,7 +666,7 @@ class DatabaseManager:
         if not self._should_log(level, category):
             return
             
-        timestamp = self._get_dutch_time()
+        timestamp = self._get_utc_timestamp()
         stack_trace = None
         
         if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:
@@ -825,7 +833,7 @@ class DatabaseManager:
             error_message: Error message if action failed
         """
         try:
-            timestamp = self._get_dutch_time()
+            timestamp = self._get_utc_timestamp()
             additional_data_json = json.dumps(additional_data) if additional_data else None
             
             self.execute_non_query(

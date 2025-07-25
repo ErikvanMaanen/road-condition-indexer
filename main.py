@@ -25,7 +25,7 @@ from database import (
 )
 
 # Import logging utilities
-from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_dutch_time
+from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
 
 try:
     from azure.identity import ClientSecretCredential
@@ -1573,14 +1573,16 @@ def get_manage_debug_logs(
                 integrity_ok = db_manager.check_database_integrity()
                 if not integrity_ok:
                     log_error("Database integrity check failed, corruption likely")
-                return [{"timestamp": get_dutch_time(), 
+                utc_ts = get_utc_timestamp()
+                return [{"timestamp": format_display_time(utc_ts), 
                         "level": "ERROR", 
                         "category": "DATABASE", 
                         "message": "Database corruption detected. Debug logs may be unavailable temporarily.",
                         "stack_trace": None}]
             except Exception as repair_exc:
                 log_error(f"Database repair attempt failed: {repair_exc}")
-                return [{"timestamp": get_dutch_time(), 
+                utc_ts = get_utc_timestamp()
+                return [{"timestamp": format_display_time(utc_ts), 
                         "level": "CRITICAL", 
                         "category": "DATABASE", 
                         "message": "Critical database error. Please check disk space and database file integrity.",
