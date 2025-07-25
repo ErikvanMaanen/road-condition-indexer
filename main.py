@@ -1188,6 +1188,154 @@ def get_enhanced_debuglog(
         raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
 
 
+@app.get("/user_actions")
+def get_user_actions(
+    request: Request,
+    limit: Optional[int] = Query(100, description="Maximum number of records to return")
+):
+    """Get user action logs for the comprehensive logs page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log API access
+    db_manager.log_user_action(
+        action_type="API_CALL",
+        action_description=f"GET /user_actions API called with limit={limit}",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"endpoint": "/user_actions", "method": "GET", "limit": limit}
+    )
+    
+    try:
+        # Query user actions table
+        if db_manager.use_sqlserver:
+            query = f"SELECT TOP {limit} * FROM {TABLE_USER_ACTIONS} ORDER BY timestamp DESC"
+        else:
+            query = f"SELECT * FROM {TABLE_USER_ACTIONS} ORDER BY timestamp DESC LIMIT {limit}"
+        
+        rows = db_manager.execute_query(query)
+        
+        # Convert to format expected by frontend
+        user_actions = []
+        for row in rows:
+            user_actions.append({
+                "timestamp": format_display_time(row.get('timestamp')),
+                "level": "INFO" if row.get('success', True) else "ERROR",
+                "category": "USER_ACTION", 
+                "message": f"[{row.get('action_type', 'UNKNOWN')}] {row.get('action_description', '')}",
+                "device_id": row.get('device_id'),
+                "additional_info": {
+                    "user_ip": row.get('user_ip'),
+                    "user_agent": row.get('user_agent'),
+                    "additional_data": row.get('additional_data'),
+                    "error_message": row.get('error_message')
+                }
+            })
+        
+        log_debug(f"Retrieved {len(user_actions)} user action records")
+        return user_actions
+        
+    except Exception as exc:
+        log_error(f"Failed to retrieve user actions: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve user actions") from exc
+
+
+@app.get("/system_startup_log")
+def get_system_startup_log(
+    request: Request,
+    limit: Optional[int] = Query(100, description="Maximum number of records to return")
+):
+    """Get system startup logs for the comprehensive logs page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log API access
+    db_manager.log_user_action(
+        action_type="API_CALL",
+        action_description=f"GET /system_startup_log API called with limit={limit}",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"endpoint": "/system_startup_log", "method": "GET", "limit": limit}
+    )
+    
+    try:
+        # Query startup logs from debug log table with startup category
+        level_filter = None  # Get all levels
+        category_filter = LogCategory.STARTUP
+        device_id_filter = None
+        
+        logs = db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
+        
+        # Convert to format expected by frontend  
+        startup_logs = []
+        for log_entry in logs:
+            startup_logs.append({
+                "timestamp": log_entry.get('timestamp'),
+                "level": log_entry.get('level', 'INFO'),
+                "category": "STARTUP",
+                "message": log_entry.get('message', ''),
+                "device_id": log_entry.get('device_id'),
+                "additional_info": {
+                    "stack_trace": log_entry.get('stack_trace')
+                }
+            })
+        
+        log_debug(f"Retrieved {len(startup_logs)} startup log records")
+        return startup_logs
+        
+    except Exception as exc:
+        log_error(f"Failed to retrieve startup logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve startup logs") from exc
+
+
+@app.get("/sql_operations_log") 
+def get_sql_operations_log(
+    request: Request,
+    limit: Optional[int] = Query(100, description="Maximum number of records to return")
+):
+    """Get SQL operations logs for the comprehensive logs page."""
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log API access
+    db_manager.log_user_action(
+        action_type="API_CALL",
+        action_description=f"GET /sql_operations_log API called with limit={limit}",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        additional_data={"endpoint": "/sql_operations_log", "method": "GET", "limit": limit}
+    )
+    
+    try:
+        # Query SQL operation logs from debug log table with database category
+        level_filter = None  # Get all levels
+        category_filter = LogCategory.DATABASE
+        device_id_filter = None
+        
+        logs = db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
+        
+        # Convert to format expected by frontend
+        sql_logs = []
+        for log_entry in logs:
+            sql_logs.append({
+                "timestamp": log_entry.get('timestamp'),
+                "level": log_entry.get('level', 'INFO'),
+                "category": "SQL_OPERATIONS",
+                "message": log_entry.get('message', ''),
+                "device_id": log_entry.get('device_id'),
+                "additional_info": {
+                    "stack_trace": log_entry.get('stack_trace')
+                }
+            })
+        
+        log_debug(f"Retrieved {len(sql_logs)} SQL operation log records")
+        return sql_logs
+        
+    except Exception as exc:
+        log_error(f"Failed to retrieve SQL operations logs: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve SQL operations logs") from exc
+
+
 @app.get("/debug/db_test")
 def test_database_connection():
     """Test database connectivity and basic operations."""

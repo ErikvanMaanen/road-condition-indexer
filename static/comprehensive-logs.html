@@ -76,34 +76,47 @@
         .filters button:hover {
             background: #0056b3;
         }
-        .log-entry {
-            border: 1px solid #ddd;
-            margin: 10px 0;
-            padding: 15px;
-            border-radius: 5px;
+        .logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
             background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        .log-entry.success {
+        .logs-table th,
+        .logs-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            position: relative;
+        }
+        .logs-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .logs-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .logs-table tr.success {
             border-left: 4px solid #28a745;
         }
-        .log-entry.error {
+        .logs-table tr.error {
             border-left: 4px solid #dc3545;
         }
-        .log-entry.warning {
+        .logs-table tr.warning {
             border-left: 4px solid #ffc107;
         }
-        .log-entry.info {
+        .logs-table tr.info {
             border-left: 4px solid #17a2b8;
-        }
-        .log-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
         }
         .log-timestamp {
             font-size: 0.9em;
             color: #666;
+            white-space: nowrap;
         }
         .log-type {
             background: #007bff;
@@ -111,18 +124,53 @@
             padding: 2px 8px;
             border-radius: 12px;
             font-size: 0.8em;
+            white-space: nowrap;
+        }
+        .log-type.success {
+            background: #28a745;
+        }
+        .log-type.error {
+            background: #dc3545;
+        }
+        .log-type.warning {
+            background: #ffc107;
+            color: #333;
         }
         .log-description {
-            margin: 10px 0;
-            font-weight: 500;
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
         }
-        .log-details {
+        .log-ip, .log-device {
+            font-family: monospace;
             font-size: 0.9em;
             color: #666;
-            background: #f8f9fa;
+        }
+        .tooltip {
+            position: absolute;
+            background: #333;
+            color: white;
             padding: 10px;
             border-radius: 4px;
-            margin-top: 10px;
+            font-size: 12px;
+            max-width: 400px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        .tooltip.show {
+            opacity: 1;
+        }
+        .table-container {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
         }
         .stats {
             display: grid;
@@ -277,38 +325,68 @@
             return date.toLocaleString();
         }
 
-        function createLogEntry(log, type = 'info') {
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
+        function createTableRow(log, type = 'info') {
+            const row = document.createElement('tr');
+            row.className = type;
             
-            let detailsHtml = '';
+            // Prepare additional data tooltip
+            let tooltipText = '';
             if (log.additional_data) {
                 try {
                     const data = typeof log.additional_data === 'string' ? JSON.parse(log.additional_data) : log.additional_data;
-                    detailsHtml = `<div class="log-details"><strong>Additional Data:</strong><br><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                    tooltipText += `Additional Data:\n${JSON.stringify(data, null, 2)}`;
                 } catch (e) {
-                    detailsHtml = `<div class="log-details"><strong>Additional Data:</strong><br>${log.additional_data}</div>`;
+                    tooltipText += `Additional Data:\n${log.additional_data}`;
                 }
             }
             
             if (log.error_message) {
-                detailsHtml += `<div class="log-details"><strong>Error:</strong> ${log.error_message}</div>`;
+                if (tooltipText) tooltipText += '\n\n';
+                tooltipText += `Error: ${log.error_message}`;
             }
             
-            entry.innerHTML = `
-                <div class="log-header">
-                    <span class="log-type">${log.action_type || log.level || 'LOG'}</span>
-                    <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
-                </div>
-                <div class="log-description">${log.action_description || log.message || 'No description'}</div>
-                ${log.user_ip ? `<div><strong>IP:</strong> ${log.user_ip}</div>` : ''}
-                ${log.device_id ? `<div><strong>Device:</strong> ${log.device_id}</div>` : ''}
-                ${detailsHtml}
+            if (log.user_agent) {
+                if (tooltipText) tooltipText += '\n\n';
+                tooltipText += `User Agent: ${log.user_agent}`;
+            }
+            
+            const typeClass = log.success === false ? 'error' : type;
+            const actionType = log.action_type || log.level || 'LOG';
+            const description = log.action_description || log.message || 'No description';
+            
+            row.innerHTML = `
+                <td class="log-timestamp">${formatTimestamp(log.timestamp)}</td>
+                <td><span class="log-type ${typeClass}">${actionType}</span></td>
+                <td class="log-description" title="${description}" data-tooltip="${tooltipText}">${description}</td>
+                <td class="log-ip">${log.user_ip || '-'}</td>
+                <td class="log-device">${log.device_id || '-'}</td>
             `;
             
-            return entry;
+            return row;
         }
 
+        function addTooltipEvents(container) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tooltip';
+            document.body.appendChild(tooltip);
+            
+            container.addEventListener('mouseover', (e) => {
+                if (e.target.classList.contains('log-description') && e.target.dataset.tooltip) {
+                    tooltip.textContent = e.target.dataset.tooltip;
+                    tooltip.classList.add('show');
+                }
+            });
+            
+            container.addEventListener('mousemove', (e) => {
+                if (tooltip.classList.contains('show')) {
+                    tooltip.style.left = e.pageX + 10 + 'px';
+                    tooltip.style.top = e.pageY + 10 + 'px';
+                }
+            });
+            
+            container.addEventListener('mouseout', (e) => {
+                if (e.target.classList.contains('log-description')) {
+                    tooltip.classList.remove('show');
         async function loadUserActions() {
             const content = document.getElementById('user-actions-content');
             content.innerHTML = '<div class="loading">Loading user actions...</div>';
@@ -350,12 +428,41 @@
                     </div>
                 `;
                 
-                // Display actions
-                content.innerHTML = '';
+                // Create table
+                const tableContainer = document.createElement('div');
+                tableContainer.className = 'table-container';
+                
+                const table = document.createElement('table');
+                table.className = 'logs-table';
+                
+                // Create header
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>Description</th>
+                            <th>IP Address</th>
+                            <th>Device ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                
+                const tbody = table.querySelector('tbody');
+                
+                // Add rows
                 data.actions.forEach(action => {
                     const type = action.success === false ? 'error' : 'success';
-                    content.appendChild(createLogEntry(action, type));
+                    tbody.appendChild(createTableRow(action, type));
                 });
+                
+                tableContainer.appendChild(table);
+                content.innerHTML = '';
+                content.appendChild(tableContainer);
+                
+                // Add tooltip events
+                addTooltipEvents(tableContainer);
                 
                 if (data.actions.length === 0) {
                     content.innerHTML = '<div class="loading">No user actions found with current filters</div>';
@@ -388,18 +495,79 @@
                     </div>
                 `;
                 
-                // Display events and logs
-                content.innerHTML = '<h3>Startup Events</h3>';
-                data.startup_events.forEach(event => {
-                    const type = event.success === false ? 'error' : 'info';
-                    content.appendChild(createLogEntry(event, type));
-                });
+                content.innerHTML = '';
                 
-                content.innerHTML += '<h3>Startup Debug Logs</h3>';
-                data.startup_logs.forEach(log => {
-                    const type = log.level === 'ERROR' ? 'error' : log.level === 'WARNING' ? 'warning' : 'info';
-                    content.appendChild(createLogEntry(log, type));
-                });
+                // Startup Events Table
+                if (data.startup_events && data.startup_events.length > 0) {
+                    const eventsHeader = document.createElement('h3');
+                    eventsHeader.textContent = 'Startup Events';
+                    content.appendChild(eventsHeader);
+                    
+                    const eventsTableContainer = document.createElement('div');
+                    eventsTableContainer.className = 'table-container';
+                    
+                    const eventsTable = document.createElement('table');
+                    eventsTable.className = 'logs-table';
+                    
+                    eventsTable.innerHTML = `
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Event</th>
+                                <th>Description</th>
+                                <th>IP Address</th>
+                                <th>Device ID</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    `;
+                    
+                    const eventsTbody = eventsTable.querySelector('tbody');
+                    data.startup_events.forEach(event => {
+                        const type = event.success === false ? 'error' : 'info';
+                        eventsTbody.appendChild(createTableRow(event, type));
+                    });
+                    
+                    eventsTableContainer.appendChild(eventsTable);
+                    content.appendChild(eventsTableContainer);
+                    addTooltipEvents(eventsTableContainer);
+                }
+                
+                // Startup Debug Logs Table
+                if (data.startup_logs && data.startup_logs.length > 0) {
+                    const logsHeader = document.createElement('h3');
+                    logsHeader.textContent = 'Startup Debug Logs';
+                    content.appendChild(logsHeader);
+                    
+                    const logsTableContainer = document.createElement('div');
+                    logsTableContainer.className = 'table-container';
+                    
+                    const logsTable = document.createElement('table');
+                    logsTable.className = 'logs-table';
+                    
+                    logsTable.innerHTML = `
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Level</th>
+                                <th>Message</th>
+                                <th>IP Address</th>
+                                <th>Device ID</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    `;
+                    
+                    const logsTbody = logsTable.querySelector('tbody');
+                    data.startup_logs.forEach(log => {
+                        const type = log.level === 'ERROR' ? 'error' : log.level === 'WARNING' ? 'warning' : 'info';
+                        logsTbody.appendChild(createTableRow(log, type));
+                    });
+                    
+                    logsTableContainer.appendChild(logsTable);
+                    content.appendChild(logsTableContainer);
+                    addTooltipEvents(logsTableContainer);
+                }
                 
             } catch (error) {
                 content.innerHTML = `<div class="error-message">Error loading startup logs: ${error.message}</div>`;
@@ -424,12 +592,36 @@
                     </div>
                 `;
                 
-                // Display operations
-                content.innerHTML = '';
+                // Create table
+                const tableContainer = document.createElement('div');
+                tableContainer.className = 'table-container';
+                
+                const table = document.createElement('table');
+                table.className = 'logs-table';
+                
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Operation</th>
+                            <th>Query/Message</th>
+                            <th>IP Address</th>
+                            <th>Device ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                
+                const tbody = table.querySelector('tbody');
                 data.sql_operations.forEach(op => {
                     const type = op.message && op.message.includes('Error:') ? 'error' : 'info';
-                    content.appendChild(createLogEntry(op, type));
+                    tbody.appendChild(createTableRow(op, type));
                 });
+                
+                tableContainer.appendChild(table);
+                content.innerHTML = '';
+                content.appendChild(tableContainer);
+                addTooltipEvents(tableContainer);
                 
                 if (data.sql_operations.length === 0) {
                     content.innerHTML = '<div class="loading">No SQL operations found</div>';
@@ -479,12 +671,47 @@
                     </div>
                 `;
                 
-                // Display logs
-                content.innerHTML = '';
+                // Create table
+                const tableContainer = document.createElement('div');
+                tableContainer.className = 'table-container';
+                
+                const table = document.createElement('table');
+                table.className = 'logs-table';
+                
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Level</th>
+                            <th>Message</th>
+                            <th>Category</th>
+                            <th>Device ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                
+                const tbody = table.querySelector('tbody');
                 data.logs.forEach(log => {
                     const type = log.level === 'ERROR' ? 'error' : log.level === 'WARNING' ? 'warning' : 'info';
-                    content.appendChild(createLogEntry(log, type));
+                    const row = document.createElement('tr');
+                    row.className = type;
+                    
+                    row.innerHTML = `
+                        <td class="log-timestamp">${formatTimestamp(log.timestamp)}</td>
+                        <td><span class="log-type ${type}">${log.level}</span></td>
+                        <td class="log-description" title="${log.message}" data-tooltip="${log.message}">${log.message}</td>
+                        <td class="log-device">${log.category || '-'}</td>
+                        <td class="log-device">${log.device_id || '-'}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
                 });
+                
+                tableContainer.appendChild(table);
+                content.innerHTML = '';
+                content.appendChild(tableContainer);
+                addTooltipEvents(tableContainer);
                 
                 if (data.logs.length === 0) {
                     content.innerHTML = '<div class="loading">No debug logs found with current filters</div>';
