@@ -4,8 +4,8 @@ pyodbc
 numpy
 python-dotenv
 requests
-azure-identity
-azure-mgmt-web
-azure-mgmt-sql
+azure-identity>=1.14.0
+azure-mgmt-web>=7.0.0
+azure-mgmt-sql>=4.0.0
 scipy
 pytz

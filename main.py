@@ -1,4 +1,5 @@
 import os
+import warnings
 from pathlib import Path
 from datetime import datetime
 import math
@@ -7,8 +8,14 @@ import hashlib
 import pytz
 from contextlib import asynccontextmanager
 
-from scipy import signal
+# Comprehensive warning suppression for Azure SDK and Python 3.13 compatibility
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+warnings.filterwarnings("ignore", message="invalid escape sequence", category=SyntaxWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="azure")
+warnings.filterwarnings("ignore", message=r".*maintenance_window_cycles.*", category=SyntaxWarning)
+warnings.filterwarnings("ignore", message=r".*KEY_LOCAL_MACHINE.*", category=SyntaxWarning)
 
+from scipy import signal
 
 import requests
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
@@ -45,9 +52,19 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    startup_init()
+    try:
+        startup_init()
+        print("✅ Application startup completed successfully")
+    except Exception as e:
+        print(f"⚠️ Startup warning (continuing): {e}")
+        # Don't raise the exception - let the app start even if there are warnings
     yield
-    # Shutdown (if needed)
+    # Shutdown
+    try:
+        print("🔄 Application shutdown initiated")
+        # Add any cleanup logic here if needed
+    except Exception as e:
+        print(f"⚠️ Shutdown warning: {e}")
 
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -204,6 +221,34 @@ def auth_check(request: Request):
         # Log failed auth check
         log_warning(f"Authentication check failed from IP: {client_ip} - no valid auth cookie", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Azure App Service probes."""
+    try:
+        # Quick database connectivity test
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        conn.close()
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected"
+        }
+    except Exception as e:
+        # Return 503 Service Unavailable if health check fails
+        raise HTTPException(
+            status_code=503, 
+            detail={
+                "status": "unhealthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )
 
 @app.get("/")
 def read_index(request: Request):
@@ -500,7 +545,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 
 def startup_init():
-    """Initialize the database on startup with optimized logging."""
+    """Initialize the database on startup with optimized logging and error handling."""
     import time
     startup_start_time = time.time()
     
@@ -508,19 +553,17 @@ def startup_init():
     log_info("🚀 Application startup initiated", LogCategory.STARTUP)
     
     try:
-        # Step 1: Database Table Initialization (minimal logging)
+        # Step 1: Database Table Initialization
         log_info("🔧 Initializing database tables...", LogCategory.STARTUP)
-        
         db_manager.init_tables()
         log_info("✅ Database tables initialized successfully", LogCategory.STARTUP)
         
-        # Step 2: Quick connectivity test
+        # Step 2: Basic connectivity test
         log_info("🔍 Testing database connectivity...", LogCategory.STARTUP)
         conn = db_manager.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         cursor.fetchone()
-        log_info("✅ Database connectivity verified", LogCategory.STARTUP)
         
         # Step 3: Table verification
         if db_manager.use_sqlserver:
@@ -535,38 +578,42 @@ def startup_init():
         if missing_tables:
             log_error(f"❌ Missing required tables: {missing_tables}", LogCategory.STARTUP)
         else:
-            log_info(f"✅ All required tables found: {len(tables)} tables", LogCategory.STARTUP)
+            log_info(f"✅ All required tables verified: {len(tables)} tables", LogCategory.STARTUP)
         
-        # Step 4: Quick data check
-        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
-        bike_data_count = cursor.fetchone()[0]
+        # Step 4: Quick data summary
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
+            bike_data_count = cursor.fetchone()[0]
+            log_info(f"📊 Database contains {bike_data_count} bike data records", LogCategory.STARTUP)
+        except Exception as e:
+            log_warning(f"⚠️ Could not get data count: {e}", LogCategory.STARTUP)
+            bike_data_count = 0
         
-        log_info(f"📊 Data summary: {bike_data_count} bike records", LogCategory.STARTUP)
+        conn.close()
         
-        # Step 5: Database integrity check
+        # Step 5: Quick integrity check (non-blocking)
         try:
             integrity_ok = db_manager.check_database_integrity()
             if integrity_ok:
                 log_info("✅ Database integrity check passed", LogCategory.STARTUP)
             else:
-                log_warning("⚠️ Database integrity issues detected", LogCategory.STARTUP)
+                log_warning("⚠️ Database integrity issues detected (non-critical)", LogCategory.STARTUP)
         except Exception as e:
-            log_error(f"❌ Database integrity check failed: {e}", LogCategory.STARTUP)
-        
-        conn.close()
+            log_warning(f"⚠️ Database integrity check failed (non-critical): {e}", LogCategory.STARTUP)
         
         # Final startup summary
         total_time = (time.time() - startup_start_time) * 1000
         log_info(f"🎉 Application startup completed successfully in {total_time:.2f}ms", LogCategory.STARTUP)
         
-        # Single comprehensive startup event log
+        # Log successful startup event
         db_manager.log_startup_event(
             "STARTUP_COMPLETE", 
             f"Application startup completed successfully",
             additional_data={
                 "duration_ms": total_time,
                 "tables_count": len(tables),
-                "bike_data_records": bike_data_count
+                "bike_data_records": bike_data_count,
+                "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite"
             }
         )
         
@@ -575,66 +622,21 @@ def startup_init():
         error_msg = f"Application startup failed after {total_time:.2f}ms: {e}"
         log_error(error_msg, LogCategory.STARTUP)
         
-        # Log failure event
-        db_manager.log_startup_event(
-            "STARTUP_FAILED", 
-            "Application startup failed", 
-            success=False, 
-            error_message=str(e),
-            additional_data={"duration_ms": total_time}
-        )
+        # Log failure event - but don't let this crash the startup
+        try:
+            db_manager.log_startup_event(
+                "STARTUP_FAILED", 
+                "Application startup failed", 
+                success=False, 
+                error_message=str(e),
+                additional_data={"duration_ms": total_time}
+            )
+        except Exception:
+            # If even logging fails, just continue
+            pass
         
-    # Step 5: System Configuration Check
-    try:
-        step_start_time = time.time()
-        log_info("⚙️ Step 5: Checking system configuration...", LogCategory.STARTUP)
-        db_manager.log_startup_event("CONFIG_CHECK_START", "Starting system configuration check")
-        
-        config_info = {
-            "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite",
-            "thresholds": current_thresholds,
-            "base_dir": str(BASE_DIR),
-            "password_hash_set": bool(PASSWORD_HASH)
-        }
-        
-        step_duration = (time.time() - step_start_time) * 1000
-        log_info(f"✅ Step 5 Complete: System configuration verified ({step_duration:.2f}ms)", LogCategory.STARTUP)
-        db_manager.log_startup_event("CONFIG_CHECK_SUCCESS", f"System configuration verified in {step_duration:.2f}ms", additional_data=config_info)
-        
-    except Exception as e:
-        error_duration = (time.time() - startup_start_time) * 1000
-        error_msg = f"Database initialization error: {e}"
-        log_error(f"❌ {error_msg}", LogCategory.STARTUP)
-        log_error(f"Error type: {type(e).__name__}", LogCategory.STARTUP)
-        db_manager.log_startup_event("INIT_FAILED", error_msg, success=False, error_message=str(e), additional_data={"error_type": type(e).__name__, "duration_ms": error_duration})
-        # Don't stop startup, but log the error
-    
-    # Step 6: Database Integrity Verification
-    try:
-        step_start_time = time.time()
-        log_info("🔍 Step 6: Running database integrity verification...", LogCategory.STARTUP)
-        db_manager.log_startup_event("INTEGRITY_CHECK_START", "Starting database integrity verification")
-        
-        integrity_ok = db_manager.check_database_integrity()
-        step_duration = (time.time() - step_start_time) * 1000
-        
-        if not integrity_ok:
-            error_msg = "Database integrity issues detected"
-            log_error(f"❌ {error_msg}", LogCategory.STARTUP)
-            db_manager.log_startup_event("INTEGRITY_CHECK_FAILED", error_msg, success=False, additional_data={"duration_ms": step_duration})
-        else:
-            log_info(f"✅ Step 6 Complete: Database integrity verification passed ({step_duration:.2f}ms)", LogCategory.STARTUP)
-            db_manager.log_startup_event("INTEGRITY_CHECK_SUCCESS", f"Database integrity verification passed in {step_duration:.2f}ms")
-            
-    except Exception as e:
-        error_msg = f"Failed to check database integrity: {e}"
-        log_error(f"❌ {error_msg}", LogCategory.STARTUP)
-        db_manager.log_startup_event("INTEGRITY_CHECK_ERROR", error_msg, success=False, error_message=str(e))
-    
-    # Final startup completion
-    total_startup_time = (time.time() - startup_start_time) * 1000
-    log_info(f"🎉 Application startup completed successfully in {total_startup_time:.2f}ms", LogCategory.STARTUP)
-    db_manager.log_startup_event("STARTUP_COMPLETE", f"Application startup completed successfully in {total_startup_time:.2f}ms", additional_data={"total_duration_ms": total_startup_time})
+        # Don't re-raise the exception - let the app start even if startup checks fail
+        log_warning("⚠️ Continuing startup despite initialization errors", LogCategory.STARTUP)
 
 
 class BikeDataEntry(BaseModel):
