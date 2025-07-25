@@ -20,8 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 # Import database constants and manager
 from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS,
-    TABLE_USER_ACTIONS
+    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS
 )
 
 # Import logging utilities
@@ -174,12 +173,7 @@ def login(req: LoginRequest, request: Request):
     user_agent = request.headers.get("user-agent", "Unknown")
     
     # Log login attempt
-    db_manager.log_user_action(
-        action_type="LOGIN_ATTEMPT",
-        action_description="User attempted to log in",
-        user_ip=client_ip,
-        user_agent=user_agent
-    )
+    log_debug(f"LOGIN_ATTEMPT: User attempted to log in from {client_ip} - {user_agent}", LogLevel.INFO, LogCategory.USER_ACTION)
     
     if verify_password(req.password):
         # Successful login
@@ -187,27 +181,12 @@ def login(req: LoginRequest, request: Request):
         resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
         
         # Log successful login
-        db_manager.log_user_action(
-            action_type="LOGIN_SUCCESS",
-            action_description="User successfully logged in",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=True
-        )
+        log_debug(f"LOGIN_SUCCESS: User successfully logged in from {client_ip} - {user_agent}", LogLevel.INFO, LogCategory.USER_ACTION)
         
         log_info(f"Successful login from IP: {client_ip}", LogCategory.USER_ACTION)
         return resp
     else:
         # Failed login
-        db_manager.log_user_action(
-            action_type="LOGIN_FAILED",
-            action_description="User login failed - incorrect password",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Incorrect password"
-        )
-        
         log_warning(f"Failed login attempt from IP: {client_ip}", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -219,24 +198,11 @@ def auth_check(request: Request):
     
     if is_authenticated(request):
         # Log successful auth check (for session validation)
-        db_manager.log_user_action(
-            action_type="AUTH_CHECK_SUCCESS",
-            action_description="User session validation successful",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=True
-        )
+        log_debug(f"User session validation successful from IP: {client_ip}", LogCategory.USER_ACTION)
         return Response(status_code=204)
     else:
         # Log failed auth check
-        db_manager.log_user_action(
-            action_type="AUTH_CHECK_FAILED",
-            action_description="User session validation failed - no valid auth cookie",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="No valid auth cookie"
-        )
+        log_warning(f"Authentication check failed from IP: {client_ip} - no valid auth cookie", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.get("/")
@@ -258,13 +224,7 @@ def read_index(request: Request):
         return RedirectResponse(url="/static/login.html?next=/")
     
     # Log successful page access
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed main application page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "index", "url": "/"}
-    )
+    log_info(f"User accessed main application page from IP: {client_ip}", LogCategory.USER_ACTION)
     
     db_manager.init_tables()
     return FileResponse(BASE_DIR / "static" / "index.html")
@@ -569,7 +529,7 @@ def startup_init():
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
         
         tables = [row[0] for row in cursor.fetchall()]
-        expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_USER_ACTIONS]
+        expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS]
         
         missing_tables = [table for table in expected_tables if table not in tables]
         if missing_tables:
@@ -581,10 +541,7 @@ def startup_init():
         cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
         bike_data_count = cursor.fetchone()[0]
         
-        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_USER_ACTIONS}")
-        user_actions_count = cursor.fetchone()[0]
-        
-        log_info(f"📊 Data summary: {bike_data_count} bike records, {user_actions_count} user actions", LogCategory.STARTUP)
+        log_info(f"📊 Data summary: {bike_data_count} bike records", LogCategory.STARTUP)
         
         # Step 5: Database integrity check
         try:
@@ -609,8 +566,7 @@ def startup_init():
             additional_data={
                 "duration_ms": total_time,
                 "tables_count": len(tables),
-                "bike_data_records": bike_data_count,
-                "user_actions_records": user_actions_count
+                "bike_data_records": bike_data_count
             }
         )
         
@@ -1186,58 +1142,6 @@ def get_enhanced_debuglog(
     except Exception as exc:
         log_error(f"Failed to retrieve enhanced debug logs: {exc}")
         raise HTTPException(status_code=500, detail="Failed to retrieve debug logs") from exc
-
-
-@app.get("/user_actions")
-def get_user_actions(
-    request: Request,
-    limit: Optional[int] = Query(100, description="Maximum number of records to return")
-):
-    """Get user action logs for the comprehensive logs page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log API access
-    db_manager.log_user_action(
-        action_type="API_CALL",
-        action_description=f"GET /user_actions API called with limit={limit}",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"endpoint": "/user_actions", "method": "GET", "limit": limit}
-    )
-    
-    try:
-        # Query user actions table
-        if db_manager.use_sqlserver:
-            query = f"SELECT TOP {limit} * FROM {TABLE_USER_ACTIONS} ORDER BY timestamp DESC"
-        else:
-            query = f"SELECT * FROM {TABLE_USER_ACTIONS} ORDER BY timestamp DESC LIMIT {limit}"
-        
-        rows = db_manager.execute_query(query)
-        
-        # Convert to format expected by frontend
-        user_actions = []
-        for row in rows:
-            user_actions.append({
-                "timestamp": format_display_time(row.get('timestamp')),
-                "level": "INFO" if row.get('success', True) else "ERROR",
-                "category": "USER_ACTION", 
-                "message": f"[{row.get('action_type', 'UNKNOWN')}] {row.get('action_description', '')}",
-                "device_id": row.get('device_id'),
-                "additional_info": {
-                    "user_ip": row.get('user_ip'),
-                    "user_agent": row.get('user_agent'),
-                    "additional_data": row.get('additional_data'),
-                    "error_message": row.get('error_message')
-                }
-            })
-        
-        log_debug(f"Retrieved {len(user_actions)} user action records")
-        return user_actions
-        
-    except Exception as exc:
-        log_error(f"Failed to retrieve user actions: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve user actions") from exc
 
 
 @app.get("/system_startup_log")

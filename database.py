@@ -51,7 +51,6 @@ TABLE_DEBUG_LOG = "RCI_debug_log"
 TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
-TABLE_USER_ACTIONS = "RCI_user_actions"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -425,30 +424,6 @@ class DatabaseManager:
             """
         )
         
-        # Create user actions table for tracking user behavior and system events
-        cursor.execute(
-            f"""
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.tables WHERE name = '{TABLE_USER_ACTIONS}'
-            )
-            BEGIN
-                CREATE TABLE {TABLE_USER_ACTIONS} (
-                    id INT IDENTITY PRIMARY KEY,
-                    timestamp DATETIME2 DEFAULT GETDATE(),
-                    action_type NVARCHAR(50) NOT NULL,
-                    action_description NVARCHAR(500) NOT NULL,
-                    user_ip NVARCHAR(45),
-                    user_agent NVARCHAR(500),
-                    device_id NVARCHAR(255),
-                    session_id NVARCHAR(100),
-                    additional_data NVARCHAR(MAX),
-                    success BIT DEFAULT 1,
-                    error_message NVARCHAR(MAX)
-                )
-            END
-            """
-        )
-        
         # Schema migration statements
         self._apply_sqlserver_migrations(cursor)
 
@@ -614,23 +589,6 @@ class DatabaseManager:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 device_id TEXT NOT NULL,
                 ip_address TEXT
-            )
-            """
-        )
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_USER_ACTIONS} (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                action_type TEXT NOT NULL,
-                action_description TEXT NOT NULL,
-                user_ip TEXT,
-                user_agent TEXT,
-                device_id TEXT,
-                session_id TEXT,
-                additional_data TEXT,
-                success INTEGER DEFAULT 1,
-                error_message TEXT
             )
             """
         )
@@ -814,51 +772,6 @@ class DatabaseManager:
             self.logger.error(f"Database integrity check failed: {e}")
             return False
 
-    def log_user_action(self, action_type: str, action_description: str,
-                       user_ip: Optional[str] = None, user_agent: Optional[str] = None,
-                       device_id: Optional[str] = None, session_id: Optional[str] = None,
-                       additional_data: Optional[Dict] = None, success: bool = True,
-                       error_message: Optional[str] = None) -> None:
-        """Log user actions to the user actions table.
-        
-        Args:
-            action_type: Type of action (LOGIN, LOGOUT, PAGE_VIEW, API_CALL, etc.)
-            action_description: Human-readable description of the action
-            user_ip: IP address of the user
-            user_agent: User agent string
-            device_id: Device ID if applicable
-            session_id: Session identifier
-            additional_data: Additional structured data as dictionary
-            success: Whether the action was successful
-            error_message: Error message if action failed
-        """
-        try:
-            timestamp = self._get_utc_timestamp()
-            additional_data_json = json.dumps(additional_data) if additional_data else None
-            
-            self.execute_non_query(
-                f"""INSERT INTO {TABLE_USER_ACTIONS} 
-                   (timestamp, action_type, action_description, user_ip, user_agent, 
-                    device_id, session_id, additional_data, success, error_message) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (timestamp, action_type, action_description, user_ip, user_agent,
-                 device_id, session_id, additional_data_json, success, error_message)
-            )
-            
-            # Also log to debug log for comprehensive tracking
-            status = "SUCCESS" if success else "FAILED"
-            log_message = f"USER_ACTION [{action_type}] {action_description} - {status}"
-            if error_message:
-                log_message += f" - Error: {error_message}"
-            
-            self.log_debug(log_message, LogLevel.INFO, LogCategory.USER_ACTION, device_id=device_id)
-            
-        except Exception as e:
-            # Fallback logging if user action logging fails
-            self.logger.error(f"Failed to log user action: {e}")
-            self.log_debug(f"Failed to log user action [{action_type}] {action_description}: {e}", 
-                          LogLevel.ERROR, LogCategory.USER_ACTION)
-
     def log_sql_operation(self, operation_type: str, query: str, params: Optional[Tuple] = None,
                          result_count: Optional[int] = None, execution_time_ms: Optional[float] = None,
                          success: bool = True, error_message: Optional[str] = None,
@@ -919,22 +832,13 @@ class DatabaseManager:
             additional_data: Additional structured data
         """
         try:
-            # Log as user action for comprehensive tracking
-            self.log_user_action(
-                action_type=f"STARTUP_{event_type}",
-                action_description=event_description,
-                user_ip="SYSTEM",
-                user_agent="SERVER_STARTUP",
-                additional_data=additional_data,
-                success=success,
-                error_message=error_message
-            )
-            
-            # Also log to debug log with startup category
+            # Log to debug log with startup category
             status = "SUCCESS" if success else "FAILED"
             log_message = f"STARTUP [{event_type}] {event_description} - {status}"
             if error_message:
                 log_message += f" - Error: {error_message}"
+            if additional_data:
+                log_message += f" - Data: {json.dumps(additional_data, default=str)}"
             
             log_level = LogLevel.ERROR if not success else LogLevel.INFO
             self.log_debug(log_message, log_level, LogCategory.STARTUP)
@@ -942,57 +846,6 @@ class DatabaseManager:
         except Exception as e:
             # Fallback logging if startup event logging fails
             self.logger.error(f"Failed to log startup event: {e}")
-
-    def get_user_actions(self, action_type_filter: Optional[str] = None,
-                        user_ip_filter: Optional[str] = None,
-                        device_id_filter: Optional[str] = None,
-                        success_filter: Optional[bool] = None,
-                        limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-        """Retrieve user actions with optional filtering.
-        
-        Args:
-            action_type_filter: Filter by action type
-            user_ip_filter: Filter by user IP
-            device_id_filter: Filter by device ID
-            success_filter: Filter by success status
-            limit: Maximum number of actions to return
-            
-        Returns:
-            List of user action entries as dictionaries
-        """
-        try:
-            query = f"SELECT * FROM {TABLE_USER_ACTIONS} WHERE 1=1"
-            params = []
-            
-            if action_type_filter:
-                query += " AND action_type = ?"
-                params.append(action_type_filter)
-            
-            if user_ip_filter:
-                query += " AND user_ip = ?"
-                params.append(user_ip_filter)
-            
-            if device_id_filter:
-                query += " AND device_id = ?"
-                params.append(device_id_filter)
-            
-            if success_filter is not None:
-                query += " AND success = ?"
-                params.append(1 if success_filter else 0)
-            
-            query += " ORDER BY timestamp DESC"
-            
-            if limit:
-                if self.use_sqlserver:
-                    query = query.replace("SELECT *", f"SELECT TOP {limit} *")
-                else:
-                    query += " LIMIT ?"
-                    params.append(limit)
-            
-            return self.execute_query(query, tuple(params) if params else None)
-        except Exception as e:
-            self.logger.error(f"Failed to retrieve user actions: {e}")
-            return []
 
     def insert_bike_data(self, latitude: float, longitude: float, speed: float, 
                         direction: float, roughness: float, distance_m: float,
@@ -1442,7 +1295,7 @@ class DatabaseManager:
         start_time = time.time()
         
         # Only log for non-debug-log queries to avoid infinite recursion
-        is_debug_log_query = TABLE_DEBUG_LOG in query or TABLE_USER_ACTIONS in query
+        is_debug_log_query = TABLE_DEBUG_LOG in query
         
         if not is_debug_log_query:
             self.log_debug(f"Executing non-query: {query[:100]}{'...' if len(query) > 100 else ''}", 
