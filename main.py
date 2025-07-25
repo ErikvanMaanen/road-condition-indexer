@@ -1,11 +1,11 @@
 import os
-import os
 from pathlib import Path
 from datetime import datetime
 import math
 import re
 import hashlib
 import pytz
+from contextlib import asynccontextmanager
 
 from scipy import signal
 
@@ -41,7 +41,16 @@ from database import db_manager
 
 BASE_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="Road Condition Indexer")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    startup_init()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
@@ -530,7 +539,6 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return r * c
 
 
-@app.on_event("startup")
 def startup_init():
     """Initialize the database on startup with optimized logging."""
     import time
