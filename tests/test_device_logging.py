@@ -35,7 +35,7 @@ def test_device_logging():
     
     # Submit the log entry
     try:
-        response = requests.post(f"{BASE_URL}/log", json=log_entry)
+        response = requests.post(f"{BASE_URL}/bike-data", json=log_entry)
         print(f"Log submission response: {response.status_code}")
         if response.status_code == 200:
             result = response.json()

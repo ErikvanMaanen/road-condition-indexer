@@ -69,7 +69,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 ## API Endpoints
 
 ### Public Endpoints
-- `POST /log` - Submit measurement data (requires speed ≥7 km/h)
+- `POST /bike-data` - Submit measurement data (requires speed ≥7 km/h)
 - `GET /logs` - Fetch recent measurements (limit parameter)
 - `GET /filteredlogs` - Filtered data retrieval with device/date filters
 - `GET /device_ids` - Device list with nicknames

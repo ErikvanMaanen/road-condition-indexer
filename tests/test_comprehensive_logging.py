@@ -143,7 +143,7 @@ def generate_test_data():
             "z_values": [0.1, 0.2, 0.15, 0.18, 0.12]
         }
         
-        response = requests.post(f"{BASE_URL}/log", json=test_data)
+        response = requests.post(f"{BASE_URL}/bike-data", json=test_data)
         print(f"   📡 Test data submission: {response.status_code}")
         
         # Make several API calls to generate logs

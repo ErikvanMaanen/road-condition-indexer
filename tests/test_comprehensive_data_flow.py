@@ -194,7 +194,7 @@ class ComprehensiveDataFlowTest:
             # POST to API
             start_time = time.time()
             response = requests.post(
-                f"{self.base_url}/log",
+                f"{self.base_url}/bike-data",
                 headers={"Content-Type": "application/json"},
                 json=api_payload,
                 timeout=30

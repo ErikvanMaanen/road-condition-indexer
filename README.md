@@ -4,7 +4,7 @@ This project collects road roughness data from mobile devices and stores it in a
 
 ## Endpoints
 
-- `POST /log` – Submit a new measurement. Requires JSON payload with latitude,
+- `POST /bike-data` – Submit new bike sensor data. Requires JSON payload with latitude,
   longitude, **speed in km/h**, direction, a device identifier, and a list of
   Z-axis acceleration values. The server computes the
   average speed reported by the client and ignores submissions when that

@@ -637,7 +637,7 @@ def startup_init():
     db_manager.log_startup_event("STARTUP_COMPLETE", f"Application startup completed successfully in {total_startup_time:.2f}ms", additional_data={"total_duration_ms": total_startup_time})
 
 
-class LogEntry(BaseModel):
+class BikeDataEntry(BaseModel):
     latitude: float
     longitude: float
     speed: float
@@ -651,8 +651,8 @@ class LogEntry(BaseModel):
     record_source_data: Optional[bool] = False
 
 
-@app.post("/log")
-def post_log(entry: LogEntry, request: Request):
+@app.post("/bike-data")
+def post_bike_data(entry: BikeDataEntry, request: Request):
     client_ip = get_client_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
     
@@ -664,7 +664,7 @@ def post_log(entry: LogEntry, request: Request):
         user_agent=user_agent,
         device_id=entry.device_id,
         additional_data={
-            "endpoint": "/log",
+            "endpoint": "/bike-data",
             "latitude": entry.latitude,
             "longitude": entry.longitude,
             "speed": entry.speed,
@@ -844,7 +844,7 @@ def post_log(entry: LogEntry, request: Request):
             success=False,
             error_message=str(exc),
             additional_data={
-                "endpoint": "/log",
+                "endpoint": "/bike-data",
                 "error_type": type(exc).__name__,
                 "latitude": entry.latitude,
                 "longitude": entry.longitude
@@ -873,7 +873,7 @@ def post_log(entry: LogEntry, request: Request):
         user_agent=user_agent,
         device_id=entry.device_id,
         additional_data={
-            "endpoint": "/log",
+            "endpoint": "/bike-data",
             "roughness": roughness,
             "bike_data_id": bike_data_id,
             "processing_time_ms": (datetime.utcnow() - now).total_seconds() * 1000
@@ -881,10 +881,39 @@ def post_log(entry: LogEntry, request: Request):
     )
     
     # Final success logging
-    log_info(f"🚀 POST /log completed successfully for device {entry.device_id} - returning roughness: {roughness:.3f}", device_id=entry.device_id)
+    log_info(f"🚀 POST /bike-data completed successfully for device {entry.device_id} - returning roughness: {roughness:.3f}", device_id=entry.device_id)
     return {"status": "ok", "roughness": roughness}
 
 
+# Backward compatibility endpoint - deprecated
+@app.post("/log")
+def post_log_deprecated(entry: BikeDataEntry, request: Request):
+    """
+    DEPRECATED: Use /bike-data instead.
+    This endpoint is maintained for backward compatibility.
+    """
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
+    # Log usage of deprecated endpoint
+    db_manager.log_user_action(
+        action_type="DEPRECATED_ENDPOINT_USAGE",
+        action_description=f"Device {entry.device_id} used deprecated /log endpoint",
+        user_ip=client_ip,
+        user_agent=user_agent,
+        device_id=entry.device_id,
+        additional_data={
+            "deprecated_endpoint": "/log",
+            "new_endpoint": "/bike-data",
+            "latitude": entry.latitude,
+            "longitude": entry.longitude
+        }
+    )
+    
+    log_warning(f"Device {entry.device_id} used deprecated /log endpoint. Please update to use /bike-data.", device_id=entry.device_id)
+    
+    # Forward to the new endpoint implementation
+    return post_bike_data(entry, request)
 
 
 @app.get("/logs")
