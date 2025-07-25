@@ -285,7 +285,7 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
     </div>
 </div>
 
-<div id="controls" style="margin-bottom:1rem;">
+<section id="controls" style="margin-bottom:1rem;">
     <div id="status"></div>
     <div id="wake-lock-container" style="border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin: 0.5rem 0; background: #f9f9f9;">
         <div id="wake-lock-status" style="font-size: 0.9rem; font-weight: bold;">💤 Screen may turn off</div>
@@ -1274,7 +1274,6 @@ if ('wakeLock' in navigator) {
     });
 }
 
-// Settings panel functions
 function toggleSettings() {
     const content = document.getElementById('settings-content');
     const toggle = document.getElementById('settings-toggle');
@@ -1353,6 +1352,7 @@ function resetSettings() {
         saveSettings();
     }
 }
+
 </script>
 <div id="roughness-info" style="margin-top:1rem; border:1px solid #ccc; padding:0.5rem; display:none;">
     <strong>Roughness Calculation</strong> - each acceleration sample is first rotated so that

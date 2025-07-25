@@ -43,10 +43,10 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
 
-# Configuration variables
+# Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
 MAX_DISTANCE_M = float(os.getenv("RCI_MAX_DISTANCE_M", "100"))
-MIN_SPEED_KMH = float(os.getenv("RCI_MIN_SPEED_KMH", "7"))
+MIN_SPEED_KMH = float(os.getenv("RCI_MIN_SPEED_KMH", "0"))
 
 # Runtime threshold settings (can be updated via API)
 current_thresholds = {
@@ -552,9 +552,9 @@ def compute_roughness(
     if sample_rate <= 0:
         return 0.0
 
-    metrics = compute_vibration_metrics(        samples,
-        sample_rate,
-        freq_min=freq_min,
+    metrics = compute_vibration_metrics(
+        samples,
+        sample_rate,        freq_min=freq_min,
         freq_max=freq_max,
     )
 
@@ -668,16 +668,16 @@ def startup_init():
             error_message=str(e),
             additional_data={"duration_ms": total_time}
         )
-        data_stats = {}
+        raise
         for table in tables:
             try:
-                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                    count = cursor.fetchone()[0]
-                    data_stats[table] = count
-                    log_info(f"📊 {table}: {count} records", LogCategory.STARTUP)
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                data_stats[table] = count
+                log_info(f"� {table}: {count} records", LogCategory.STARTUP)
             except Exception as table_error:
-                    log_error(f"❌ Failed to count records in {table}: {table_error}", LogCategory.STARTUP)
-                    data_stats[table] = f"Error: {table_error}"
+                log_error(f"❌ Failed to count records in {table}: {table_error}", LogCategory.STARTUP)
+                data_stats[table] = f"Error: {table_error}"
         
         step_duration = (time.time() - step_start_time) * 1000
         log_info(f"✅ Step 4 Complete: Data integrity check completed ({step_duration:.2f}ms)", LogCategory.STARTUP)
@@ -814,8 +814,9 @@ def post_log(entry: LogEntry, request: Request):
         log_debug(
             f"Distance calculations: {dist_km * 1000.0:.1f}m over {dt_sec:.1f}s = {computed_speed:.2f} km/h",
             device_id=entry.device_id,
-        )        
-        # Use calculated speed if GPS speed is insufficient or unavailable
+        )
+        
+        # Use calculated speed if GPS speed is insufficient or unavailable        # Use calculated speed if GPS speed is insufficient or unavailable
         if entry.speed <= 0 or entry.speed < current_thresholds["min_speed_kmh"]:
             if computed_speed >= current_thresholds["min_speed_kmh"]:
                 log_info(f"Using computed speed {computed_speed:.2f} km/h instead of GPS speed {entry.speed:.2f} km/h", device_id=entry.device_id)
@@ -2335,145 +2336,3 @@ def set_thresholds(settings: ThresholdSettings, request: Request):
     
     log_info(f"Threshold settings updated: {current_thresholds}")
     return {"status": "ok", "thresholds": current_thresholds}
-
-
-@app.get("/user_actions")
-def get_user_actions(request: Request,
-                    action_type: Optional[str] = Query(None, description="Filter by action type"),
-                    user_ip: Optional[str] = Query(None, description="Filter by user IP"),
-                    device_id: Optional[str] = Query(None, description="Filter by device ID"),
-                    success: Optional[bool] = Query(None, description="Filter by success status"),
-                    limit: Optional[int] = Query(100, description="Maximum number of actions to return"),
-                    dep: None = Depends(password_dependency)):
-    """Get user actions log with filtering capabilities."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log the access to user actions
-    db_manager.log_user_action(
-        action_type="USER_ACTIONS_VIEW",
-        action_description="User accessed user actions log",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={
-            "filters": {
-                "action_type": action_type,
-                "user_ip_filter": user_ip,
-                "device_id": device_id,
-                "success": success,
-                "limit": limit
-            }
-        }
-    )
-    
-    try:
-        actions = db_manager.get_user_actions(
-            action_type_filter=action_type,
-            user_ip_filter=user_ip,
-            device_id_filter=device_id,
-            success_filter=success,
-            limit=limit
-        )
-        
-        log_info(f"Retrieved {len(actions)} user actions for display")
-        
-        return {
-            "actions": actions,
-            "total": len(actions),
-            "filters": {
-                "action_type": action_type,
-                "user_ip": user_ip,
-                "device_id": device_id,
-                "success": success,
-                "limit": limit
-            }
-        }
-    except Exception as exc:
-        log_error(f"Failed to retrieve user actions: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve user actions") from exc
-
-
-@app.get("/system_startup_log")
-def get_system_startup_log(request: Request,
-                          limit: Optional[int] = Query(50, description="Maximum number of startup events to return"),
-                          dep: None = Depends(password_dependency)):
-    """Get system startup events and logs."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log the access
-    db_manager.log_user_action(
-        action_type="STARTUP_LOG_VIEW",
-        action_description="User accessed system startup log",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"limit": limit}
-    )
-    
-    try:
-        # Get startup-related user actions
-        startup_actions = db_manager.get_user_actions(
-            action_type_filter=None,  # We'll filter in Python for STARTUP_ prefix
-            limit=limit * 2  # Get more to filter
-        )
-        
-        # Filter for startup-related actions
-        startup_events = [
-            action for action in startup_actions 
-            if action.get('action_type', '').startswith('STARTUP_')
-        ][:limit]
-        
-        # Also get startup-related debug logs
-        startup_logs = db_manager.get_debug_logs(
-            level_filter=LogLevel.INFO,
-            category_filter=LogCategory.STARTUP,
-            limit=limit
-        )
-        
-        log_info(f"Retrieved {len(startup_events)} startup events and {len(startup_logs)} startup logs")
-        
-        return {
-            "startup_events": startup_events,
-            "startup_logs": startup_logs,
-            "total_events": len(startup_events),
-            "total_logs": len(startup_logs)
-        }
-    except Exception as exc:
-        log_error(f"Failed to retrieve startup logs: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve startup logs") from exc
-
-
-@app.get("/sql_operations_log")
-def get_sql_operations_log(request: Request,
-                          limit: Optional[int] = Query(100, description="Maximum number of SQL operations to return"),
-                          dep: None = Depends(password_dependency)):
-    """Get SQL operations log for debugging and auditing."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log the access
-    db_manager.log_user_action(
-        action_type="SQL_LOG_VIEW",
-        action_description="User accessed SQL operations log",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"limit": limit}
-    )
-    
-    try:
-        # Get SQL operation logs
-        sql_logs = db_manager.get_debug_logs(
-            category_filter=LogCategory.SQL_OPERATION,
-            limit=limit
-        )
-        
-        log_info(f"Retrieved {len(sql_logs)} SQL operation logs")
-        
-        return {
-            "sql_operations": sql_logs,
-            "total": len(sql_logs),
-            "limit": limit
-        }
-    except Exception as exc:
-        log_error(f"Failed to retrieve SQL operations log: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve SQL operations log") from exc
