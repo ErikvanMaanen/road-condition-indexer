@@ -176,7 +176,7 @@
     <a href="database.html">Database Management</a>
 </nav>
 
-<!-- Database Log Viewer -->
+<!-- Database Log Viewer (styled like Debug Log Viewer) -->
 <section class="log-viewer">
     <div class="log-viewer-header">
         📋 Database Log Viewer
@@ -192,7 +192,6 @@
                 <option value="ERROR">Error</option>
                 <option value="CRITICAL">Critical</option>
             </select>
-            
             <label>Category:</label>
             <select id="log-category-filter">
                 <option value="">All Categories</option>
@@ -204,10 +203,8 @@
                 <option value="BACKUP">Backup</option>
                 <option value="GENERAL">General</option>
             </select>
-            
             <label>Device ID:</label>
             <input type="text" id="log-device-filter" placeholder="Filter by device ID" style="width: 120px;">
-            
             <label>Limit:</label>
             <select id="log-limit">
                 <option value="50">50 entries</option>
