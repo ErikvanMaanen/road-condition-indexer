@@ -78,7 +78,11 @@ CREATE TABLE RCI_bike_data (
 CREATE TABLE RCI_debug_log (
   id INT IDENTITY PRIMARY KEY,
   timestamp DATETIME DEFAULT GETDATE(),
-  message NVARCHAR(4000)
+  level NVARCHAR(20),
+  category NVARCHAR(50),
+  device_id NVARCHAR(100),
+  message NVARCHAR(4000),
+  stack_trace NVARCHAR(MAX)
 );
 
 CREATE TABLE RCI_device_nicknames (
@@ -87,4 +91,74 @@ CREATE TABLE RCI_device_nicknames (
   user_agent NVARCHAR(256),
   device_fp NVARCHAR(256)
 );
+
+CREATE TABLE RCI_user_actions (
+  id INT IDENTITY PRIMARY KEY,
+  timestamp DATETIME DEFAULT GETDATE(),
+  action_type NVARCHAR(50),
+  action_description NVARCHAR(500),
+  user_ip NVARCHAR(45),
+  user_agent NVARCHAR(256),
+  device_id NVARCHAR(100),
+  session_id NVARCHAR(100),
+  additional_data NVARCHAR(MAX),
+  success BIT,
+  error_message NVARCHAR(1000)
+);
 ```
+
+## Security Features
+
+### RCI_ Table Security Filter
+The database module includes security filtering to restrict access to only tables that start with the "RCI_" prefix. This prevents unauthorized access to system tables or other application tables.
+
+**Security Benefits:**
+- **Isolation** - Prevents accidental access to system or other application tables
+- **Data Protection** - Ensures database operations only affect intended tables
+- **Audit Trail** - All table operations are logged and restricted to known tables
+- **Principle of Least Privilege** - Only grants access to tables needed for functionality
+
+**Affected Methods:**
+- `get_table_summary()` - Only returns RCI_ tables
+- `get_last_table_rows()` - Rejects non-RCI_ table names
+- `test_table_operations()` - Validates table names
+- `backup_table()` - Restricted to RCI_ tables only
+- `table_exists()` - Returns False for non-RCI_ tables
+
+## Logging and Monitoring
+
+The application includes comprehensive logging capabilities:
+
+- **Enhanced Debug Logging** with filtering by level and category
+- **Device ID Tracking** throughout all application logs
+- **User Action Logging** for audit trails
+- **Startup Process Logging** for system diagnostics
+- **Frontend Logging Components** for client-side debugging
+
+For detailed logging documentation, see `LOGGING.md`.
+
+## Testing
+
+The application includes a comprehensive test suite that validates both database operations and API functionality. Tests can run in two modes:
+
+- **Database-only mode** (default): Tests database operations without requiring API server
+- **Full mode**: Tests both database and API operations with automatic server management
+
+```bash
+# Quick database-only tests
+python test_runner.py
+
+# Full test suite (database + API)
+python test_runner.py full
+```
+
+For detailed testing documentation, see `TESTING.md`.
+
+## Developer Guidelines
+
+For AI assistants and developers working on this project, see `AGENTS.md` for detailed guidelines on:
+- Project architecture and components
+- Database management and security
+- Testing strategies
+- Known issues and fixes
+- Development workflows

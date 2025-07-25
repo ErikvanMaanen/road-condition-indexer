@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def main():
     print("🚀 QUICK STARTUP TEST")

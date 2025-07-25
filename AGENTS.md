@@ -87,9 +87,11 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 
 ## Testing Strategy
 
-- Run `pytest -q` whenever Python functionality changes (any `.py` files outside of `tests/`)
+- Run comprehensive tests using `python tests/test_runner.py` for database-only tests
+- Use `python tests/test_runner.py full` for complete API and database testing
+- Tests are located in the `tests/` folder with comprehensive coverage
+- Key test files: `tests/test_comprehensive_data_flow.py`, `tests/test_runner.py`
 - Skip tests when making documentation or layout-only updates
-- Key test files: `test_improvements.py`, `test_journal.py`, `test_logging.py`, `test_simple.py`
 
 ## Known Issues & Fixes
 

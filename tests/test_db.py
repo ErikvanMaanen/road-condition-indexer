@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """Test database operations to identify the issue."""
 
+import sys
+from pathlib import Path
+
+# Add the project directory to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from database import DatabaseManager, LogLevel, LogCategory
 import traceback
+
+# Load .env for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 try:
     print('Testing database operations...')

@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 print("=" * 80)
 print("ROAD CONDITION INDEXER - DETAILED LOGGING TEST")

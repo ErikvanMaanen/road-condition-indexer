@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Test the exact operations that happen in the /log endpoint."""
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import db_manager, log_info, log_error
 from datetime import datetime
 import traceback

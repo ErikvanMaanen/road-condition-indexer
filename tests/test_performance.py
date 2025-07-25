@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def time_function(func_name, func):
     """Time a function and return result."""

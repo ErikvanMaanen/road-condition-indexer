@@ -668,16 +668,6 @@ def startup_init():
             error_message=str(e),
             additional_data={"duration_ms": total_time}
         )
-        raise
-        for table in tables:
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                data_stats[table] = count
-                log_info(f"� {table}: {count} records", LogCategory.STARTUP)
-            except Exception as table_error:
-                log_error(f"❌ Failed to count records in {table}: {table_error}", LogCategory.STARTUP)
-                data_stats[table] = f"Error: {table_error}"
         
         step_duration = (time.time() - step_start_time) * 1000
         log_info(f"✅ Step 4 Complete: Data integrity check completed ({step_duration:.2f}ms)", LogCategory.STARTUP)
@@ -685,7 +675,8 @@ def startup_init():
         
         conn.close()
         
-        # Step 5: System Configuration Check
+    # Step 5: System Configuration Check
+    try:
         step_start_time = time.time()
         log_info("⚙️ Step 5: Checking system configuration...", LogCategory.STARTUP)
         db_manager.log_startup_event("CONFIG_CHECK_START", "Starting system configuration check")

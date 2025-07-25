@@ -9,8 +9,15 @@ import time
 from pathlib import Path
 
 # Add the project directory to Python path
-project_dir = Path(__file__).resolve().parent
+project_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_dir))
+
+# Load .env for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 print("🚀 Simple Azure SQL Database Test")
 print("=" * 50)

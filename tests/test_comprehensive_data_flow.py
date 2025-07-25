@@ -13,14 +13,25 @@ Run with: python test_comprehensive_data_flow.py
 import json
 import os
 import requests
+import sys
 import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import traceback
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Import database manager for direct operations
 from database import DatabaseManager, TABLE_BIKE_DATA, LogLevel, LogCategory
+
+# Load .env for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 class ComprehensiveDataFlowTest:
     """Test suite for database and API operations."""
@@ -41,7 +52,7 @@ class ComprehensiveDataFlowTest:
         else:
             print(f"📍 API Base URL: {self.base_url}")
         print(f"🔧 Test Device ID: {self.test_device_id}")
-        print(f"🗄️  Database Type: {'SQL Server' if self.db_manager.use_sqlserver else 'SQLite'}")
+        print(f"🗄️  Database Type: SQL Server")
         print("-" * 80)
     
     def log_test_result(self, test_name: str, success: bool, message: str, details: Optional[Dict] = None):

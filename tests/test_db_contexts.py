@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Test database operations in different contexts."""
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import asyncio
 from database import DatabaseManager, LogLevel, LogCategory, log_info, log_error
 import traceback

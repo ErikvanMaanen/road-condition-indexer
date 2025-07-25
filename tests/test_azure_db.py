@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 
 # Add the project directory to Python path
-project_dir = Path(__file__).resolve().parent
+project_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_dir))
 
 # Load environment variables

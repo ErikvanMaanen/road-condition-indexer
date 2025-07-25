@@ -11,6 +11,10 @@ This script demonstrates:
 Run this after starting the main application to see the logging in action.
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import requests
 import json
 import time

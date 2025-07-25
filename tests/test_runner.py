@@ -4,6 +4,10 @@ Simple test runner for the Road Condition Indexer.
 This script runs both database-only tests and full API tests (if server is running).
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import subprocess
 import sys
 import time
@@ -11,6 +15,13 @@ import threading
 import signal
 import os
 from pathlib import Path
+
+# Load .env if running locally
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 def run_database_only_tests():
     """Run tests that only require database access."""
@@ -23,8 +34,8 @@ def run_database_only_tests():
     
     try:
         result = subprocess.run([
-            sys.executable, 'test_comprehensive_data_flow.py'
-        ], cwd=Path(__file__).parent, env=env, capture_output=False)
+            sys.executable, 'tests/test_comprehensive_data_flow.py'
+        ], cwd=Path(__file__).parent.parent, env=env, capture_output=False)
         return result.returncode == 0
     except Exception as e:
         print(f"❌ Error running database tests: {e}")
@@ -36,7 +47,7 @@ def start_api_server():
     try:
         process = subprocess.Popen([
             sys.executable, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'
-        ], cwd=Path(__file__).parent)
+        ], cwd=Path(__file__).parent.parent)
         
         # Give server time to start
         time.sleep(3)
@@ -61,8 +72,8 @@ def run_full_tests():
         
         # Run comprehensive tests
         result = subprocess.run([
-            sys.executable, 'test_comprehensive_data_flow.py'
-        ], cwd=Path(__file__).parent, capture_output=False)
+            sys.executable, 'tests/test_comprehensive_data_flow.py'
+        ], cwd=Path(__file__).parent.parent, capture_output=False)
         
         success = result.returncode == 0
     except Exception as e:

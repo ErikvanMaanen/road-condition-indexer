@@ -1,10 +1,10 @@
 # Road Condition Indexer - Test Suite
 
-This directory contains comprehensive tests for the Road Condition Indexer application that verify both database operations and API functionality.
+This directory contains comprehensive tests for the Road Condition Indexer application that verify both database operations and API functionality. All test files are located in the `tests/` folder.
 
 ## Test Files
 
-### 1. `test_comprehensive_data_flow.py`
+### 1. `tests/test_comprehensive_data_flow.py`
 A comprehensive test suite that validates:
 - ✅ Direct database insert operations
 - 🌐 API POST endpoint functionality (when server is running)
@@ -12,7 +12,7 @@ A comprehensive test suite that validates:
 - 🔍 Data retrieval API endpoints (when server is running)
 - 🔄 Data consistency between different data entry methods
 
-### 2. `test_runner.py`
+### 2. `tests/test_runner.py`
 A smart test runner that can operate in two modes:
 - **Database-only mode** (default): Tests database operations without requiring API server
 - **Full mode**: Tests both database and API operations with automatic server management
@@ -21,13 +21,13 @@ A smart test runner that can operate in two modes:
 
 ### Quick Database-Only Tests
 ```bash
-python test_runner.py
+python tests/test_runner.py
 ```
 This runs all database tests and skips API tests. Perfect for development and CI/CD pipelines.
 
 ### Full Test Suite (Database + API)
 ```bash
-python test_runner.py full
+python tests/test_runner.py full
 ```
 This automatically:
 1. Starts the FastAPI server on localhost:8000
@@ -37,11 +37,11 @@ This automatically:
 ### Manual Test Execution
 ```bash
 # Direct execution (requires manual server management)
-python test_comprehensive_data_flow.py
+python tests/test_comprehensive_data_flow.py
 
 # Set database-only mode manually
 set RCI_TEST_MODE=database_only
-python test_comprehensive_data_flow.py
+python tests/test_comprehensive_data_flow.py
 ```
 
 ## Test Features
@@ -72,14 +72,14 @@ The test suite provides detailed output including:
 ```
 🧪 Road Condition Indexer Test Runner
 ==================================================
-💡 Running database-only tests. Use 'python test_runner.py full' for API tests.
+💡 Running database-only tests. Use 'python tests/test_runner.py full' for API tests.
 
 🧪 Running Database-Only Tests
 ==================================================
 🧪 Road Condition Indexer - Comprehensive Data Flow Test
 ================================================================================
 🔧 Test Device ID: test_20250724_182625_942228f6
-🗄️  Database Type: SQLite
+🗄️  Database Type: SQL Server
 --------------------------------------------------------------------------------
 ✅ PASS Direct Database Insert: Successfully inserted and verified record ID 32
 ✅ PASS API POST with Verification: Skipped in database-only mode
@@ -98,8 +98,8 @@ The test suite provides detailed output including:
 ## Development Workflow
 
 ### For Development
-1. Use `python test_runner.py` during development to quickly validate database operations
-2. Use `python test_runner.py full` before committing to ensure full functionality
+1. Use `python tests/test_runner.py` during development to quickly validate database operations
+2. Use `python tests/test_runner.py full` before committing to ensure full functionality
 
 ### For CI/CD
 - Use database-only mode in CI/CD pipelines where API server setup is complex
