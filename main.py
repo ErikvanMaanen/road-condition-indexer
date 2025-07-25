@@ -8,12 +8,14 @@ import hashlib
 import pytz
 from contextlib import asynccontextmanager
 
-# Comprehensive warning suppression for Azure SDK and Python 3.13 compatibility
+# Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", message="invalid escape sequence", category=SyntaxWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="azure")
 warnings.filterwarnings("ignore", message=r".*maintenance_window_cycles.*", category=SyntaxWarning)
 warnings.filterwarnings("ignore", message=r".*KEY_LOCAL_MACHINE.*", category=SyntaxWarning)
+# Additional Python 3.12 compatibility
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
 from scipy import signal
 

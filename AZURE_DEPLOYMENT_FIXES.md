@@ -1,18 +1,26 @@
 # Azure Deployment Fix Guide
 
+## Python Version Support
+
+This application supports both **Python 3.12** and **Python 3.13**:
+- **Python 3.12**: Recommended for production (see `PYTHON_312_DEPLOYMENT.md`)
+- **Python 3.13**: Supported with additional warning suppressions
+
 ## Issues Fixed
 
-### 1. SyntaxWarning from Azure SDK (Python 3.13 Compatibility)
+### 1. SyntaxWarning from Azure SDK (Python 3.12/3.13 Compatibility)
 
-**Problem**: Azure Management SDK modules contain invalid escape sequences that trigger SyntaxWarnings in Python 3.13.
+**Problem**: Azure Management SDK modules contain invalid escape sequences that trigger SyntaxWarnings in Python 3.12+ and especially Python 3.13.
 
-**Solution**: Added warning suppression at the top of `main.py`:
+**Solution**: Added comprehensive warning suppression at the top of `main.py`:
 
 ```python
 import warnings
-# Suppress all SyntaxWarning from Azure SDK modules for Python 3.13 compatibility
+# Python 3.12/3.13 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", message="invalid escape sequence", category=SyntaxWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="azure")
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 ```
 
 ### 2. App Service Health Check Failures
@@ -63,8 +71,22 @@ def health_check():
 
 ### Application Settings (Environment Variables)
 
-Add these to your Azure App Service Configuration > Application settings:
+**For Python 3.12 (Recommended):**
+```
+PYTHONUNBUFFERED=1
+PYTHONIOENCODING=utf-8
+PYTHONWARNINGS=ignore::SyntaxWarning,ignore::DeprecationWarning:azure,ignore::PendingDeprecationWarning
+UVICORN_HOST=0.0.0.0
+UVICORN_PORT=8000
+UVICORN_LOG_LEVEL=info
+WEBSITES_ENABLE_APP_SERVICE_STORAGE=true
+WEBSITES_MOUNT_ENABLED=1
+WEBSITES_CONTAINER_START_TIME_LIMIT=1800
+PYTHON_VERSION=3.12
+DEBUG=false
+```
 
+**For Python 3.13:**
 ```
 PYTHONUNBUFFERED=1
 PYTHONIOENCODING=utf-8
@@ -80,7 +102,7 @@ DEBUG=false
 
 ### Startup Command Options
 
-**Option 1: Simple startup command (RECOMMENDED)**
+**Option 1: Simple startup command (RECOMMENDED for Python 3.12)**
 Use this in your Azure App Service Configuration > General settings > Startup Command:
 
 ```bash

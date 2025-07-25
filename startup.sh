@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Azure App Service startup script for Road Condition Indexer
-echo "🚀 Starting Road Condition Indexer..."
+# Azure App Service startup script for Road Condition Indexer (Python 3.12)
+echo "🚀 Starting Road Condition Indexer on Python 3.12..."
 
-# Set environment variables for Python
+# Set environment variables for Python 3.12
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="/home/site/wwwroot:$PYTHONPATH"
 
-# Suppress Python warnings comprehensively
-export PYTHONWARNINGS="ignore::SyntaxWarning,ignore::DeprecationWarning:azure"
+# Python 3.12 compatible warning suppression
+export PYTHONWARNINGS="ignore::SyntaxWarning,ignore::DeprecationWarning:azure,ignore::PendingDeprecationWarning"
 
 # Set Azure-specific environment variables
 export AZURE_FUNCTIONS_ENVIRONMENT=Production
@@ -24,6 +24,10 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
+# Python version check
+echo "🐍 Python version check..."
+python3 --version
+
 # Check if ODBC driver is available
 echo "🔍 Checking ODBC driver availability..."
 if ! odbcinst -q -d -n "ODBC Driver 18 for SQL Server" >/dev/null 2>&1; then
@@ -38,13 +42,12 @@ fi
 echo "⏳ Waiting for system to be ready..."
 sleep 3
 
-# Start the FastAPI application with Azure-optimized settings
-echo "🌟 Starting FastAPI application..."
+# Start the FastAPI application with Python 3.12 optimized settings
+echo "🌟 Starting FastAPI application on Python 3.12..."
 exec uvicorn main:app \
     --host 0.0.0.0 \
     --port ${PORT:-8000} \
     --workers 1 \
     --timeout-keep-alive 65 \
     --access-log \
-    --log-level info \
-    --no-access-log
+    --log-level info
