@@ -139,7 +139,8 @@ def test_startup_function():
     
     try:
         # Import necessary modules
-        from database import db_manager, LogCategory, log_info, log_error
+        from database import db_manager, LogCategory
+        from log_utils import log_info, log_error
         import time
         
         print("Starting simulated startup test...")

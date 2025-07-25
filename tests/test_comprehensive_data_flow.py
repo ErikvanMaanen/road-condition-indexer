@@ -24,7 +24,8 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import database manager for direct operations
-from database import DatabaseManager, TABLE_BIKE_DATA, LogLevel, LogCategory
+from database import DatabaseManager, TABLE_BIKE_DATA
+from log_utils import LogLevel, LogCategory
 
 # Load .env for local development
 try:

@@ -82,7 +82,8 @@ def test_database_module():
     print("Testing database module import...")
     
     try:
-        from database import DatabaseManager, LogLevel, LogCategory, TABLE_USER_ACTIONS
+        from database import DatabaseManager, TABLE_USER_ACTIONS
+        from log_utils import LogLevel, LogCategory
         print("✓ Database module imported successfully")
         print(f"✓ LogLevel enum: {list(LogLevel)}")
         print(f"✓ LogCategory enum: {list(LogCategory)}")
@@ -96,7 +97,8 @@ def test_database_manager_creation():
     """Test creating a DatabaseManager instance."""
     print("Testing DatabaseManager creation...")
     
-    from database import DatabaseManager, LogLevel, LogCategory
+    from database import DatabaseManager
+    from log_utils import LogLevel, LogCategory
     
     # Create with default settings
     db_manager = DatabaseManager()

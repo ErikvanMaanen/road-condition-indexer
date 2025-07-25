@@ -5,7 +5,8 @@ import sys
 import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database import db_manager, log_info, log_error
+from database import db_manager
+from log_utils import log_info, log_error, log_debug
 from datetime import datetime
 import traceback
 
@@ -29,7 +30,6 @@ def test_log_endpoint_simulation():
     try:
         # Simulate the main.py log_debug calls
         print("Step 1: Initial logging")
-        from main import log_debug
         
         log_info(f"Received log entry from device {test_entry['device_id']}", device_id=test_entry['device_id'])
         log_debug(f"Log entry details: lat={test_entry['latitude']}, lon={test_entry['longitude']}, speed={test_entry['speed']}, z_values count={len(test_entry['z_values'])}", device_id=test_entry['device_id'])

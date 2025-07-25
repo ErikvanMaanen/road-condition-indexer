@@ -4,7 +4,8 @@ import sys
 import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database import db_manager, LogLevel, LogCategory, TABLE_DEBUG_LOG
+from database import db_manager, TABLE_DEBUG_LOG
+from log_utils import LogLevel, LogCategory
 
 print("🔍 Detailed Debug Log Investigation")
 print("=" * 50)

@@ -21,7 +21,8 @@ print("✅ Environment variables loaded")
 
 # Import database manager
 print("🔄 Importing database manager...")
-from database import DatabaseManager, LogLevel, LogCategory
+from database import DatabaseManager
+from log_utils import LogLevel, LogCategory
 print("✅ Database manager imported")
 
 def progress_indicator(message, timeout=30):

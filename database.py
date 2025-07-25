@@ -14,10 +14,12 @@ import traceback
 import time
 from pathlib import Path
 from datetime import datetime
-from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
 import pytz
+
+# Import logging utilities
+from log_utils import LogLevel, LogCategory, _get_dutch_time_for_db
 
 # Load environment variables from .env file
 try:
@@ -42,28 +44,6 @@ except ImportError:
             self.status_code = status_code
             self.detail = detail
             super().__init__(detail)
-
-# Log levels and categories for filtering
-class LogLevel(Enum):
-    """Debug log levels."""
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    CRITICAL = "CRITICAL"
-
-class LogCategory(Enum):
-    """Debug log categories for filtering."""
-    DATABASE = "DATABASE"
-    CONNECTION = "CONNECTION"
-    QUERY = "QUERY"
-    MANAGEMENT = "MANAGEMENT"
-    MIGRATION = "MIGRATION"
-    BACKUP = "BACKUP"
-    GENERAL = "GENERAL"
-    STARTUP = "STARTUP"
-    USER_ACTION = "USER_ACTION"
-    SQL_OPERATION = "SQL_OPERATION"
 
 # Table name constants
 TABLE_BIKE_DATA = "RCI_bike_data"
@@ -149,29 +129,7 @@ class DatabaseManager:
     
     def _get_dutch_time(self, utc_time: datetime = None) -> str:
         """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
-        try:
-            if utc_time is None:
-                utc_time = datetime.utcnow()
-            
-            # Set UTC timezone
-            utc_time = utc_time.replace(tzinfo=pytz.UTC)
-            
-            # Convert to Dutch time
-            dutch_tz = pytz.timezone('Europe/Amsterdam')
-            dutch_time = utc_time.astimezone(dutch_tz)
-            
-            # Return format compatible with SQL Server (remove timezone info)
-            if self.use_sqlserver:
-                return dutch_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # SQL Server likes milliseconds, not microseconds
-            else:
-                return dutch_time.isoformat()
-        except Exception:
-            # Fallback to UTC if timezone conversion fails
-            fallback_time = utc_time or datetime.utcnow()
-            if self.use_sqlserver:
-                return fallback_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            else:
-                return fallback_time.isoformat()
+        return _get_dutch_time_for_db(utc_time, self.use_sqlserver)
     
     def _parse_dutch_time_display(self, iso_time_str: str) -> str:
         """Parse ISO time string and return formatted Dutch time for display."""
@@ -1923,15 +1881,3 @@ def get_debug_logs(level_filter: Optional[LogLevel] = None,
                   limit: Optional[int] = 100) -> List[Dict[str, Any]]:
     """Get debug logs with filtering."""
     return db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
-
-def log_info(message: str, category: LogCategory = LogCategory.GENERAL, device_id: Optional[str] = None) -> None:
-    """Log an info message."""
-    db_manager.log_debug(message, LogLevel.INFO, category, device_id=device_id)
-
-def log_warning(message: str, category: LogCategory = LogCategory.GENERAL, device_id: Optional[str] = None) -> None:
-    """Log a warning message."""
-    db_manager.log_debug(message, LogLevel.WARNING, category, device_id=device_id)
-
-def log_error(message: str, category: LogCategory = LogCategory.GENERAL, include_stack: bool = True, device_id: Optional[str] = None) -> None:
-    """Log an error message."""
-    db_manager.log_debug(message, LogLevel.ERROR, category, include_stack, device_id=device_id)

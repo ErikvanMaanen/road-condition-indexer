@@ -21,8 +21,11 @@ from typing import Dict, List, Optional, Tuple
 # Import database constants and manager
 from database import (
     DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS,
-    TABLE_USER_ACTIONS, LogLevel, LogCategory, log_info, log_warning, log_error
+    TABLE_USER_ACTIONS
 )
+
+# Import logging utilities
+from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_dutch_time
 
 try:
     from azure.identity import ClientSecretCredential
@@ -412,61 +415,9 @@ def read_comprehensive_logs(request: Request):
     )
     return FileResponse(BASE_DIR / "static" / "comprehensive-logs.html")
 
-# In-memory debug log
-DEBUG_LOG: List[str] = []
-
 # Track last received location for each device
 # Maps device_id -> (timestamp, latitude, longitude)
 LAST_POINT: Dict[str, Tuple[datetime, float, float]] = {}
-
-
-def get_dutch_time(utc_time: datetime = None) -> str:
-    """Convert UTC time to Dutch time (Europe/Amsterdam) with daylight saving."""
-    try:
-        if utc_time is None:
-            utc_time = datetime.utcnow()
-        
-        # Set UTC timezone
-        utc_time = utc_time.replace(tzinfo=pytz.UTC)
-        
-        # Convert to Dutch time
-        dutch_tz = pytz.timezone('Europe/Amsterdam')
-        dutch_time = utc_time.astimezone(dutch_tz)
-        
-        return dutch_time.isoformat()
-    except Exception:
-        # Fallback to UTC if timezone conversion fails
-        return (utc_time or datetime.utcnow()).isoformat()
-
-
-def log_debug(message: str, device_id: Optional[str] = None) -> None:
-    """Append message to debug log with timestamp. If message contains 'error' or 'exception', log as error in DB."""
-    timestamp = get_dutch_time()
-    formatted_message = f"{timestamp} - {message}"
-    
-    # Add device ID to message if provided
-    if device_id:
-        formatted_message = f"{timestamp} - [DEVICE:{device_id}] {message}"
-    
-    DEBUG_LOG.append(formatted_message)
-    
-    # Also print to console for immediate debugging (can be removed in production)
-    print(f"DEBUG: {formatted_message}")
-    
-    # keep only last 100 messages
-    if len(DEBUG_LOG) > 100:
-        del DEBUG_LOG[:-100]
-        
-    # Log to DB as error if message contains 'error' or 'exception', else as debug
-    try:
-        lower_msg = message.lower()
-        if 'error' in lower_msg or 'exception' in lower_msg or '❌' in message:
-            log_error(message, device_id=device_id)
-        else:
-            db_manager.log_debug(message, LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
-    except Exception as db_log_exc:
-        # If database logging fails, at least we have console output
-        print(f"DB_LOG_ERROR: Failed to log to database: {db_log_exc}")
 
 
 def get_elevation(latitude: float, longitude: float) -> Optional[float]:
@@ -668,12 +619,6 @@ def startup_init():
             error_message=str(e),
             additional_data={"duration_ms": total_time}
         )
-        
-        step_duration = (time.time() - step_start_time) * 1000
-        log_info(f"✅ Step 4 Complete: Data integrity check completed ({step_duration:.2f}ms)", LogCategory.STARTUP)
-        db_manager.log_startup_event("DATA_INTEGRITY_SUCCESS", f"Data integrity check completed in {step_duration:.2f}ms", additional_data={"record_counts": data_stats})
-        
-        conn.close()
         
     # Step 5: System Configuration Check
     try:

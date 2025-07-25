@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import database manager
-from database import DatabaseManager, LogLevel, LogCategory
+from database import DatabaseManager
+from log_utils import LogLevel, LogCategory
 
 def test_data_flow():
     """Test complete data flow: insert -> verify -> retrieve"""

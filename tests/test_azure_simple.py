@@ -174,7 +174,8 @@ try:
     # Import with timeout protection
     start_time = time.time()
     
-    from database import DatabaseManager, LogLevel
+    from database import DatabaseManager
+    from log_utils import LogLevel
     
     # Create the manager
     db_manager = DatabaseManager(log_level=LogLevel.INFO)  # Use INFO instead of DEBUG to reduce output
