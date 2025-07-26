@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
+    <script src="utils.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 2rem; }
         #login-box { max-width: 300px; margin: auto; }
@@ -57,46 +58,6 @@ async function doLogin() {
         addLog('Login failed');
         document.getElementById('pw').value = '';
         document.getElementById('pw').focus();
-    }
-}
-
-function addLog(msg, category = 'General', level = 'INFO') {
-    const div = document.getElementById('log');
-    if (div) {
-        const time = formatDutchTime(new Date().toISOString());
-        div.textContent += `[${time}] [${level}] [${category}] ${msg}\n`;
-        div.scrollTop = div.scrollHeight;
-    }
-}
-
-function addDebug(msg, category = 'Debug', level = 'DEBUG', error = null) {
-    const el = document.getElementById('debug');
-    if (el) {
-        const time = formatDutchTime(new Date().toISOString());
-        let out = `[${time}] [${level}] [${category}] ${msg}`;
-        if (level === 'ERROR' && error && error.stack) {
-            out += `\nStack: ${error.stack}`;
-        }
-        el.value += out + '\n';
-        el.scrollTop = el.scrollHeight;
-    }
-}
-
-// Utility function to format time in Dutch timezone
-function formatDutchTime(isoString) {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString('nl-NL', {
-            timeZone: 'Europe/Amsterdam',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    } catch (error) {
-        return isoString; // Fallback to original string
     }
 }
 </script>

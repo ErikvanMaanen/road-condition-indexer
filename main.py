@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-PASSWORD_HASH = "df5f648063a4a2793f5f0427b210f4f7"
+PASSWORD_HASH = "e28f6f1ab660f33fda13a0a9a42e2b3d"
 
 # Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))

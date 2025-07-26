@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Condition Indexer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="utils.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
         #log {
@@ -551,45 +552,6 @@ function checkDatabaseStatus() {
         });
 }
 
-// Load logs partial with improved error handling
-async function loadLogsPartial() {
-    try {
-        const response = await fetch('logs-partial.html');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.text();
-        const container = document.getElementById('logs-container');
-        if (container) {
-            container.innerHTML = data;
-            // Execute any scripts in the loaded content
-            const scripts = container.querySelectorAll('script');
-            scripts.forEach(script => {
-                const newScript = document.createElement('script');
-                newScript.textContent = script.textContent;
-                document.head.appendChild(newScript);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading logs partial:', error);
-        // Fallback: create basic log functions if partial fails to load
-        window.addLog = function(msg) {
-            console.log('Log:', msg);
-        };
-        window.addDebug = function(msg, category = 'Debug', level = 'DEBUG') {
-            console.log(`Debug [${level}] [${category}]:`, msg);
-        };
-        window.addMessage = function(msg, level = 'INFO', category = 'General') {
-            console.log(`Message [${level}] [${category}]:`, msg);
-        };
-        window.toggleLogs = function() {
-            console.log('Logs toggle requested but partial not loaded');
-        };
-    }
-}
-
-
-
 if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', (event) => {
         if (event.beta !== null && event.gamma !== null) {
@@ -728,26 +690,6 @@ function initMap() {
     addFullscreenControl(map);
 }
 
-function addFullscreenControl(m) {
-    const Full = L.Control.extend({
-        onAdd: function() {
-            const btn = L.DomUtil.create('button', 'leaflet-bar');
-            btn.textContent = '⤢';
-            L.DomEvent.on(btn, 'click', () => {
-                const el = m.getContainer();
-                addLog('Fullscreen button pressed');
-                if (!document.fullscreenElement) {
-                    el.requestFullscreen?.();
-                } else {
-                    document.exitFullscreen?.();
-                }
-            });
-            return btn;
-        }
-    });
-    m.addControl(new Full({ position: 'topleft' }));
-}
-
 function updateStatus() {
     const el = document.getElementById('status');
     el.textContent =
@@ -758,125 +700,6 @@ function updateStatus() {
         `Y: ${lastAcc.y.toFixed(2)} ` +
         `Z: ${lastAcc.z.toFixed(2)} | ` +
         `Roughness: ${lastRoughness.toFixed(2)}`;
-}
-
-function colorForRoughness(r, min, max) {
-    let ratio = 0;
-    if (typeof min === 'number' && typeof max === 'number' && max !== min) {
-        ratio = (r - min) / (max - min);
-    } else if (roughAvg > 0) {
-        ratio = r / (roughAvg * 2);
-    } else if (roughMax !== roughMin) {
-        ratio = (r - roughMin) / (roughMax - roughMin);
-    }
-    ratio = Math.min(Math.max(ratio, 0), 1);
-    const red = Math.floor(255 * ratio);
-    const green = Math.floor(255 * (1 - ratio));
-    return `rgb(${red},${green},0)`;
-}
-
-function directionToCompass(deg) {
-    if (deg === null || isNaN(deg)) return 'N/A';
-    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    const idx = Math.round((deg % 360) / 45) % 8;
-    return directions[idx];
-}
-
-function roughnessLabel(r) {
-    let min = roughMin;
-    let max = roughMax;
-    if (max === min) {
-        if (roughAvg > 0) {
-            min = 0;
-            max = roughAvg * 2;
-        } else {
-            max = min + LABEL_COUNT;
-        }
-    }
-    const offset = 1;
-    let logMin = Math.log(min + offset);
-    let logMax = Math.log(max + offset);
-    if (logMax === logMin) logMax = logMin + 1;
-    const ratio = (Math.log(r + offset) - logMin) / (logMax - logMin);
-    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor(ratio * LABEL_COUNT)));
-    return String(idx + 1);
-}
-
-function roughnessRange(idx) {
-    let min = roughMin;
-    let max = roughMax;
-    if (max === min) {
-        if (roughAvg > 0) {
-            min = 0;
-            max = roughAvg * 2;
-        } else {
-            max = min + LABEL_COUNT;
-        }
-    }
-    const offset = 1;
-    let logMin = Math.log(min + offset);
-    let logMax = Math.log(max + offset);
-    if (logMax === logMin) logMax = logMin + 1;
-    const low = Math.exp((logMax - logMin) * idx / LABEL_COUNT + logMin) - offset;
-    const high = Math.exp((logMax - logMin) * (idx + 1) / LABEL_COUNT + logMin) - offset;
-    return [low, high];
-}
-
-function updateRoughnessLabels() {
-    const select = document.getElementById('roughness-filter');
-    if (select) {
-        for (let i = 0; i < LABEL_COUNT; i++) {
-            const opt = select.options[i + 1];
-            if (!opt) continue;
-            const [low, high] = roughnessRange(i);
-            opt.textContent = `${i + 1} - ${ROUGHNESS_NAMES[i]} (${low.toFixed(2)}-${high.toFixed(2)})`;
-        }
-    }
-    const items = document.querySelectorAll('#roughness-scale ol li');
-    items.forEach((li, idx) => {
-        if (idx >= LABEL_COUNT) return;
-        const [low, high] = roughnessRange(idx);
-        li.textContent = `${ROUGHNESS_NAMES[idx]} (${low.toFixed(2)}-${high.toFixed(2)})`;
-    });
-}
-
-// Utility function to format time in Dutch timezone
-function formatDutchTime(isoString) {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString('nl-NL', {
-            timeZone: 'Europe/Amsterdam',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    } catch (error) {
-        return isoString; // Fallback to original string
-    }
-}
-
-// Utility function to convert timestamp to CEST datetime-local format
-function toCESTDateTimeLocal(timestamp) {
-    try {
-        const date = new Date(timestamp);
-        // Convert to Europe/Amsterdam timezone
-        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
-        return cesTime.toISOString().slice(0, 16);
-    } catch (error) {
-        // Fallback to UTC
-        return new Date(timestamp).toISOString().slice(0, 16);
-    }
-}
-
-function filterRoughness(r) {
-    const sel = document.getElementById('roughness-filter');
-    if (!sel) return true;
-    const values = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
-    if (values.length === 0) return true;
-    return values.includes(roughnessLabel(r));
 }
 
 function zUp(acc) {
@@ -890,34 +713,6 @@ function zUp(acc) {
     const upZ = -gZ;
     const mag = Math.sqrt(upX*upX + upY*upY + upZ*upZ) || 1;
     return (acc.x * upX + acc.y * upY + acc.z * upZ) / mag;
-}
-
-function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
-    if (!map || (lat === 0 && lon === 0)) return;
-    const opts = {
-        color: colorForRoughness(roughness, min, max),
-        radius: 4,
-        weight: 1,
-        opacity: 0.9,
-        fillOpacity: 0.9
-    };
-    const marker = L.circleMarker([lat, lon], opts).addTo(map);
-    let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
-    if (nickname) popup = `Device: ${nickname}<br>` + popup;
-    if (info) {
-        const timeStr = formatDutchTime(info.timestamp);
-        popup = `Time: ${timeStr}<br>` +
-                `Speed: ${info.speed.toFixed(1)} km/h<br>` +
-                `Dir: ${directionToCompass(info.direction)}<br>` +
-                `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
-        if (nickname) popup = `Device: ${nickname}<br>` + popup;
-    }
-    marker.bindPopup(popup);
-    if (info && info.id) {
-        marker.on('click', () => {
-            localStorage.setItem('selectedRecordId', info.id);
-        });
-    }
 }
 
 function loadLogs() {

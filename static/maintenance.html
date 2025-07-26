@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Maintenance</title>
+    <script src="utils.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 600px; }
         #page-links { margin-bottom: 1rem; }
@@ -468,37 +469,6 @@
 let autoRefreshInterval = null;
 let currentLogs = [];
 
-// Utility function to format time in Dutch timezone
-function formatDutchTime(isoString) {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString('nl-NL', {
-            timeZone: 'Europe/Amsterdam',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    } catch (error) {
-        return isoString; // Fallback to original string
-    }
-}
-
-// Utility function to convert timestamp to CEST datetime-local format
-function toCESTDateTimeLocal(timestamp) {
-    try {
-        const date = new Date(timestamp);
-        // Convert to Europe/Amsterdam timezone
-        const cesTime = new Date(date.toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }));
-        return cesTime.toISOString().slice(0, 16);
-    } catch (error) {
-        // Fallback to UTC
-        return new Date(timestamp).toISOString().slice(0, 16);
-    }
-}
-
 // Database log viewer functions
 async function loadDatabaseLogs() {
     const levelFilter = document.getElementById('log-level-filter').value;
@@ -680,12 +650,6 @@ function toggleAutoRefresh() {
         btn.textContent = '⏯️ Auto-refresh: ON';
         btn.style.background = '#28a745';
     }
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 async function repairDatabase() {
@@ -924,43 +888,6 @@ document.getElementById('fastapi-test-btn').addEventListener('click', async func
         btn.textContent = 'Test FastAPI Server';
     }
 });
-
-// Load logs partial with improved error handling
-async function loadLogsPartial() {
-    try {
-        const response = await fetch('logs-partial.html');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.text();
-        const container = document.getElementById('logs-container');
-        if (container) {
-            container.innerHTML = data;
-            // Execute any scripts in the loaded content
-            const scripts = container.querySelectorAll('script');
-            scripts.forEach(script => {
-                const newScript = document.createElement('script');
-                newScript.textContent = script.textContent;
-                document.head.appendChild(newScript);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading logs partial:', error);
-        // Fallback: create basic log functions if partial fails to load
-        window.addLog = function(msg) {
-            console.log('Log:', msg);
-        };
-        window.addDebug = function(msg, category = 'Debug', level = 'DEBUG') {
-            console.log(`Debug [${level}] [${category}]:`, msg);
-        };
-        window.addMessage = function(msg, level = 'INFO', category = 'General') {
-            console.log(`Message [${level}] [${category}]:`, msg);
-        };
-        window.toggleLogs = function() {
-            console.log('Logs toggle requested but partial not loaded');
-        };
-    }
-}
 
 // Load logs partial when DOM is ready
 document.addEventListener('DOMContentLoaded', loadLogsPartial);
