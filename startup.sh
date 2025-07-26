@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Azure App Service startup script for Road Condition Indexer (Python 3.12)
-echo "🚀 Starting Road Condition Indexer on Python 3.12..."
+echo "🚀 Starting Road Condition Indexer with SQLAlchemy database backend..."
 
 # Set environment variables for Python 3.12
 export PYTHONUNBUFFERED=1
@@ -28,15 +28,20 @@ fi
 echo "🐍 Python version check..."
 python3 --version
 
-# Check if ODBC driver is available
-echo "🔍 Checking ODBC driver availability..."
-if ! odbcinst -q -d -n "ODBC Driver 18 for SQL Server" >/dev/null 2>&1; then
-    echo "⚠️ ODBC Driver 18 not found, checking for Driver 17..."
-    if ! odbcinst -q -d -n "ODBC Driver 17 for SQL Server" >/dev/null 2>&1; then
-        echo "❌ No suitable ODBC driver found"
-        exit 1
-    fi
+# Check database backend configuration
+echo "🔍 Checking database configuration..."
+if [ -n "$AZURE_SQL_SERVER" ] && [ -n "$AZURE_SQL_DATABASE" ] && [ -n "$AZURE_SQL_USER" ] && [ -n "$AZURE_SQL_PASSWORD" ]; then
+    echo "✅ Azure SQL configuration found - using SQL Server backend"
+    echo "   Server: $AZURE_SQL_SERVER"
+    echo "   Database: $AZURE_SQL_DATABASE"
+    echo "   User: $AZURE_SQL_USER"
+else
+    echo "⚠️  Azure SQL configuration incomplete - will use SQLite fallback"
+    echo "   SQLite database will be created automatically"
 fi
+
+# Note: No ODBC driver check needed - using pymssql directly
+echo "✅ Using pymssql driver - no ODBC dependencies required"
 
 # Wait for system to be ready
 echo "⏳ Waiting for system to be ready..."

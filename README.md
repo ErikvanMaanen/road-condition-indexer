@@ -1,6 +1,24 @@
 # Road Condition Indexer
 
-This project collects road roughness data from mobile devices and stores it in an Azure SQL database. The backend is built with FastAPI.
+This project collects road roughness data from mobile devices and stores it in a database. The backend is built with FastAPI and uses SQLAlchemy for robust database management with support for both Azure SQL Server and SQLite.
+
+## Database Backend
+
+The application uses a modern SQLAlchemy-based database layer with automatic fallback capability:
+
+### **Primary Backend: Azure SQL Server**
+- **Driver**: SQLAlchemy with pymssql 
+- **Connection**: Secure, connection-pooled access to Azure SQL
+- **Features**: Production-scale, automatic failover, backup capabilities
+- **Configuration**: Set Azure SQL environment variables (see Setup section)
+
+### **Fallback Backend: SQLite** 
+- **Driver**: SQLAlchemy with built-in SQLite support
+- **Connection**: Local file-based database (`RCI_local.db`)
+- **Features**: Zero-configuration, perfect for development and testing
+- **Activation**: Automatic when Azure SQL environment variables are not provided
+
+The application automatically detects available configuration and chooses the appropriate backend without requiring code changes.
 
 ## Endpoints
 
@@ -15,39 +33,75 @@ This project collects road roughness data from mobile devices and stores it in a
 
 ## Setup
 
-1. Create an `.env` file based on `.env.template` and fill in your Azure SQL connection details.
-2. Install dependencies:
+1. **Environment Configuration** (Optional for Azure SQL):
+   Create an `.env` file with your Azure SQL connection details:
+   ```env
+   AZURE_SQL_SERVER=your-server.database.windows.net
+   AZURE_SQL_DATABASE=your-database-name
+   AZURE_SQL_USER=your-username
+   AZURE_SQL_PASSWORD=your-password
+   AZURE_SQL_PORT=1433
+   ```
+   
+   **Note**: If these variables are not provided, the application will automatically use SQLite for local development.
+
+2. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
-   This project requires the Microsoft ODBC Driver for SQL Server
-   (version 17 or 18). If you see an error like `Can't open lib 'ODBC Driver'`
-   when running `setup_env.py`, install the driver for your operating system.
+   
+   **Key Dependencies**:
+   - `sqlalchemy>=2.0.0` - Modern database ORM
+   - `pymssql>=2.2.0` - SQL Server driver (no ODBC required)
+   - `fastapi>=0.104.0` - Web framework
+   - `numpy`, `scipy` - Scientific computing for data processing
 
-   If the Azure SQL environment variables are not provided the API will
-   automatically fall back to a local SQLite database stored in
-   `local.db`. This allows running the server without any external
-   database service.
-3. (Optional) Run `python setup_env.py` to verify environment variables and database connectivity.
-4. Start the API server:
+3. **Environment Verification** (Recommended):
+   ```bash
+   python setup_env.py
+   ```
+   This will verify your Python environment, check dependencies, and test database connectivity.
+
+4. **Start the API Server**:
    ```bash
    uvicorn main:app --reload --host 0.0.0.0
    ```
+
+## Key Improvements in Database Handling
+
+### **No ODBC Driver Required**
+- **Previous**: Required Microsoft ODBC Driver 17/18 for SQL Server
+- **Current**: Uses pymssql driver with direct TCP connection
+- **Benefit**: Simpler deployment, fewer dependencies, more reliable connections
+
+### **Automatic Fallback**
+- **Previous**: Manual configuration required for database selection
+- **Current**: Automatic detection and fallback to SQLite
+- **Benefit**: Zero-configuration development environment
+
+### **Connection Pooling & Reliability**
+- **Previous**: Manual connection management
+- **Current**: SQLAlchemy connection pooling with automatic reconnection
+- **Benefit**: Better performance, automatic connection recovery
+
+### **Enhanced Error Handling**
+- **Previous**: Basic error reporting
+- **Current**: Comprehensive logging with detailed error tracking
+- **Benefit**: Easier debugging and monitoring
 
 The built-in frontend is served from the `static/` directory under the
 `/static` path when the server is running. The main interface is
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
-
-The `/maintenance.html` page provides controls to inspect the current SQL
-database size and Azure App Service plan and lets you modify these settings.
+The `/maintenance.html` page provides controls to inspect the current database
+and Azure App Service plan settings and lets you modify these configurations.
 
 Use the **Update Records** button in the interface to reload the latest
 roughness records from the database and refresh the map.
 
-When the API starts it will automatically create the `RCI_bike_data` and
-`RCI_debug_log` tables if they do not already exist.
+When the API starts it will automatically create all required tables if they 
+do not already exist, regardless of which database backend is being used.
 
 ## Roughness Pipeline
 
@@ -61,49 +115,84 @@ threshold (7 km/h by default) still yield a roughness score of zero.
 
 ## Database Schema
 
-```
+The application automatically creates the following tables in both SQL Server and SQLite:
+
+### Core Data Tables
+```sql
+-- Main sensor data storage
 CREATE TABLE RCI_bike_data (
-  id INT IDENTITY PRIMARY KEY,
-  timestamp DATETIME DEFAULT GETDATE(),
-  latitude FLOAT,
-  longitude FLOAT,
-  speed FLOAT,
-  direction FLOAT,
-  roughness FLOAT,
-  distance_m FLOAT,
-  device_id NVARCHAR(100),
-  ip_address NVARCHAR(45)
+  id INT IDENTITY PRIMARY KEY,                    -- Auto-incrementing ID
+  timestamp DATETIME DEFAULT GETDATE(),           -- UTC timestamp
+  latitude FLOAT,                                 -- GPS latitude
+  longitude FLOAT,                                -- GPS longitude
+  speed FLOAT,                                    -- Speed in km/h
+  direction FLOAT,                                -- Direction in degrees
+  roughness FLOAT,                                -- Calculated roughness index
+  distance_m FLOAT,                               -- Distance from previous point (meters)
+  device_id NVARCHAR(100),                        -- Device identifier
+  ip_address NVARCHAR(45),                        -- Client IP address
+  elevation FLOAT                                 -- Elevation in meters (if available)
 );
 
+-- Raw sensor data for research (optional)
+CREATE TABLE RCI_bike_source_data (
+  id INT IDENTITY PRIMARY KEY,
+  bike_data_id INT,                               -- Foreign key to RCI_bike_data
+  z_values NVARCHAR(MAX),                         -- JSON array of Z-axis readings
+  speed_kmh FLOAT,                                -- Speed at time of recording
+  interval_sec FLOAT,                             -- Time interval for samples
+  freq_min FLOAT,                                 -- Filter frequency minimum
+  freq_max FLOAT,                                 -- Filter frequency maximum
+  timestamp DATETIME DEFAULT GETDATE()
+);
+```
+
+### Logging and Management Tables
+```sql
+-- Application debug and error logging
 CREATE TABLE RCI_debug_log (
   id INT IDENTITY PRIMARY KEY,
-  timestamp DATETIME DEFAULT GETDATE(),
-  level NVARCHAR(20),
-  category NVARCHAR(50),
-  device_id NVARCHAR(100),
-  message NVARCHAR(4000),
-  stack_trace NVARCHAR(MAX)
+  timestamp DATETIME DEFAULT GETDATE(),           -- UTC timestamp
+  level NVARCHAR(20),                             -- Log level (DEBUG, INFO, WARNING, ERROR)
+  category NVARCHAR(50),                          -- Log category 
+  device_id NVARCHAR(100),                        -- Associated device (if applicable)
+  message NVARCHAR(4000),                         -- Log message
+  stack_trace NVARCHAR(MAX),                      -- Exception stack trace (if applicable)
+  display_time NVARCHAR(50)                       -- Formatted display time
 );
 
+-- Device management and nicknames
 CREATE TABLE RCI_device_nicknames (
-  device_id NVARCHAR(100) PRIMARY KEY,
-  nickname NVARCHAR(100),
-  user_agent NVARCHAR(256),
-  device_fp NVARCHAR(256)
+  device_id NVARCHAR(100) PRIMARY KEY,            -- Device identifier
+  nickname NVARCHAR(100),                         -- User-friendly name
+  user_agent NVARCHAR(256),                       -- Browser/app user agent
+  device_fp NVARCHAR(256),                        -- Device fingerprint
+  last_seen DATETIME DEFAULT GETDATE(),           -- Last activity timestamp
+  total_submissions INT DEFAULT 0                 -- Total data submissions count
 );
 
+-- User action auditing
 CREATE TABLE RCI_user_actions (
   id INT IDENTITY PRIMARY KEY,
-  timestamp DATETIME DEFAULT GETDATE(),
-  action_type NVARCHAR(50),
-  action_description NVARCHAR(500),
-  user_ip NVARCHAR(45),
-  user_agent NVARCHAR(256),
-  device_id NVARCHAR(100),
-  session_id NVARCHAR(100),
-  additional_data NVARCHAR(MAX),
-  success BIT,
-  error_message NVARCHAR(1000)
+  timestamp DATETIME DEFAULT GETDATE(),           -- UTC timestamp
+  action_type NVARCHAR(50),                       -- Type of action performed
+  action_description NVARCHAR(500),               -- Detailed description
+  user_ip NVARCHAR(45),                           -- User IP address
+  user_agent NVARCHAR(256),                       -- Browser/app user agent
+  device_id NVARCHAR(100),                        -- Associated device (if applicable)
+  session_id NVARCHAR(100),                       -- Session identifier
+  additional_data NVARCHAR(MAX),                  -- Additional JSON data
+  success BIT DEFAULT 1,                          -- Success/failure flag
+  error_message NVARCHAR(1000)                    -- Error details (if applicable)
+);
+
+-- Archive for old log data
+CREATE TABLE RCI_archive_logs (
+  id INT IDENTITY PRIMARY KEY,
+  original_table NVARCHAR(100),                   -- Source table name
+  archive_date DATETIME DEFAULT GETDATE(),        -- Archive timestamp
+  record_count INT,                               -- Number of archived records
+  data_json NVARCHAR(MAX)                         -- Archived data in JSON format
 );
 ```
 

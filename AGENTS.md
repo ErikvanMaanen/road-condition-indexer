@@ -1,14 +1,15 @@
 # AI Assistant & Engineer Instructions for Road Condition Indexer
 
 ## Overview
-This is a FastAPI-based application that collects road roughness data from mobile devices and stores it in an Azure SQL Database. The system processes accelerometer data to calculate road roughness metrics and provides a web interface for data visualization.
+This is a FastAPI-based application that collects road roughness data from mobile devices and stores it in a database using modern SQLAlchemy architecture. The system processes accelerometer data to calculate road roughness metrics and provides a web interface for data visualization.
 
 ## Project Architecture
 
 ### Backend (Python/FastAPI)
 - **Main Application**: `main.py` - FastAPI server with all API endpoints
-- **Database Layer**: `database.py` - DatabaseManager class with dual SQL Server/SQLite support
-- **Environment Setup**: `setup_env.py` - Environment validation and database connectivity testing
+- **Database Layer**: `database.py` - SQLAlchemy-based DatabaseManager with automatic backend selection
+- **Logging Utilities**: `log_utils.py` - Centralized logging with categories and levels
+- **Environment Setup**: `setup_env.py` - Modern environment validation and database connectivity testing
 
 ### Frontend (HTML/JavaScript)
 - **Main Interface**: `static/index.html` - Primary data collection interface
@@ -18,24 +19,39 @@ This is a FastAPI-based application that collects road roughness data from mobil
 - **Login**: `static/login.html` - Authentication interface
 
 ### Key Dependencies
-- FastAPI, uvicorn, pyodbc, numpy, scipy, python-dotenv
-- Microsoft ODBC Driver for SQL Server (versions 17 or 18)
-- Leaflet.js for mapping functionality
+- **Core**: FastAPI, uvicorn, SQLAlchemy, pymssql, numpy, scipy, python-dotenv
+- **Database**: No ODBC driver required - uses pymssql for direct SQL Server connections
+- **Frontend**: Leaflet.js for mapping functionality
+- **Azure**: Azure SDK components for optional management features
 
 ## Database Architecture
 
-### Dual Database Support
-The application automatically falls back from Azure SQL to SQLite if Azure credentials are not provided.
+### **Modern SQLAlchemy Backend (Current)**
+- **Primary**: Azure SQL Server via SQLAlchemy + pymssql driver
+- **Fallback**: SQLite via SQLAlchemy for development/testing
+- **Benefits**: Connection pooling, automatic reconnection, zero ODBC dependencies
+
+### **Automatic Backend Selection**
+```python
+# Configured via environment variables
+if all Azure SQL variables present:
+    → Use SQLAlchemy + pymssql → Azure SQL Server
+else:
+    → Use SQLAlchemy + SQLite → Local RCI_local.db file
+```
 
 ### Core Tables
-1. **RCI_bike_data**: Primary data storage (id, timestamp, lat/lon, speed, direction, roughness, distance, device_id, ip)
-2. **RCI_debug_log**: Enhanced logging with levels and categories (id, timestamp, level, category, message, stack_trace)
-3. **RCI_device_nicknames**: Device management (device_id, nickname, user_agent, device_fp)
+1. **RCI_bike_data**: Primary sensor data (id, timestamp, lat/lon, speed, direction, roughness, distance, device_id, ip, elevation)
+2. **RCI_bike_source_data**: Raw sensor data for research (bike_data_id, z_values, speed, interval, frequencies)
+3. **RCI_debug_log**: Enhanced logging (id, timestamp, level, category, device_id, message, stack_trace, display_time)
+4. **RCI_device_nicknames**: Device management (device_id, nickname, user_agent, device_fp, last_seen, total_submissions)
+5. **RCI_user_actions**: User activity auditing (id, timestamp, action_type, user_ip, device_id, success, error_message)
+6. **RCI_archive_logs**: Historical data archiving (id, original_table, archive_date, record_count, data_json)
 
-### Recent Database Improvements
-- **SQLite Optimization**: Implemented WAL mode, context managers, and optimized PRAGMA settings
-- **Connection Management**: Added proper context management to prevent connection leaks
-- **Enhanced Logging**: Multi-level logging with categories (GENERAL, DATABASE, CONNECTION, QUERY, MANAGEMENT, MIGRATION, BACKUP)
+### **Database Migration (Completed)**
+- **Previous**: pyodbc with manual connection management
+- **Current**: SQLAlchemy with connection pooling and automatic backend selection
+- **Impact**: Simpler deployment, better reliability, no ODBC driver dependencies
 
 ## Key Features & Recent Developments
 
