@@ -36,15 +36,7 @@ except ImportError:
     pass
 
 # Import HTTPException for management operations
-try:
-    from fastapi import HTTPException
-except ImportError:
-    # Fallback if FastAPI not available
-    class HTTPException(Exception):
-        def __init__(self, status_code: int, detail: str):
-            self.status_code = status_code
-            self.detail = detail
-            super().__init__(detail)
+from fastapi import HTTPException
 
 # Table name constants
 TABLE_BIKE_DATA = "RCI_bike_data"
@@ -129,7 +121,7 @@ class DatabaseManager:
         category_ok = category in self.log_categories
         return level_ok and category_ok
     
-    def _get_utc_timestamp(self, utc_time: datetime = None) -> str:
+    def _get_utc_timestamp(self, utc_time: Optional[datetime] = None) -> str:
         """Get UTC timestamp for database storage."""
         if utc_time is None:
             utc_time = datetime.utcnow()
@@ -168,7 +160,7 @@ class DatabaseManager:
     def get_connection_context(self, database: Optional[str] = None):
         """Get a database connection with proper context management to prevent journal file issues."""
         engine = self.get_engine(database)
-        connection = None
+        connection: Optional[Any] = None
         try:
             connection = engine.connect()
             yield connection
@@ -683,7 +675,7 @@ class DatabaseManager:
             return
             
         timestamp = self._get_utc_timestamp()
-        stack_trace = None
+        stack_trace: Optional[str] = None
         
         if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:
             stack_trace = traceback.format_stack()[-3:-1]  # Get relevant stack frames
@@ -1305,7 +1297,7 @@ class DatabaseManager:
                 
                 # Get max size - use string conversion to handle ODBC type issues
                 max_size_result = self.execute_scalar("SELECT CAST(DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes') AS NVARCHAR(50))")
-                max_gb = None
+                max_gb: Optional[float] = None
                 if max_size_result and max_size_result not in (None, -1, 0, '-1', '0'):
                     try:
                         max_bytes = int(str(max_size_result))
@@ -1476,6 +1468,7 @@ class DatabaseManager:
             raise ValueError("Access denied: Only RCI_ tables are allowed")
             
         uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
+        rows: List[Dict[str, Any]] = []
         
         if table_name == TABLE_BIKE_DATA:
             # Insert test records
@@ -1795,7 +1788,7 @@ class DatabaseManager:
         cols = list(cols_result[0].keys()) if cols_result else []
         
         # Determine ordering column
-        order_col = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
+        order_col: Optional[str] = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
         
         # Build query
         if order_col:

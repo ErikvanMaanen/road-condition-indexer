@@ -57,7 +57,7 @@ def get_utc_timestamp() -> str:
     """Get current UTC timestamp in ISO format for database storage."""
     return datetime.utcnow().isoformat()
 
-def format_display_time(utc_timestamp: str = None) -> str:
+def format_display_time(utc_timestamp: Optional[str] = None) -> str:
     """Convert UTC timestamp to short Amsterdam time format for display (MM/DD HH:MM:SS)."""
     try:
         if utc_timestamp is None:
