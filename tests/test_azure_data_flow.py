@@ -63,15 +63,10 @@ def test_data_flow():
     # Test 2: Verify insertion with direct query
     print("\n🔍 Test 2: Verifying insertion")
     try:
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT * FROM RCI_bike_data WHERE id = ?", bike_data_id)
-        result = cursor.fetchone()
+        result = db_manager.execute_query("SELECT * FROM RCI_bike_data WHERE id = ?", (bike_data_id,))
         
         if result:
-            columns = [desc[0] for desc in cursor.description]
-            record = dict(zip(columns, result))
+            record = result[0]
             print("✅ Record found in database:")
             print(f"   ID: {record['id']}")
             print(f"   Device: {record['device_id']}")
@@ -81,8 +76,6 @@ def test_data_flow():
         else:
             print("❌ Record not found!")
             return False
-            
-        conn.close()
         
     except Exception as e:
         print(f"❌ Verification failed: {e}")

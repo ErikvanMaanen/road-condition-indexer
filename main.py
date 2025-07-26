@@ -229,18 +229,16 @@ def auth_check(request: Request):
 def health_check():
     """Health check endpoint for Azure App Service probes."""
     try:
-        # Quick database connectivity test
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.fetchone()
-        conn.close()
-        
-        return {
-            "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "database": "connected"
-        }
+        # Quick database connectivity test using SQLAlchemy
+        result = db_manager.execute_scalar("SELECT 1")
+        if result == 1:
+            return {
+                "status": "healthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "database": "connected"
+            }
+        else:
+            raise Exception("Database test query returned unexpected result")
     except Exception as e:
         # Return 503 Service Unavailable if health check fails
         raise HTTPException(
@@ -571,18 +569,17 @@ def startup_init():
         
         # Step 2: Basic connectivity test
         log_info("🔍 Testing database connectivity...", LogCategory.STARTUP)
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.fetchone()
+        test_result = db_manager.execute_scalar("SELECT 1")
+        if test_result != 1:
+            raise Exception("Database connectivity test failed")
         
         # Step 3: Table verification
         if db_manager.use_sqlserver:
-            cursor.execute("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
+            tables_result = db_manager.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
         else:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+            tables_result = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
         
-        tables = [row[0] for row in cursor.fetchall()]
+        tables = [row['name'] for row in tables_result]
         expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS]
         
         missing_tables = [table for table in expected_tables if table not in tables]
@@ -593,14 +590,11 @@ def startup_init():
         
         # Step 4: Quick data summary
         try:
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
-            bike_data_count = cursor.fetchone()[0]
+            bike_data_count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
             log_info(f"📊 Database contains {bike_data_count} bike data records", LogCategory.STARTUP)
         except Exception as e:
             log_warning(f"⚠️ Could not get data count: {e}", LogCategory.STARTUP)
             bike_data_count = 0
-        
-        conn.close()
         
         # Step 5: Quick integrity check (non-blocking)
         try:
@@ -1300,38 +1294,34 @@ def test_database_connection():
         else:
             tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'"
         
-        cursor = conn.cursor()
-        cursor.execute(tables_query)
-        tables = [row[0] for row in cursor.fetchall()]
+        tables_result = db_manager.execute_query(tables_query)
+        tables = [row['name'] for row in tables_result]
         log_debug(f"✅ Found tables: {tables}")
         
         # Test row count in main table
-        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
-        count = cursor.fetchone()[0]
+        count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
         log_debug(f"✅ Total rows in {TABLE_BIKE_DATA}: {count}")
         
         # Test recent data
         if db_manager.use_sqlserver:
-            cursor.execute(f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
+            recent_query = f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
         else:
-            cursor.execute(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 1")
+            recent_query = f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 1"
         
-        recent = cursor.fetchone()
-        if recent:
-            columns = [desc[0] for desc in cursor.description]
-            recent_dict = dict(zip(columns, recent))
+        recent_result = db_manager.execute_query(recent_query)
+        recent_dict = recent_result[0] if recent_result else None
+        
+        if recent_dict:
             log_debug(f"✅ Most recent record: {recent_dict}")
         else:
             log_warning("⚠️ No records found in database")
-        
-        conn.close()
         
         return {
             "status": "success",
             "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite",
             "tables_found": tables,
             "total_records": count,
-            "most_recent": recent_dict if recent else None,
+            "most_recent": recent_dict if recent_dict else None,
             "message": "Database connection and basic operations successful"
         }
         
@@ -1351,17 +1341,13 @@ def get_database_stats():
     try:
         log_debug("🔍 Fetching database statistics")
         
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        
         stats = {}
         
         # Get table counts
         table_names = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES]
         for table in table_names:
             try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
+                count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {table}")
                 stats[f"{table}_count"] = count
                 log_debug(f"📊 {table}: {count} records")
             except Exception as e:
@@ -1371,19 +1357,20 @@ def get_database_stats():
         # Get recent entries from bike data
         try:
             if db_manager.use_sqlserver:
-                cursor.execute(f"SELECT TOP 5 id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
+                recent_query = f"SELECT TOP 5 id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
             else:
-                cursor.execute(f"SELECT id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 5")
+                recent_query = f"SELECT id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 5"
             
+            recent_results = db_manager.execute_query(recent_query)
             recent_entries = []
-            for row in cursor.fetchall():
+            for row in recent_results:
                 recent_entries.append({
-                    "id": row[0],
-                    "timestamp": str(row[1]),
-                    "device_id": row[2],
-                    "latitude": row[3],
-                    "longitude": row[4],
-                    "roughness": row[5]
+                    "id": row["id"],
+                    "timestamp": str(row["timestamp"]),
+                    "device_id": row["device_id"],
+                    "latitude": row["latitude"],
+                    "longitude": row["longitude"],
+                    "roughness": row["roughness"]
                 })
             stats["recent_entries"] = recent_entries
             log_debug(f"📝 Found {len(recent_entries)} recent entries")
@@ -1394,8 +1381,8 @@ def get_database_stats():
         
         # Get unique device IDs
         try:
-            cursor.execute(f"SELECT DISTINCT device_id FROM {TABLE_BIKE_DATA}")
-            device_ids = [row[0] for row in cursor.fetchall()]
+            device_results = db_manager.execute_query(f"SELECT DISTINCT device_id FROM {TABLE_BIKE_DATA}")
+            device_ids = [row["device_id"] for row in device_results]
             stats["unique_devices"] = device_ids
             stats["device_count"] = len(device_ids)
             log_debug(f"📱 Found {len(device_ids)} unique devices: {device_ids}")
@@ -1406,19 +1393,29 @@ def get_database_stats():
         
         # Get date range
         try:
-            cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}")
-            date_range = cursor.fetchone()
-            stats["date_range"] = {
-                "earliest": str(date_range[0]) if date_range[0] else None,
-                "latest": str(date_range[1]) if date_range[1] else None
-            }
-            log_debug(f"📅 Date range: {stats['date_range']}")
+            date_range_results = db_manager.execute_query(f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}")
+            if date_range_results:
+                date_range = date_range_results[0]
+                # Handle different column naming conventions
+                earliest = None
+                latest = None
+                for key, value in date_range.items():
+                    if 'min' in key.lower():
+                        earliest = value
+                    elif 'max' in key.lower():
+                        latest = value
+                
+                stats["date_range"] = {
+                    "earliest": str(earliest) if earliest else None,
+                    "latest": str(latest) if latest else None
+                }
+                log_debug(f"📅 Date range: {stats['date_range']}")
+            else:
+                stats["date_range"] = {"earliest": None, "latest": None}
             
         except Exception as e:
             stats["date_range"] = f"Error: {e}"
             log_error(f"❌ Failed to get date range: {e}")
-        
-        conn.close()
         
         # Add memory cache info
         stats["memory_cache"] = {

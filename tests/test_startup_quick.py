@@ -49,13 +49,9 @@ def main():
             return False
             
         # Quick connection test
-        connection = db_manager.get_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-        connection.close()
+        test_result = db_manager.execute_scalar("SELECT 1")
         
-        if result and result[0] == 1:
+        if test_result == 1:
             print(f"✅ Quick startup test passed in {total_time:.2f}ms")
         else:
             print("❌ Quick startup test failed")

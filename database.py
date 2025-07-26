@@ -11,15 +11,16 @@ import json
 import logging
 import traceback
 import time
+import re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union, Iterator, Generator
 from contextlib import contextmanager
 import pytz
 
 # SQLAlchemy imports
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.pool import StaticPool
 
 # Import logging utilities

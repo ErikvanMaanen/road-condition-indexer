@@ -67,19 +67,9 @@ def test_database_connectivity() -> bool:
         db_manager = DatabaseManager(log_level=LogLevel.INFO)
         
         connection: Optional[Any] = None
-        connection = db_manager.get_connection()
+        test_result = db_manager.execute_scalar("SELECT 1")
         
-        if connection is None:
-            print("❌ Database connection failed - None returned")
-            return False
-            
-        cursor = connection.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-        
-        connection.close()
-        
-        if result and result[0] == 1:
+        if test_result == 1:
             print("✅ Database connectivity test passed")
             return True
         else:

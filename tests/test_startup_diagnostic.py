@@ -147,12 +147,8 @@ def test_startup_function():
         
         # Test database connectivity
         print("Testing database connectivity...")
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-        conn.close()
-        print(f"✅ Database test query result: {result}")
+        test_result = db_manager.execute_scalar("SELECT 1")
+        print(f"✅ Database test query result: {test_result}")
         
         # Test table initialization
         print("Testing table initialization...")
@@ -260,27 +256,21 @@ def diagnostic_startup_test() -> Dict[str, Any]:
     phase_start = time.time()
     
     try:
-        # Test basic query
-        connection = db_manager.get_connection()
-        cursor = connection.cursor()
-        
-        # Test table existence
+        # Test basic query and table existence
         if db_manager.use_sqlserver:
-            cursor.execute("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
+            tables_query = "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'"
         else:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+            tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'"
         
-        tables: List[str] = [row[0] for row in cursor.fetchall()]
+        tables_result = db_manager.execute_query(tables_query)
+        tables = [row['name'] for row in tables_result]
         
         # Test row counts
-        table_counts: Dict[str, int] = {}
+        table_counts = {}
         for table in [TABLE_BIKE_DATA, TABLE_DEBUG_LOG]:
             if table in tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count_result = cursor.fetchone()
-                table_counts[table] = count_result[0] if count_result else 0
-        
-        connection.close()
+                count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {table}")
+                table_counts[table] = count if count else 0
         
         phase_duration = (time.time() - phase_start) * 1000
         print(f"  ✅ Database operations test completed in {phase_duration:.2f}ms")
