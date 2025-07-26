@@ -76,7 +76,9 @@ async def lifespan(app: FastAPI):
         print(f"⚠️ Shutdown warning: {e}")
 
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# Remove direct static file mounting to prevent authentication bypass
+# Static files are now served through individual authenticated routes
 
 # MD5 hash for the default password
 PASSWORD_HASH = "08457aa99f426e5e8410798acd74c23b"
@@ -301,6 +303,24 @@ def read_index(request: Request):
 def get_utils_js():
     """Serve the utils.js file directly to fix relative path issues."""
     return FileResponse(BASE_DIR / "static" / "utils.js", media_type="application/javascript")
+
+
+@app.get("/leaflet.css")
+def get_leaflet_css():
+    """Serve the leaflet.css file."""
+    return FileResponse(BASE_DIR / "static" / "leaflet.css", media_type="text/css")
+
+
+@app.get("/leaflet.js")
+def get_leaflet_js():
+    """Serve the leaflet.js file."""
+    return FileResponse(BASE_DIR / "static" / "leaflet.js", media_type="application/javascript")
+
+
+@app.get("/static/login.html")
+def get_login_page():
+    """Serve the login page - this should be accessible without authentication."""
+    return FileResponse(BASE_DIR / "static" / "login.html")
 
 
 @app.get("/welcome.html")
@@ -943,7 +963,7 @@ def post_log_deprecated(entry: BikeDataEntry, request: Request):
 
 
 @app.get("/logs")
-def get_logs(request: Request, limit: Optional[int] = None):
+def get_logs(request: Request, limit: Optional[int] = None, dep: None = Depends(password_dependency)):
     """Return recent log entries.
 
     If ``limit`` is not provided, all rows are returned. When supplied it must be
@@ -1026,7 +1046,8 @@ def get_logs(request: Request, limit: Optional[int] = None):
 @app.get("/filteredlogs")
 def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                       start: Optional[str] = None,
-                      end: Optional[str] = None):
+                      end: Optional[str] = None,
+                      dep: None = Depends(password_dependency)):
     """Return log entries filtered by device ID and date range."""
     try:
         start_dt = None
@@ -1066,7 +1087,7 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
 
 
 @app.get("/device_ids")
-def get_device_ids():
+def get_device_ids(dep: None = Depends(password_dependency)):
     """Return list of unique device IDs with optional nicknames."""
     try:
         ids = db_manager.get_device_ids_with_nicknames()
@@ -1078,7 +1099,7 @@ def get_device_ids():
 
 
 @app.get("/date_range")
-def get_date_range(device_id: Optional[List[str]] = Query(None)):
+def get_date_range(device_id: Optional[List[str]] = Query(None), dep: None = Depends(password_dependency)):
     """Return the oldest and newest timestamps, optionally filtered by device."""
     try:
         start_str, end_str = db_manager.get_date_range(device_id)
@@ -1095,7 +1116,7 @@ class NicknameEntry(BaseModel):
 
 
 @app.post("/nickname")
-def set_nickname(entry: NicknameEntry):
+def set_nickname(entry: NicknameEntry, dep: None = Depends(password_dependency)):
     """Set or update a nickname for a device."""
     try:
         db_manager.set_device_nickname(entry.device_id, entry.nickname)
@@ -1107,7 +1128,7 @@ def set_nickname(entry: NicknameEntry):
 
 
 @app.get("/nickname")
-def get_nickname(device_id: str):
+def get_nickname(device_id: str, dep: None = Depends(password_dependency)):
     """Get nickname for a device id."""
     try:
         nickname = db_manager.get_device_nickname(device_id)
@@ -1151,7 +1172,7 @@ def get_gpx(limit: Optional[int] = None):
 
 
 @app.get("/debuglog")
-def get_debuglog():
+def get_debuglog(dep: None = Depends(password_dependency)):
     """Get in-memory debug log for compatibility."""
     return {"log": DEBUG_LOG}
 
@@ -2368,17 +2389,14 @@ class ThresholdSettings(BaseModel):
 
 
 @app.get("/api/thresholds")
-def get_thresholds():
+def get_thresholds(dep: None = Depends(password_dependency)):
     """Get current threshold settings."""
     return current_thresholds
 
 
 @app.post("/api/thresholds")
-def set_thresholds(settings: ThresholdSettings, request: Request):
+def set_thresholds(settings: ThresholdSettings, dep: None = Depends(password_dependency)):
     """Update threshold settings."""
-    if not is_authenticated(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
     # Validate frequency range
     if settings.freq_min >= settings.freq_max:
         raise HTTPException(status_code=400, detail="freq_min must be less than freq_max")

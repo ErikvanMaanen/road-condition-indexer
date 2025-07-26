@@ -43,23 +43,67 @@
 <script>
 async function doLogin() {
     const pw = document.getElementById('pw').value;
-    const res = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw })
-    });
-    if (res.ok) {
-        const params = new URLSearchParams(location.search);
-        const next = params.get('next') || '/';
-        addLog('Login successful');
-        location.href = next;
-    } else {
-        alert('Wrong password');
-        addLog('Login failed');
-        document.getElementById('pw').value = '';
+    const submitButton = document.querySelector('button[type="submit"]');
+    
+    // Disable button and show loading state
+    submitButton.disabled = true;
+    submitButton.textContent = 'Logging in...';
+    
+    try {
+        const res = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw })
+        });
+        
+        if (res.ok) {
+            const params = new URLSearchParams(location.search);
+            const next = params.get('next') || '/';
+            addLog('Login successful - redirecting...');
+            
+            // Small delay to show success message
+            setTimeout(() => {
+                location.href = next;
+            }, 500);
+        } else {
+            // Handle different error types
+            let errorMessage = 'Login failed';
+            if (res.status === 401) {
+                errorMessage = 'Wrong password';
+            } else if (res.status >= 500) {
+                errorMessage = 'Server error. Please try again.';
+            }
+            
+            alert(errorMessage);
+            addLog(errorMessage);
+            document.getElementById('pw').value = '';
+            document.getElementById('pw').focus();
+        }
+    } catch (error) {
+        // Handle network errors
+        console.error('Login error:', error);
+        alert('Network error. Please check your connection and try again.');
+        addLog('Network error during login');
         document.getElementById('pw').focus();
+    } finally {
+        // Re-enable button
+        submitButton.disabled = false;
+        submitButton.textContent = 'Login';
     }
 }
+
+// Add Enter key support for password field
+document.addEventListener('DOMContentLoaded', () => {
+    const pwField = document.getElementById('pw');
+    pwField.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            doLogin();
+        }
+    });
+    
+    // Focus on password field when page loads
+    pwField.focus();
+});
 </script>
 </body>
 </html>

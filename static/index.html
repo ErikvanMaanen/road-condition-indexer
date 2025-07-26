@@ -327,6 +327,47 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// Authentication check - verify user is logged in
+async function checkAuthentication() {
+    try {
+        const response = await fetch('/auth_check');
+        if (!response.ok) {
+            // Not authenticated, redirect to login
+            window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        // On error, assume not authenticated and redirect
+        window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+        return false;
+    }
+}
+
+// Check authentication immediately when page loads
+(async function() {
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        return; // Will be redirected
+    }
+    
+    // Only proceed with page initialization if authenticated
+    initializePage();
+})();
+
+function initializePage() {
+    // Move all the existing initialization code here
+    updateStatus();
+    initMap();
+    populateDeviceFilter();
+    pollDebug();
+    // Initial status check
+    checkDatabaseStatus();
+    // Check database status periodically
+    setInterval(checkDatabaseStatus, 30000);
+}
+
 let deviceId = localStorage.getItem('deviceId');
 let selectedIds = deviceId ? [deviceId] : [];
 function setCookie(name, value, days) {
@@ -925,15 +966,6 @@ function pollDebug() {
 }
 
 
-
-updateStatus();
-initMap();
-populateDeviceFilter();
-pollDebug();
-// Initial status check
-checkDatabaseStatus();
-// Check database status periodically
-setInterval(checkDatabaseStatus, 30000);
 
 document.getElementById('toggle').addEventListener('click', async () => {
     if (loggingEnabled) {

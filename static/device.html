@@ -432,47 +432,165 @@ function loadData() {
         .catch(console.error);
 }
 
-initMap();
-populateDeviceIds();
-syncRanges();
-document.getElementById('deviceId').addEventListener('change', () => {
-    selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
-        .map(o => o.value).filter(v => v);
-    setDateRange().then(loadData);
-});
-document.getElementById('roughness-filter').addEventListener('change', () => {
-    updateMarkers();
-});
-document.getElementById('gpx-button').addEventListener('click', () => {
-    addLog('Generate GPX pressed');
-    generateGpx();
-});
-let sliderUpdating = false;
-document.getElementById('startDate').addEventListener('change', () => {
-    if (sliderUpdating) return;
+// Authentication check - verify user is logged in
+async function checkAuthentication() {
+    try {
+        const response = await fetch('/auth_check');
+        if (!response.ok) {
+            // Not authenticated, redirect to login
+            window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        // On error, assume not authenticated and redirect
+        window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+        return false;
+    }
+}
+
+// Check authentication before initializing page
+(async function() {
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        return; // Will be redirected
+    }
+    
+    // Only proceed with page initialization if authenticated
+    initializePage();
+})();
+
+function initializePage() {
+    initMap();
+    populateDeviceIds();
     syncRanges();
-    updateMarkers();
-});
-document.getElementById('endDate').addEventListener('change', () => {
-    if (sliderUpdating) return;
-    syncRanges();
-    updateMarkers();
-});
-document.getElementById('startRange').addEventListener('input', () => {
-    sliderUpdating = true;
-    const v = parseInt(document.getElementById('startRange').value, 10);
-    document.getElementById('startDate').value = toCESTDateTimeLocal(v);
-    syncRanges();
-    updateMarkers();
-    sliderUpdating = false;
-});
-document.getElementById('endRange').addEventListener('input', () => {
-    sliderUpdating = true;
-    const v = parseInt(document.getElementById('endRange').value, 10);
-    document.getElementById('endDate').value = toCESTDateTimeLocal(v);
-    syncRanges();
-    updateMarkers();
-    sliderUpdating = false;
+}
+
+// Move event listeners to after authentication check
+document.addEventListener('DOMContentLoaded', async () => {
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        return;
+    }
+    
+    // Add event listeners only if authenticated
+    document.getElementById('deviceId').addEventListener('change', () => {
+        selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
+            .map(o => o.value).filter(v => v);
+        setDateRange().then(loadData);
+    });
+    
+    document.getElementById('roughness-filter').addEventListener('change', () => {
+        updateMarkers();
+    });
+    
+    document.getElementById('gpx-button').addEventListener('click', () => {
+        addLog('Generate GPX pressed');
+        generateGpx();
+    });
+    
+    let sliderUpdating = false;
+    document.getElementById('startDate').addEventListener('change', () => {
+        if (sliderUpdating) return;
+        syncRanges();
+        updateMarkers();
+    });
+    
+    document.getElementById('endDate').addEventListener('change', () => {
+        if (sliderUpdating) return;
+        syncRanges();
+        updateMarkers();
+    });
+    
+    document.getElementById('startRange').addEventListener('input', () => {
+        sliderUpdating = true;
+        const v = parseInt(document.getElementById('startRange').value, 10);
+        document.getElementById('startDate').value = toCESTDateTimeLocal(v);
+        syncRanges();
+        updateMarkers();
+        sliderUpdating = false;
+    });
+    
+    document.getElementById('endRange').addEventListener('input', () => {
+        sliderUpdating = true;
+        const v = parseInt(document.getElementById('endRange').value, 10);
+        document.getElementById('endDate').value = toCESTDateTimeLocal(v);
+        syncRanges();
+        updateMarkers();
+        sliderUpdating = false;
+    });
+
+    // Rename functionality
+    document.getElementById('rename-button').addEventListener('click', () => {
+        const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
+        if (selectedDevices.length !== 1) {
+            alert('Please select exactly one device to rename.');
+            return;
+        }
+        
+        const deviceId = selectedDevices[0].value;
+        const currentNickname = deviceNicknames[deviceId] || '';
+        
+        document.getElementById('nickname-input').value = currentNickname;
+        document.getElementById('rename-section').style.display = 'block';
+        document.getElementById('nickname-input').focus();
+    });
+
+    document.getElementById('save-rename').addEventListener('click', () => {
+        const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
+        if (selectedDevices.length !== 1) {
+            document.getElementById('rename-section').style.display = 'none';
+            return;
+        }
+        
+        const deviceId = selectedDevices[0].value;
+        const nickname = document.getElementById('nickname-input').value.trim();
+        
+        fetch('/nickname', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId, nickname: nickname })
+        })
+        .then(response => response.json())
+        .then(() => {
+            document.getElementById('rename-section').style.display = 'none';
+            
+            // Update local nickname without reloading all devices
+            deviceNicknames[deviceId] = nickname;
+            
+            // Update the device option in the select dropdown
+            const select = document.getElementById('deviceId');
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].value === deviceId) {
+                    select.options[i].textContent = nickname ? `${nickname} (${deviceId})` : deviceId;
+                    break;
+                }
+            }
+            
+            // Update markers on the map with the new nickname
+            updateMarkers();
+        })
+        .catch(error => {
+            console.error('Error saving nickname:', error);
+            alert('Failed to save nickname. Please try again.');
+        });
+    });
+
+    document.getElementById('cancel-rename').addEventListener('click', () => {
+        document.getElementById('rename-section').style.display = 'none';
+        document.getElementById('nickname-input').value = '';
+    });
+
+    // Allow Enter key to save rename
+    document.getElementById('nickname-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('save-rename').click();
+        }
+    });
+
+    // Load logs partial when DOM is ready  
+    loadLogsPartial();
 });
 
 document.addEventListener('fullscreenchange', () => {
@@ -480,79 +598,6 @@ document.addEventListener('fullscreenchange', () => {
         map.invalidateSize();
     }
 });
-
-// Rename functionality
-document.getElementById('rename-button').addEventListener('click', () => {
-    const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
-    if (selectedDevices.length !== 1) {
-        alert('Please select exactly one device to rename.');
-        return;
-    }
-    
-    const deviceId = selectedDevices[0].value;
-    const currentNickname = deviceNicknames[deviceId] || '';
-    
-    document.getElementById('nickname-input').value = currentNickname;
-    document.getElementById('rename-section').style.display = 'block';
-    document.getElementById('nickname-input').focus();
-});
-
-document.getElementById('save-rename').addEventListener('click', () => {
-    const selectedDevices = Array.from(document.getElementById('deviceId').selectedOptions);
-    if (selectedDevices.length !== 1) {
-        document.getElementById('rename-section').style.display = 'none';
-        return;
-    }
-    
-    const deviceId = selectedDevices[0].value;
-    const nickname = document.getElementById('nickname-input').value.trim();
-    
-    fetch('/nickname', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, nickname: nickname })
-    })
-    .then(response => response.json())
-    .then(() => {
-        document.getElementById('rename-section').style.display = 'none';
-        
-        // Update local nickname without reloading all devices
-        deviceNicknames[deviceId] = nickname;
-        
-        // Update the device option in the select dropdown
-        const select = document.getElementById('deviceId');
-        for (let i = 0; i < select.options.length; i++) {
-            if (select.options[i].value === deviceId) {
-                select.options[i].textContent = nickname ? `${nickname} (${deviceId})` : deviceId;
-                break;
-            }
-        }
-        
-        // Update markers on the map with the new nickname
-        updateMarkers();
-    })
-    .catch(error => {
-        console.error('Error saving nickname:', error);
-        alert('Failed to save nickname. Please try again.');
-    });
-});
-
-document.getElementById('cancel-rename').addEventListener('click', () => {
-    document.getElementById('rename-section').style.display = 'none';
-    document.getElementById('nickname-input').value = '';
-});
-
-// Allow Enter key to save rename
-document.getElementById('nickname-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        document.getElementById('save-rename').click();
-    }
-});
-
-// Load logs partial when DOM is ready
-document.addEventListener('DOMContentLoaded', loadLogsPartial);
-
-populateDeviceIds();
 </script>
 
 <!-- Include Activity Log and Debug Messages Partial -->
