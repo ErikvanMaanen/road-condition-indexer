@@ -856,6 +856,7 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Database integrity check failed: {e}")
             return False
+        return False
 
     def log_user_action(self, action_type: str, action_description: str,
                        user_ip: Optional[str] = None, user_agent: Optional[str] = None,
