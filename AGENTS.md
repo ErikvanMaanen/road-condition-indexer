@@ -1,7 +1,7 @@
 # AI Assistant & Engineer Instructions for Road Condition Indexer
 
 ## Overview
-This is a FastAPI-based application that collects road roughness data from mobile devices and stores it in either Azure SQL Database or SQLite. The system processes accelerometer data to calculate road roughness metrics and provides a web interface for data visualization.
+This is a FastAPI-based application that collects road roughness data from mobile devices and stores it in an Azure SQL Database. The system processes accelerometer data to calculate road roughness metrics and provides a web interface for data visualization.
 
 ## Project Architecture
 
@@ -92,6 +92,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 - Tests are located in the `tests/` folder with comprehensive coverage
 - Key test files: `tests/test_comprehensive_data_flow.py`, `tests/test_runner.py`
 - Skip tests when making documentation or layout-only updates
+- New tests should be created in the `tests/` folder. 
 
 ## Known Issues & Fixes
 

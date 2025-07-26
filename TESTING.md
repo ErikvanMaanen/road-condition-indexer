@@ -3,6 +3,7 @@
 This directory contains comprehensive tests for the Road Condition Indexer application that verify both database operations and API functionality. All test files are located in the `tests/` folder.
 
 ## Test Files
+- New tests should be created in the `tests/` folder. 
 
 ### 1. `tests/test_comprehensive_data_flow.py`
 A comprehensive test suite that validates:

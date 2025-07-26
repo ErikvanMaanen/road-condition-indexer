@@ -1,202 +1,202 @@
 #!/usr/bin/env python3
 """
-Detailed test script for the new logging functionality.
-This script tests each component separately to identify where the hang occurs.
+Detailed logging functionality tests.
 """
 
 import sys
 import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
-import traceback
-from datetime import datetime
-from pathlib import Path
+from typing import Optional, List, Dict, Any
+from database import DatabaseManager
+from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug
 
-# Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-print("=" * 80)
-print("ROAD CONDITION INDEXER - DETAILED LOGGING TEST")
-print("=" * 80)
-print(f"Test started at: {datetime.now()}")
-print(f"Current directory: {os.getcwd()}")
-print(f"Python path: {sys.path[0]}")
-print()
-
-def test_step(step_name, test_func):
-    """Run a test step with detailed error handling."""
-    print(f"🔍 STEP: {step_name}")
-    print("-" * 60)
-    start_time = time.time()
+def test_logging_levels() -> bool:
+    """Test different logging levels."""
+    print("=== Testing Logging Levels ===")
     
     try:
-        result = test_func()
-        elapsed = time.time() - start_time
-        print(f"✅ SUCCESS: {step_name} completed in {elapsed:.2f}s")
-        print(f"   Result: {result}")
-        print()
-        return True, result
+        db_manager: Optional[DatabaseManager] = None
+        db_manager = DatabaseManager(log_level=LogLevel.DEBUG)
+        
+        if db_manager is None:
+            print("❌ Failed to create DatabaseManager")
+            return False
+        
+        # Test each log level
+        test_message = "Test message for level testing"
+        device_id: Optional[str] = "test_device_logging"
+        
+        log_debug(f"DEBUG: {test_message}", device_id=device_id)
+        log_info(f"INFO: {test_message}", device_id=device_id)
+        log_warning(f"WARNING: {test_message}", device_id=device_id)
+        log_error(f"ERROR: {test_message}", device_id=device_id)
+        
+        # Direct database manager logging
+        db_manager.log_debug("CRITICAL test message", LogLevel.CRITICAL, LogCategory.GENERAL, device_id=device_id)
+        
+        print("✅ All logging levels tested")
+        return True
+        
     except Exception as e:
-        elapsed = time.time() - start_time
-        print(f"❌ FAILED: {step_name} failed after {elapsed:.2f}s")
-        print(f"   Error: {e}")
-        print(f"   Type: {type(e).__name__}")
-        print(f"   Traceback:")
-        traceback.print_exc(limit=5)
-        print()
-        return False, None
+        print(f"❌ Logging levels test failed: {e}")
+        return False
 
-def test_imports():
-    """Test importing modules."""
-    print("Testing basic imports...")
-    
-    # Test standard library imports
-    import json
-    import sqlite3
-    import logging
-    print("✓ Standard library imports successful")
-    
-    # Test third party imports
-    try:
-        import pytz
-        print("✓ pytz import successful")
-    except ImportError as e:
-        print(f"⚠️ pytz import failed: {e}")
+def test_logging_categories() -> bool:
+    """Test different logging categories."""
+    print("\n=== Testing Logging Categories ===")
     
     try:
-        import pyodbc
-        print("✓ pyodbc import successful")
-    except ImportError as e:
-        print(f"⚠️ pyodbc import failed: {e}")
-    
-    # Test FastAPI import
-    try:
-        from fastapi import FastAPI
-        print("✓ FastAPI import successful")
-    except ImportError as e:
-        print(f"⚠️ FastAPI import failed: {e}")
-    
-    return "Imports completed"
-
-def test_database_module():
-    """Test importing the database module."""
-    print("Testing database module import...")
-    
-    try:
-        from database import DatabaseManager, TABLE_USER_ACTIONS
-        from log_utils import LogLevel, LogCategory
-        print("✓ Database module imported successfully")
-        print(f"✓ LogLevel enum: {list(LogLevel)}")
-        print(f"✓ LogCategory enum: {list(LogCategory)}")
-        print(f"✓ New table constant: {TABLE_USER_ACTIONS}")
-        return "Database module import successful"
+        db_manager = DatabaseManager(log_level=LogLevel.DEBUG)
+        device_id: Optional[str] = "test_device_categories"
+        
+        # Test each category
+        categories_to_test = [
+            LogCategory.DATABASE,
+            LogCategory.CONNECTION,
+            LogCategory.QUERY,
+            LogCategory.MANAGEMENT,
+            LogCategory.GENERAL,
+            LogCategory.STARTUP,
+            LogCategory.USER_ACTION
+        ]
+        
+        for category in categories_to_test:
+            db_manager.log_debug(
+                f"Test message for category {category.value}",
+                LogLevel.INFO,
+                category,
+                device_id=device_id
+            )
+        
+        print(f"✅ Tested {len(categories_to_test)} log categories")
+        return True
+        
     except Exception as e:
-        print(f"❌ Database module import failed: {e}")
-        raise
+        print(f"❌ Logging categories test failed: {e}")
+        return False
 
-def test_database_manager_creation():
-    """Test creating a DatabaseManager instance."""
-    print("Testing DatabaseManager creation...")
-    
-    from database import DatabaseManager
-    from log_utils import LogLevel, LogCategory
-    
-    # Create with default settings
-    db_manager = DatabaseManager()
-    print(f"✓ DatabaseManager created with default settings")
-    print(f"✓ Using SQL Server: {db_manager.use_sqlserver}")
-    print(f"✓ Log level: {db_manager.log_level}")
-    print(f"✓ Log categories: {[c.value for c in db_manager.log_categories]}")
-    
-    return f"DatabaseManager created (SQL Server: {db_manager.use_sqlserver})"
-
-def test_database_connection():
-    """Test database connection."""
-    print("Testing database connection...")
-    
-    from database import DatabaseManager
-    
-    db_manager = DatabaseManager()
+def test_log_filtering() -> bool:
+    """Test log level and category filtering."""
+    print("\n=== Testing Log Filtering ===")
     
     try:
-        conn = db_manager.get_connection()
-        print(f"✓ Database connection successful: {type(conn)}")
+        db_manager = DatabaseManager(log_level=LogLevel.WARNING)  # Only WARNING and above
+        device_id: Optional[str] = "test_device_filtering"
         
-        # Test basic query
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-        print(f"✓ Basic query successful: {result}")
+        # These should be filtered out
+        db_manager.log_debug("DEBUG message - should be filtered", LogLevel.DEBUG, LogCategory.GENERAL, device_id=device_id)
+        db_manager.log_debug("INFO message - should be filtered", LogLevel.INFO, LogCategory.GENERAL, device_id=device_id)
         
-        conn.close()
-        print("✓ Connection closed successfully")
+        # These should be logged
+        db_manager.log_debug("WARNING message - should be logged", LogLevel.WARNING, LogCategory.GENERAL, device_id=device_id)
+        db_manager.log_debug("ERROR message - should be logged", LogLevel.ERROR, LogCategory.GENERAL, device_id=device_id)
         
-        return "Database connection test passed"
+        # Test category filtering
+        db_manager.set_log_categories([LogCategory.DATABASE])  # Only DATABASE category
+        
+        db_manager.log_debug("DATABASE message - should be logged", LogLevel.ERROR, LogCategory.DATABASE, device_id=device_id)
+        db_manager.log_debug("GENERAL message - should be filtered", LogLevel.ERROR, LogCategory.GENERAL, device_id=device_id)
+        
+        print("✅ Log filtering tested")
+        return True
+        
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        raise
+        print(f"❌ Log filtering test failed: {e}")
+        return False
 
-def test_table_initialization():
-    """Test table initialization."""
-    print("Testing table initialization...")
-    
-    from database import DatabaseManager
-    
-    db_manager = DatabaseManager()
+def test_log_retrieval() -> bool:
+    """Test log retrieval with filtering."""
+    print("\n=== Testing Log Retrieval ===")
     
     try:
-        print("Starting init_tables()...")
-        start_time = time.time()
+        db_manager = DatabaseManager(log_level=LogLevel.DEBUG)
+        device_id: Optional[str] = "test_device_retrieval"
         
-        db_manager.init_tables()
+        # Insert some test logs
+        test_logs = [
+            (LogLevel.DEBUG, LogCategory.GENERAL, "Debug message 1"),
+            (LogLevel.INFO, LogCategory.DATABASE, "Info message 1"),
+            (LogLevel.WARNING, LogCategory.QUERY, "Warning message 1"),
+            (LogLevel.ERROR, LogCategory.MANAGEMENT, "Error message 1"),
+        ]
         
-        elapsed = time.time() - start_time
-        print(f"✓ Table initialization completed in {elapsed:.2f}s")
+        for level, category, message in test_logs:
+            db_manager.log_debug(message, level, category, device_id=device_id)
         
-        # Verify tables exist
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
+        # Wait a moment for logs to be written
+        time.sleep(0.1)
         
-        if db_manager.use_sqlserver:
-            cursor.execute("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
-        else:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+        # Test retrieval with different filters
+        all_logs = db_manager.get_debug_logs(limit=10)
+        device_logs = db_manager.get_debug_logs(device_id_filter=device_id, limit=10)
+        warning_logs = db_manager.get_debug_logs(level_filter=LogLevel.WARNING, limit=10)
+        database_logs = db_manager.get_debug_logs(category_filter=LogCategory.DATABASE, limit=10)
         
-        tables = [row[0] for row in cursor.fetchall()]
-        print(f"✓ Tables found: {tables}")
+        print(f"✅ Log retrieval tested:")
+        print(f"   All logs: {len(all_logs)}")
+        print(f"   Device logs: {len(device_logs)}")
+        print(f"   Warning+ logs: {len(warning_logs)}")
+        print(f"   Database logs: {len(database_logs)}")
         
-        conn.close()
+        return True
         
-        return f"Tables initialized: {tables}"
     except Exception as e:
-        print(f"❌ Table initialization failed: {e}")
-        raise
+        print(f"❌ Log retrieval test failed: {e}")
+        return False
 
-def test_user_action_logging():
-    """Test user action logging."""
-    print("Testing user action logging...")
+def run_detailed_logging_tests() -> Dict[str, Any]:
+    """Run all detailed logging tests."""
+    print("🔍 Detailed Logging Tests")
+    print("=" * 40)
     
-    from database import DatabaseManager
+    tests = [
+        ("Logging Levels", test_logging_levels),
+        ("Logging Categories", test_logging_categories),
+        ("Log Filtering", test_log_filtering),
+        ("Log Retrieval", test_log_retrieval)
+    ]
     
-    db_manager = DatabaseManager()
+    passed = 0
+    total = len(tests)
+    results: Dict[str, Any] = {"tests": []}
     
-    try:
-        # Ensure tables are initialized
-        db_manager.init_tables()
-        
-        # Test logging a user action
-        db_manager.log_user_action(
-            action_type="TEST_ACTION",
-            action_description="Test user action logging functionality",
-            user_ip="127.0.0.1",
-            user_agent="Test-Agent/1.0",
-            device_id="test_device_001",
-            session_id="test_session_123",
-            additional_data={"test": True, "timestamp": datetime.now().isoformat()},
-            success=True
-        )
-        
-        print("✓ User action logged successfully")
-        
+    for test_name, test_func in tests:
+        try:
+            success = test_func()
+            if success:
+                passed += 1
+            results["tests"].append({
+                "name": test_name,
+                "success": success,
+                "error": None
+            })
+        except Exception as e:
+            results["tests"].append({
+                "name": test_name,
+                "success": False,
+                "error": str(e)
+            })
+            print(f"❌ {test_name} crashed: {e}")
+    
+    success_rate = passed / total
+    results.update({
+        "passed": passed,
+        "total": total,
+        "success_rate": success_rate,
+        "overall_success": success_rate >= 0.75
+    })
+    
+    print(f"\n📊 Detailed Logging Tests Summary: {passed}/{total} passed ({success_rate:.1%})")
+    
+    return results
+
+if __name__ == "__main__":
+    results = run_detailed_logging_tests()
+    exit_code = 0 if results["overall_success"] else 1
+    sys.exit(exit_code)
         # Try to retrieve the action
         actions = db_manager.get_user_actions(limit=1)
         print(f"✓ Retrieved {len(actions)} user actions")

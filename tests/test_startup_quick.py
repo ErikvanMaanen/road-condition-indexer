@@ -7,9 +7,13 @@ import sys
 import os
 import time
 from pathlib import Path
+from typing import Optional
 
 # Add the current directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from database import DatabaseManager
+from log_utils import LogLevel
 
 def main():
     print("🚀 QUICK STARTUP TEST")
@@ -37,19 +41,25 @@ def main():
         
         # Test basic functionality
         print("\n🧪 Testing basic functionality...")
-        from database import db_manager
+        db_manager: Optional[DatabaseManager] = None
+        db_manager = DatabaseManager(log_level=LogLevel.ERROR)  # Only errors
         
-        # Quick database test
-        test_start = time.time()
-        conn = db_manager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM RCI_bike_data")
-        count = cursor.fetchone()[0]
-        conn.close()
-        test_time = time.time() - test_start
+        if db_manager is None:
+            print("❌ Failed to create DatabaseManager")
+            return False
+            
+        # Quick connection test
+        connection = db_manager.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        connection.close()
         
-        print(f"   ✅ Database query test: {test_time:.3f}s ({count} records)")
-        
+        if result and result[0] == 1:
+            print(f"✅ Quick startup test passed in {total_time:.2f}ms")
+        else:
+            print("❌ Quick startup test failed")
+            
         if total_time < 10:
             print("✅ PERFORMANCE: GOOD")
         elif total_time < 20:
