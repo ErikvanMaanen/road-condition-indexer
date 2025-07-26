@@ -243,7 +243,7 @@ def health_check():
     except Exception as e:
         # Return 503 Service Unavailable if health check fails
         raise HTTPException(
-            status_code=503, 
+            status_code=503,
             detail={
                 "status": "unhealthy",
                 "timestamp": datetime.utcnow().isoformat(),
@@ -251,6 +251,14 @@ def health_check():
                 "error": str(e)
             }
         )
+
+
+# Respond to Azure's robots.txt health probes
+@app.get("/robots.txt", include_in_schema=False)
+@app.get("/robots{suffix}.txt", include_in_schema=False)
+def robots_txt(suffix: str = ""):
+    """Serve minimal robots.txt for health checks."""
+    return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
 
 @app.get("/")
 def read_index(request: Request):
