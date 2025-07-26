@@ -9,11 +9,13 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS="ignore::SyntaxWarning,ignore::DeprecationWarning,ignore::PendingDeprecationWarning"
 
 # Navigate to application directory
-cd /home/site/wwwroot || exit 1
+# Use Oryx-provided APP_PATH if available
+APP_DIR="${APP_PATH:-/home/site/wwwroot}"
+cd "$APP_DIR" || exit 1
 
 # Verify main application file exists
 if [ ! -f "main.py" ]; then
-    echo "❌ main.py not found"
+    echo "❌ main.py not found in $APP_DIR"
     exit 1
 fi
 
