@@ -7,6 +7,7 @@ import re
 import hashlib
 import pytz
 from contextlib import asynccontextmanager
+from typing import Dict, List, Optional, Tuple, Any
 
 # Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -25,7 +26,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import numpy as np
-from typing import Dict, List, Optional, Tuple
 
 # Import database constants and manager
 from database import (
@@ -49,8 +49,6 @@ from database import db_manager
 
 BASE_DIR = Path(__file__).resolve().parent
 
-from contextlib import asynccontextmanager
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -72,7 +70,7 @@ app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # MD5 hash for the default password
-PASSWORD_HASH = "23d38b715e76e545f1b62391605333f3"
+PASSWORD_HASH = "08457aa99f426e5e8410798acd74c23b"
 
 # Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
@@ -88,7 +86,7 @@ current_thresholds = {
     "freq_max": 50.0,  # Frequency filtering max
 }
 
-def get_azure_credential():
+def get_azure_credential() -> Optional[ClientSecretCredential]:
     """Return an Azure credential if environment variables are set."""
     if ClientSecretCredential is None:
         return None
@@ -143,7 +141,7 @@ def get_client_ip(request: Request) -> str:
     # Final fallback
     return 'unknown'
 
-def get_web_client():
+def get_web_client() -> Optional[WebSiteManagementClient]:
     """Return a WebSiteManagementClient if configured."""
     if WebSiteManagementClient is None:
         return None
@@ -153,7 +151,7 @@ def get_web_client():
         return None
     return WebSiteManagementClient(cred, subscription)
 
-def get_sql_client():
+def get_sql_client() -> Optional[SqlManagementClient]:
     """Return a SqlManagementClient if configured."""
     if SqlManagementClient is None:
         return None
@@ -171,7 +169,7 @@ def is_authenticated(request: Request) -> bool:
     """Return True if request has valid auth cookie."""
     return request.cookies.get("auth") == PASSWORD_HASH
 
-def password_dependency(request: Request):
+def password_dependency(request: Request) -> None:
     """Authenticate using cookie or optional ``pw`` query parameter."""
     cookie = request.cookies.get("auth")
     if cookie == PASSWORD_HASH:
@@ -190,6 +188,8 @@ class LoginRequest(BaseModel):
 def login(req: LoginRequest, request: Request):
     """Set auth cookie if password is correct."""
     client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+    
     user_agent = request.headers.get("user-agent", "Unknown")
     
     # Log login attempt

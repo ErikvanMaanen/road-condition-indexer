@@ -7,7 +7,6 @@ This module handles all database operations including:
 """
 
 import os
-import sqlite3
 import json
 import logging
 import traceback
@@ -19,10 +18,9 @@ from contextlib import contextmanager
 import pytz
 
 # SQLAlchemy imports
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Float, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.sql import func
 
 # Import logging utilities
 from log_utils import LogLevel, LogCategory
@@ -678,8 +676,8 @@ class DatabaseManager:
         stack_trace: Optional[str] = None
         
         if include_stack or level in [LogLevel.ERROR, LogLevel.CRITICAL]:
-            stack_trace = traceback.format_stack()[-3:-1]  # Get relevant stack frames
-            stack_trace = ''.join(stack_trace).strip()
+            stack_frames = traceback.format_stack()[-3:-1]  # Get relevant stack frames
+            stack_trace = ''.join(stack_frames).strip()
         
         try:
             self.execute_non_query(
@@ -785,7 +783,36 @@ class DatabaseManager:
             self.execute_query(f"DROP TABLE IF EXISTS {TABLE_DEBUG_LOG}")
             
             # Recreate the table with fresh structure
-            self._create_debug_log_table()
+            with self.get_connection_context() as conn:
+                if self.use_sqlserver:
+                    conn.execute(
+                        text(f"""
+                        CREATE TABLE {TABLE_DEBUG_LOG} (
+                            id INT IDENTITY PRIMARY KEY,
+                            timestamp DATETIME DEFAULT GETDATE(),
+                            level NVARCHAR(20),
+                            category NVARCHAR(50),
+                            device_id NVARCHAR(100),
+                            message NVARCHAR(4000),
+                            stack_trace NVARCHAR(MAX)
+                        )
+                        """)
+                    )
+                else:
+                    conn.execute(
+                        text(f"""
+                        CREATE TABLE {TABLE_DEBUG_LOG} (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            level TEXT,
+                            category TEXT,
+                            device_id TEXT,
+                            message TEXT,
+                            stack_trace TEXT
+                        )
+                        """)
+                    )
+                conn.commit()
             
             self.logger.info("Debug log table recovered successfully")
             
@@ -801,10 +828,17 @@ class DatabaseManager:
                 result = self.execute_query("PRAGMA integrity_check")
                 if result and len(result) > 0:
                     first_result = result[0]
-                    if isinstance(first_result, dict) and 'integrity_check' in first_result:
-                        integrity_ok = first_result['integrity_check'] == 'ok'
-                    elif isinstance(first_result, (list, tuple)) and len(first_result) > 0:
-                        integrity_ok = first_result[0] == 'ok'
+                    # The result from PRAGMA integrity_check is a dict with key 'integrity_check'
+                    if isinstance(first_result, dict):
+                        # Check if the dict has a key that contains 'integrity_check' or similar
+                        for key, value in first_result.items():
+                            if 'integrity' in key.lower() or 'check' in key.lower():
+                                integrity_ok = str(value).lower() == 'ok'
+                                break
+                        else:
+                            # If no integrity key found, check the first value
+                            values = list(first_result.values())
+                            integrity_ok = str(values[0]).lower() == 'ok' if values else False
                     else:
                         integrity_ok = str(first_result).lower() == 'ok'
                     
@@ -1717,7 +1751,6 @@ class DatabaseManager:
         for table in names:
             if not name_re.match(table):
                 continue  # Skip any table that doesn't match RCI_* pattern
-                continue
                 
             try:
                 # Get column information
@@ -1803,18 +1836,6 @@ db_manager = DatabaseManager()
 # Utility functions for easy access to logging functionality
 def set_log_level(level: LogLevel) -> None:
     """Set the global log level for the database manager."""
-    db_manager.set_log_level(level)
-
-def set_log_categories(categories: List[LogCategory]) -> None:
-    """Set which log categories to record for the database manager."""
-    db_manager.set_log_categories(categories)
-
-def get_debug_logs(level_filter: Optional[LogLevel] = None,
-                  category_filter: Optional[LogCategory] = None,
-                  device_id_filter: Optional[str] = None,
-                  limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-    """Get debug logs with filtering."""
-    return db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
     db_manager.set_log_level(level)
 
 def set_log_categories(categories: List[LogCategory]) -> None:
