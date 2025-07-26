@@ -1128,7 +1128,7 @@ def set_nickname(entry: NicknameEntry, dep: None = Depends(password_dependency))
 
 
 @app.get("/nickname")
-def get_nickname(device_id: str, dep: None = Depends(password_dependency)):
+def get_nickname(device_id: str = Query(...), dep: None = Depends(password_dependency)):
     """Get nickname for a device id."""
     try:
         nickname = db_manager.get_device_nickname(device_id)

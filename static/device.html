@@ -545,6 +545,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         const deviceId = selectedDevices[0].value;
+        // Validate that we have a valid device ID before making the request
+        if (!deviceId || deviceId.trim() === '') {
+            console.error('Cannot save nickname: invalid device ID');
+            document.getElementById('rename-section').style.display = 'none';
+            return;
+        }
+        
         const nickname = document.getElementById('nickname-input').value.trim();
         
         fetch('/nickname', {

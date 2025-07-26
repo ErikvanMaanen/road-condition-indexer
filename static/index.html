@@ -443,10 +443,21 @@ function loadNickname() {
         currentNickname = '';
         return;
     }
+    
+    const id = selectedIds[0];
+    // Validate that we have a valid device ID before making the request
+    if (!id || id.trim() === '') {
+        nickInput.value = '';
+        nickInput.placeholder = 'Invalid device ID';
+        nickInput.disabled = true;
+        saveBtn.disabled = true;
+        currentNickname = '';
+        return;
+    }
+    
     nickInput.disabled = false;
     saveBtn.disabled = false;
     nickInput.placeholder = 'Device nickname';
-    const id = selectedIds[0];
     fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
         .then(r => r.json())
         .then(data => {
@@ -460,8 +471,15 @@ function saveNickname() {
     const nickInput = document.getElementById('nickname');
     const saveBtn = document.getElementById('save-nickname');
     if (!nickInput || !saveBtn || selectedIds.length !== 1 || nickInput.disabled || saveBtn.disabled) return;
-    const name = nickInput.value;
+    
     const deviceId = selectedIds[0];
+    // Validate that we have a valid device ID before making the request
+    if (!deviceId || deviceId.trim() === '') {
+        console.error('Cannot save nickname: invalid device ID');
+        return;
+    }
+    
+    const name = nickInput.value;
     fetch('/nickname', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

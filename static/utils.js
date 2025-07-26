@@ -369,7 +369,8 @@ async function authFetch(url, options = {}) {
 async function populateDeviceIds() {
     try {
         const response = await fetch('/device_ids');
-        const deviceIds = await response.json();
+        const data = await response.json();
+        const deviceIds = data.ids; // Array of {id: string, nickname: string}
         const select = document.getElementById('deviceId');
         if (!select) return;
 
@@ -378,21 +379,23 @@ async function populateDeviceIds() {
             select.removeChild(select.lastChild);
         }
 
-        // Fetch nicknames
-        const nicknameResponse = await fetch('/nickname');
-        window.deviceNicknames = await nicknameResponse.json();
+        // Build nickname mapping for global use
+        window.deviceNicknames = {};
+        deviceIds.forEach(item => {
+            window.deviceNicknames[item.id] = item.nickname;
+        });
 
-        deviceIds.forEach(id => {
+        deviceIds.forEach(item => {
             const option = document.createElement('option');
-            option.value = id;
-            const nickname = window.deviceNicknames[id];
-            option.textContent = nickname ? `${nickname} (${id.slice(-8)})` : id.slice(-8);
+            option.value = item.id;
+            const nickname = item.nickname;
+            option.textContent = nickname ? `${nickname} (${item.id.slice(-8)})` : item.id.slice(-8);
             select.appendChild(option);
         });
 
         // Set current device if available
         const currentDeviceId = localStorage.getItem('deviceId');
-        if (currentDeviceId && deviceIds.includes(currentDeviceId)) {
+        if (currentDeviceId && deviceIds.some(item => item.id === currentDeviceId)) {
             select.value = currentDeviceId;
         }
     } catch (error) {
