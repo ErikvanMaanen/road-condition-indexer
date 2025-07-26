@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        with: { python-version: '3.13' }   # use 3.12 if 3.13 isn’t on App Service yet
+        with: { python-version: '3.12' }   # use 3.12 if 3.13 isn’t on App Service yet
 
       - name: Package app
         run: |
