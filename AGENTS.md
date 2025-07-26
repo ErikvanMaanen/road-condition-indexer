@@ -64,7 +64,7 @@ The application automatically falls back from Azure SQL to SQLite if Azure crede
 ### Authentication System
 - Cookie-based authentication with MD5 password hashing
 - Management endpoints require authentication
-- Default password hash: "df5f648063a4a2793f5f0427b210f4f7"
+- Default password hash: "08457aa99f426e5e8410798acd74c23b" ("fiets")
 
 ## API Endpoints
 
