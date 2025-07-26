@@ -1,4 +1,5 @@
 import os
+import time
 import warnings
 from pathlib import Path
 from datetime import datetime
@@ -7,7 +8,7 @@ import re
 import hashlib
 import pytz
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING, Union
 
 # Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -35,6 +36,12 @@ from database import (
 # Import logging utilities
 from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
 
+if TYPE_CHECKING:
+    from azure.identity import ClientSecretCredential
+    from azure.mgmt.web import WebSiteManagementClient
+    from azure.mgmt.sql import SqlManagementClient
+    from azure.mgmt.sql.models import DatabaseUpdate, Sku
+
 try:
     from azure.identity import ClientSecretCredential
     from azure.mgmt.web import WebSiteManagementClient
@@ -44,6 +51,8 @@ except Exception:  # pragma: no cover - optional deps
     ClientSecretCredential = None
     WebSiteManagementClient = None
     SqlManagementClient = None
+    DatabaseUpdate = None
+    Sku = None
 
 from database import db_manager
 
@@ -86,7 +95,7 @@ current_thresholds = {
     "freq_max": 50.0,  # Frequency filtering max
 }
 
-def get_azure_credential() -> Optional[ClientSecretCredential]:
+def get_azure_credential():
     """Return an Azure credential if environment variables are set."""
     if ClientSecretCredential is None:
         return None
@@ -95,6 +104,10 @@ def get_azure_credential() -> Optional[ClientSecretCredential]:
     tenant_id = os.getenv("AZURE_TENANT_ID")
     if not all([client_id, client_secret, tenant_id]):
         return None
+    # We know these are not None due to the check above
+    assert client_id is not None
+    assert client_secret is not None
+    assert tenant_id is not None
     return ClientSecretCredential(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -141,7 +154,7 @@ def get_client_ip(request: Request) -> str:
     # Final fallback
     return 'unknown'
 
-def get_web_client() -> Optional[WebSiteManagementClient]:
+def get_web_client():
     """Return a WebSiteManagementClient if configured."""
     if WebSiteManagementClient is None:
         return None
@@ -151,7 +164,7 @@ def get_web_client() -> Optional[WebSiteManagementClient]:
         return None
     return WebSiteManagementClient(cred, subscription)
 
-def get_sql_client() -> Optional[SqlManagementClient]:
+def get_sql_client():
     """Return a SqlManagementClient if configured."""
     if SqlManagementClient is None:
         return None
@@ -193,7 +206,7 @@ def login(req: LoginRequest, request: Request):
     user_agent = request.headers.get("user-agent", "Unknown")
     
     # Log login attempt
-    log_debug(f"LOGIN_ATTEMPT: User attempted to log in from {client_ip} - {user_agent}", LogLevel.INFO, LogCategory.USER_ACTION)
+    log_info(f"LOGIN_ATTEMPT: User attempted to log in from {client_ip} - {user_agent}", LogCategory.USER_ACTION)
     
     if verify_password(req.password):
         # Successful login
@@ -201,7 +214,7 @@ def login(req: LoginRequest, request: Request):
         resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
         
         # Log successful login
-        log_debug(f"LOGIN_SUCCESS: User successfully logged in from {client_ip} - {user_agent}", LogLevel.INFO, LogCategory.USER_ACTION)
+        log_info(f"LOGIN_SUCCESS: User successfully logged in from {client_ip} - {user_agent}", LogCategory.USER_ACTION)
         
         log_info(f"Successful login from IP: {client_ip}", LogCategory.USER_ACTION)
         return resp
@@ -218,7 +231,7 @@ def auth_check(request: Request):
     
     if is_authenticated(request):
         # Log successful auth check (for session validation)
-        log_debug(f"User session validation successful from IP: {client_ip}", LogCategory.USER_ACTION)
+        log_info(f"User session validation successful from IP: {client_ip}", LogCategory.USER_ACTION)
         return Response(status_code=204)
     else:
         # Log failed auth check
@@ -488,7 +501,7 @@ def compute_vibration_metrics(
     high = min(freq_max / nyq, 0.99)
     if high <= low:
         high = min(low + 0.01, 0.99)
-    b, a = signal.butter(4, [low, high], btype="band")
+    b, a = signal.butter(4, [low, high], btype="band")  # type: ignore
     try:
         filtered = signal.filtfilt(b, a, samples)
     except Exception:
@@ -829,7 +842,7 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
         # Verify the data was actually stored by attempting to read it back
         try:
             log_debug(f"Verifying stored data by reading back record ID {bike_data_id}", device_id=entry.device_id)
-            verification_query = f"SELECT * FROM {db_manager.TABLE_BIKE_DATA if hasattr(db_manager, 'TABLE_BIKE_DATA') else 'RCI_bike_data'} WHERE id = ?"
+            verification_query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE id = ?"
             verify_result = db_manager.execute_query(verification_query, (bike_data_id,))
             if verify_result and len(verify_result) > 0:
                 log_info(f"✅ Data verification successful - record {bike_data_id} exists in database", device_id=entry.device_id)
@@ -2168,7 +2181,7 @@ def get_db_sku(dep: None = Depends(password_dependency)):
         options = []
         try:
             objs = client.service_objectives.list_by_server(group, server)
-            options = [o.service_objective_name for o in objs if getattr(o, "enabled", True)]
+            options = [getattr(o, "service_objective_name", str(o)) for o in objs if getattr(o, "enabled", True)]
         except Exception:
             pass
         return {"current": current, "options": options}
@@ -2188,6 +2201,8 @@ def set_db_sku(req: SetSkuRequest, dep: None = Depends(password_dependency)):
         raise HTTPException(status_code=404, detail="DB info unavailable")
     server = server_full.split(".")[0]
     try:
+        if DatabaseUpdate is None or Sku is None:
+            raise HTTPException(status_code=500, detail="Azure SDK not available")
         params = DatabaseUpdate(sku=Sku(name=req.sku_name))
         poller = client.databases.begin_update(group, server, db_name, params)
         poller.result()
@@ -2209,9 +2224,9 @@ def get_app_plan(dep: None = Depends(password_dependency)):
     try:
         plan = client.app_service_plans.get(group, plan_name)
         return {
-            "name": plan.name,
-            "sku": plan.sku.name if plan.sku else None,
-            "capacity": plan.sku.capacity if plan.sku else None,
+            "name": getattr(plan, "name", None) if plan else None,
+            "sku": getattr(plan.sku, "name", None) if plan and getattr(plan, "sku", None) else None,
+            "capacity": getattr(plan.sku, "capacity", None) if plan and getattr(plan, "sku", None) else None,
         }
     except Exception as exc:
         log_debug(f"App plan info error: {exc}")
@@ -2233,7 +2248,7 @@ def get_app_plan_skus(dep: None = Depends(password_dependency)):
         else:
             options = [s.name for s in getattr(sku_list, "value", [])]
         plan = client.app_service_plans.get(group, plan_name)
-        current = plan.sku.name if plan.sku else None
+        current = getattr(plan.sku, "name", None) if plan and getattr(plan, "sku", None) else None
         return {"current": current, "options": options}
     except Exception as exc:
         log_debug(f"Plan SKU list error: {exc}")
