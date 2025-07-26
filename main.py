@@ -297,6 +297,12 @@ def read_index(request: Request):
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
+@app.get("/utils.js")
+def get_utils_js():
+    """Serve the utils.js file directly to fix relative path issues."""
+    return FileResponse(BASE_DIR / "static" / "utils.js", media_type="application/javascript")
+
+
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
