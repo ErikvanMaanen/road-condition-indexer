@@ -18,6 +18,12 @@ from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
 import pytz
 
+# SQLAlchemy imports
+from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Float, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.sql import func
+
 # Import logging utilities
 from log_utils import LogLevel, LogCategory
 
@@ -28,11 +34,6 @@ try:
 except ImportError:
     # dotenv not available, continue without it
     pass
-
-try:
-    import pyodbc
-except ImportError:
-    pyodbc = None
 
 # Import HTTPException for management operations
 try:
@@ -66,7 +67,7 @@ SQLSERVER_ENV_VARS = {
 }
 
 # Determine if we should use SQL Server based on environment variables
-USE_SQLSERVER = all(SQLSERVER_ENV_VARS.values()) and pyodbc is not None
+USE_SQLSERVER = all(SQLSERVER_ENV_VARS.values())
 
 # Force SQL Server usage - fail if credentials not available
 FORCE_SQLSERVER = True  # Set this to True to always require SQL Server
@@ -75,8 +76,6 @@ if FORCE_SQLSERVER and not USE_SQLSERVER:
     missing_vars = [k for k, v in SQLSERVER_ENV_VARS.items() if not v]
     if missing_vars:
         raise RuntimeError(f"SQL Server configuration required but missing environment variables: {missing_vars}")
-    if pyodbc is None:
-        raise RuntimeError("SQL Server configuration required but pyodbc is not available")
 
 USE_SQLSERVER = FORCE_SQLSERVER or USE_SQLSERVER
 
@@ -96,6 +95,9 @@ class DatabaseManager:
             LogLevel.ERROR: 3,
             LogLevel.CRITICAL: 4
         }
+        
+        # Initialize SQLAlchemy engine
+        self.engine: Optional[Engine] = None
         
         # Initialize logging
         self._setup_logging()
@@ -165,32 +167,30 @@ class DatabaseManager:
     @contextmanager
     def get_connection_context(self, database: Optional[str] = None):
         """Get a database connection with proper context management to prevent journal file issues."""
-        conn = None
+        engine = self.get_engine(database)
+        connection = None
         try:
-            conn = self.get_connection(database)
-            yield conn
+            connection = engine.connect()
+            yield connection
         except Exception as e:
-            if conn:
+            if connection:
                 try:
-                    conn.rollback()
+                    connection.rollback()
                 except Exception:
                     pass
             raise
         finally:
-            if conn:
+            if connection:
                 try:
-                    conn.close()
+                    connection.close()
                 except Exception:
                     pass
     
-    def get_connection(self, database: Optional[str] = None):
-        """Return a database connection.
-
-        When the required Azure SQL environment variables are present the
-        connection uses ``pyodbc``. Otherwise a local SQLite database named
-        ``RCI_local.db`` in the project directory is used. This makes the API usable
-        without any external dependencies.
-        """
+    def get_engine(self, database: Optional[str] = None) -> Engine:
+        """Get SQLAlchemy engine for database operations."""
+        if self.engine is not None:
+            return self.engine
+            
         try:
             if self.use_sqlserver:
                 server = os.getenv("AZURE_SQL_SERVER")
@@ -199,51 +199,70 @@ class DatabaseManager:
                 password = os.getenv("AZURE_SQL_PASSWORD")
                 db_name = database or os.getenv("AZURE_SQL_DATABASE")
                 
-                self.log_debug(f"Connecting to SQL Server: {server}:{port}, database: {db_name}", 
+                self.log_debug(f"Creating SQLAlchemy engine for SQL Server: {server}:{port}, database: {db_name}", 
                               LogLevel.DEBUG, LogCategory.CONNECTION)
                 
-                conn_str = (
-                    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                    f"SERVER={server},{port};"
-                    f"DATABASE={db_name};"
-                    f"UID={user};"
-                    f"PWD={password}"
+                # Using pymssql driver instead of pyodbc
+                connection_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{db_name}"
+                
+                self.engine = create_engine(
+                    connection_string,
+                    echo=False,  # Set to True for SQL query logging
+                    pool_pre_ping=True,
+                    pool_recycle=3600,  # Recycle connections after 1 hour
+                    connect_args={"timeout": 30}
                 )
-                conn = pyodbc.connect(conn_str)
-                self.log_debug("SQL Server connection established successfully", 
+                
+                self.log_debug("SQL Server SQLAlchemy engine created successfully", 
                               LogLevel.DEBUG, LogCategory.CONNECTION)
-                return conn
+                return self.engine
             else:
-                # SQLite fallback with optimized settings to prevent journal file issues
+                # SQLite fallback with optimized settings
                 db_file = BASE_DIR / "RCI_local.db"
-                self.log_debug(f"Connecting to SQLite database: {db_file}", 
+                self.log_debug(f"Creating SQLAlchemy engine for SQLite database: {db_file}", 
                               LogLevel.DEBUG, LogCategory.CONNECTION)
                 
-                # Configure SQLite for better performance and reduced journal cycling
-                conn = sqlite3.connect(
-                    db_file,
-                    timeout=30.0,  # 30-second timeout
-                    check_same_thread=False  # Allow multi-threading
+                connection_string = f"sqlite:///{db_file}"
+                
+                self.engine = create_engine(
+                    connection_string,
+                    echo=False,  # Set to True for SQL query logging
+                    poolclass=StaticPool,
+                    connect_args={
+                        'check_same_thread': False,
+                        'timeout': 30
+                    }
                 )
                 
-                # Set SQLite pragmas to optimize performance and reduce journal issues
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA journal_mode=WAL")  # Use Write-Ahead Logging
-                cursor.execute("PRAGMA synchronous=NORMAL")  # Balanced safety/performance
-                cursor.execute("PRAGMA cache_size=-8000")  # 8MB cache (negative = KB)
-                cursor.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp tables
-                cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
-                cursor.execute("PRAGMA wal_autocheckpoint=1000")  # Checkpoint every 1000 pages
-                cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
-                cursor.close()
+                # Set SQLite pragmas for optimized performance
+                with self.engine.connect() as conn:
+                    conn.execute(text("PRAGMA journal_mode=WAL"))  # Use Write-Ahead Logging
+                    conn.execute(text("PRAGMA synchronous=NORMAL"))  # Balanced safety/performance
+                    conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (negative = KB)
+                    conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
+                    conn.execute(text("PRAGMA mmap_size=268435456"))  # 256MB memory-mapped I/O
+                    conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
+                    conn.execute(text("PRAGMA busy_timeout=30000"))  # 30 second busy timeout
+                    conn.commit()
                 
-                self.log_debug("SQLite connection established successfully with optimized settings", 
+                self.log_debug("SQLite SQLAlchemy engine created successfully with optimized settings", 
                               LogLevel.DEBUG, LogCategory.CONNECTION)
-                return conn
+                return self.engine
         except Exception as e:
-            self.log_debug(f"Database connection failed: {e}", 
+            self.log_debug(f"Database engine creation failed: {e}", 
                           LogLevel.ERROR, LogCategory.CONNECTION, include_stack=True)
             raise
+
+    def get_connection(self, database: Optional[str] = None):
+        """Return a database connection.
+
+        When the required Azure SQL environment variables are present the
+        connection uses SQLAlchemy with pymssql driver. Otherwise a local SQLite database named
+        ``RCI_local.db`` in the project directory is used. This makes the API usable
+        without any external dependencies.
+        """
+        engine = self.get_engine(database)
+        return engine.connect()
 
     def ensure_database_exists(self) -> None:
         """Ensure the configured database exists."""
@@ -259,15 +278,14 @@ class DatabaseManager:
                               LogLevel.DEBUG, LogCategory.DATABASE)
 
                 with self.get_connection_context("master") as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT database_id FROM sys.databases WHERE name = ?",
-                        database,
+                    result = conn.execute(
+                        text("SELECT database_id FROM sys.databases WHERE name = :db_name"),
+                        {"db_name": database}
                     )
-                    if not cursor.fetchone():
+                    if not result.fetchone():
                         self.log_debug(f"Database '{database}' does not exist, creating it", 
                                       LogLevel.INFO, LogCategory.DATABASE)
-                        cursor.execute(f"CREATE DATABASE [{database}]")
+                        conn.execute(text(f"CREATE DATABASE [{database}]"))
                         conn.commit()
                         self.log_debug(f"Database '{database}' created successfully", 
                                       LogLevel.INFO, LogCategory.DATABASE)
@@ -301,14 +319,12 @@ class DatabaseManager:
             self.ensure_database_exists()
             
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
-                
                 if self.use_sqlserver:
                     self.log_debug("Creating SQL Server tables", LogLevel.DEBUG, LogCategory.DATABASE)
-                    self._create_sqlserver_tables(cursor)
+                    self._create_sqlserver_tables(conn)
                 else:
                     self.log_debug("Creating SQLite tables", LogLevel.DEBUG, LogCategory.DATABASE)
-                    self._create_sqlite_tables(cursor)
+                    self._create_sqlite_tables(conn)
                 
                 conn.commit()
                 
@@ -320,11 +336,11 @@ class DatabaseManager:
             self.log_debug(f"Database init error: {exc}", LogLevel.ERROR, LogCategory.DATABASE, include_stack=True)
             raise Exception(f"Database init error: {exc}")
 
-    def _create_sqlserver_tables(self, cursor):
+    def _create_sqlserver_tables(self, conn):
         """Create tables for SQL Server."""
         # Create bike data table
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_BIKE_DATA}'
             )
@@ -342,12 +358,12 @@ class DatabaseManager:
                     ip_address NVARCHAR(45)
                 )
             END
-            """
+            """)
         )
         
         # Create debug log table
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_DEBUG_LOG}'
             )
@@ -362,12 +378,12 @@ class DatabaseManager:
                     stack_trace NVARCHAR(MAX)
                 )
             END
-            """
+            """)
         )
         
         # Create device nicknames table
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_DEVICE_NICKNAMES}'
             )
@@ -379,12 +395,12 @@ class DatabaseManager:
                     device_fp NVARCHAR(256)
                 )
             END
-            """
+            """)
         )
         
         # Create bike source data table for retrospective analysis
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_BIKE_SOURCE_DATA}'
             )
@@ -400,12 +416,12 @@ class DatabaseManager:
                     FOREIGN KEY (bike_data_id) REFERENCES {TABLE_BIKE_DATA}(id) ON DELETE CASCADE
                 )
             END
-            """
+            """)
         )
         
         # Create archive logs table (same structure as bike data for archived records)
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_ARCHIVE_LOGS}'
             )
@@ -422,12 +438,12 @@ class DatabaseManager:
                 ip_address NVARCHAR(45)
             )
             END
-            """
+            """)
         )
 
         # Create user actions table for tracking user behavior and system events
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF NOT EXISTS (
                 SELECT 1 FROM sys.tables WHERE name = '{TABLE_USER_ACTIONS}'
             )
@@ -446,57 +462,57 @@ class DatabaseManager:
                     error_message NVARCHAR(MAX)
                 )
             END
-            """
+            """)
         )
         
         # Schema migration statements
-        self._apply_sqlserver_migrations(cursor)
+        self._apply_sqlserver_migrations(conn)
 
-    def _apply_sqlserver_migrations(self, cursor):
+    def _apply_sqlserver_migrations(self, conn):
         """Apply schema migrations for SQL Server."""
         # Add ip_address column if it doesn't exist
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'ip_address') IS NULL
                 ALTER TABLE {TABLE_BIKE_DATA} ADD ip_address NVARCHAR(45)
-            """
+            """)
         )
         
         # Remove old user_agent column from bike_data
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'user_agent') IS NOT NULL
                 ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN user_agent
-            """
+            """)
         )
         
         # Remove old device_fp column from bike_data
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'device_fp') IS NOT NULL
                 ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN device_fp
-            """
+            """)
         )
         
         # Add distance_m column if it doesn't exist
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'distance_m') IS NULL
                 ALTER TABLE {TABLE_BIKE_DATA} ADD distance_m FLOAT
-            """
+            """)
         )
         
         # Add device_id column to debug log table if it doesn't exist
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'device_id') IS NULL
                 ALTER TABLE {TABLE_DEBUG_LOG} ADD device_id NVARCHAR(100)
-            """
+            """)
         )
         
         # Remove old version column
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_BIKE_DATA}', 'version') IS NOT NULL
             BEGIN
                 DECLARE @cons nvarchar(200);
@@ -510,41 +526,41 @@ class DatabaseManager:
                     EXEC('ALTER TABLE {TABLE_BIKE_DATA} DROP CONSTRAINT ' + @cons);
                 ALTER TABLE {TABLE_BIKE_DATA} DROP COLUMN version;
             END
-            """
+            """)
         )
         
         # Add columns to device_nicknames if they don't exist
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEVICE_NICKNAMES}', 'user_agent') IS NULL
                 ALTER TABLE {TABLE_DEVICE_NICKNAMES} ADD user_agent NVARCHAR(256)
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEVICE_NICKNAMES}', 'device_fp') IS NULL
                 ALTER TABLE {TABLE_DEVICE_NICKNAMES} ADD device_fp NVARCHAR(256)
-            """
+            """)
         )
         
         # Add new debug log columns if they don't exist
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'level') IS NULL
                 ALTER TABLE {TABLE_DEBUG_LOG} ADD level NVARCHAR(20)
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'category') IS NULL
                 ALTER TABLE {TABLE_DEBUG_LOG} ADD category NVARCHAR(50)
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'stack_trace') IS NULL
                 ALTER TABLE {TABLE_DEBUG_LOG} ADD stack_trace NVARCHAR(MAX)
-            """
+            """)
         )
 
     def _create_sqlite_tables(self, cursor):
