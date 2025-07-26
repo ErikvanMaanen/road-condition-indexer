@@ -71,8 +71,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# MD5 hash for the default password "fiets"
-PASSWORD_HASH = "08457aa99f426e5e8410798acd74c23b"
+# MD5 hash for the default password
+PASSWORD_HASH = "23d38b715e76e545f1b62391605333f3"
 
 # Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))

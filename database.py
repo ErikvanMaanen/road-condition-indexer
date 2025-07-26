@@ -555,10 +555,10 @@ class DatabaseManager:
             """)
         )
 
-    def _create_sqlite_tables(self, cursor):
+    def _create_sqlite_tables(self, conn):
         """Create tables for SQLite."""
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_BIKE_DATA} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -571,10 +571,10 @@ class DatabaseManager:
                 device_id TEXT,
                 ip_address TEXT
             )
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_DEBUG_LOG} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -584,20 +584,20 @@ class DatabaseManager:
                 message TEXT,
                 stack_trace TEXT
             )
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_DEVICE_NICKNAMES} (
                 device_id TEXT PRIMARY KEY,
                 nickname TEXT,
                 user_agent TEXT,
                 device_fp TEXT
             )
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_BIKE_SOURCE_DATA} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bike_data_id INTEGER NOT NULL,
@@ -608,10 +608,10 @@ class DatabaseManager:
                 freq_max REAL,
                 FOREIGN KEY (bike_data_id) REFERENCES {TABLE_BIKE_DATA}(id) ON DELETE CASCADE
             )
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_ARCHIVE_LOGS} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 latitude REAL NOT NULL,
@@ -623,10 +623,10 @@ class DatabaseManager:
                 device_id TEXT NOT NULL,
                 ip_address TEXT
             )
-            """
+            """)
         )
-        cursor.execute(
-            f"""
+        conn.execute(
+            text(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_USER_ACTIONS} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -640,21 +640,21 @@ class DatabaseManager:
                 success INTEGER DEFAULT 1,
                 error_message TEXT
             )
-            """
+            """)
         )
         
         # Apply SQLite schema migrations
-        self._apply_sqlite_migrations(cursor)
+        self._apply_sqlite_migrations(conn)
 
-    def _apply_sqlite_migrations(self, cursor):
+    def _apply_sqlite_migrations(self, conn):
         """Apply schema migrations for SQLite."""
         # Check if device_id column exists in debug log table
-        cursor.execute(f"PRAGMA table_info({TABLE_DEBUG_LOG})")
-        columns = [row[1] for row in cursor.fetchall()]
+        result = conn.execute(text(f"PRAGMA table_info({TABLE_DEBUG_LOG})"))
+        columns = [row[1] for row in result.fetchall()]
         
         if 'device_id' not in columns:
             try:
-                cursor.execute(f"ALTER TABLE {TABLE_DEBUG_LOG} ADD COLUMN device_id TEXT")
+                conn.execute(text(f"ALTER TABLE {TABLE_DEBUG_LOG} ADD COLUMN device_id TEXT"))
                 self.logger.info("Added device_id column to debug log table")
             except Exception as e:
                 self.logger.error(f"Failed to add device_id column: {e}")
@@ -945,21 +945,20 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
-                cursor.execute(query, params)
+                result = conn.execute(text(query), params)
                 
                 # Check rowcount immediately after INSERT
-                if cursor.rowcount != 1:
-                    error_msg = f"Insert affected {cursor.rowcount} rows, expected 1"
+                if result.rowcount != 1:
+                    error_msg = f"Insert affected {result.rowcount} rows, expected 1"
                     self.log_debug(error_msg, LogLevel.ERROR, LogCategory.QUERY)
                     raise Exception(error_msg)
                 
                 # Get the inserted ID
                 if self.use_sqlserver:
-                    cursor.execute("SELECT @@IDENTITY")
-                    bike_data_id = cursor.fetchone()[0]
+                    id_result = conn.execute(text("SELECT @@IDENTITY"))
+                    bike_data_id = id_result.fetchone()[0]
                 else:
-                    bike_data_id = cursor.lastrowid
+                    bike_data_id = result.lastrowid
                 
                 conn.commit()
                 
@@ -1008,26 +1007,25 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
                 if self.use_sqlserver:
-                    cursor.execute(
-                        f"""
+                    conn.execute(
+                        text(f"""
                         MERGE {TABLE_DEVICE_NICKNAMES} AS target
                         USING (SELECT ? AS device_id, ? AS ua, ? AS fp) AS src
                         ON target.device_id = src.device_id
                         WHEN MATCHED THEN UPDATE SET user_agent = src.ua, device_fp = src.fp
                         WHEN NOT MATCHED THEN INSERT (device_id, user_agent, device_fp) VALUES (src.device_id, src.ua, src.fp);
-                        """,
+                        """),
                         (device_id, user_agent, device_fp)
                     )
                 else:
-                    cursor.execute(
-                        f"""
+                    conn.execute(
+                        text(f"""
                         INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, user_agent, device_fp)
                         VALUES (?, ?, ?)
                         ON CONFLICT(device_id) DO UPDATE SET user_agent=excluded.user_agent,
                         device_fp=excluded.device_fp
-                        """,
+                        """),
                         (device_id, user_agent, device_fp)
                     )
                 conn.commit()
@@ -1050,10 +1048,9 @@ class DatabaseManager:
             z_values_json = json.dumps(z_values)
             
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    f"INSERT INTO {TABLE_BIKE_SOURCE_DATA} (bike_data_id, z_values, speed, interval_seconds, freq_min, freq_max)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
+                conn.execute(
+                    text(f"INSERT INTO {TABLE_BIKE_SOURCE_DATA} (bike_data_id, z_values, speed, interval_seconds, freq_min, freq_max)"
+                        " VALUES (?, ?, ?, ?, ?, ?)"),
                     (bike_data_id, z_values_json, speed, interval_seconds, freq_min, freq_max)
                 )
                 conn.commit()
@@ -1069,72 +1066,65 @@ class DatabaseManager:
         self.log_debug(f"Retrieving last bike data point for device {device_id}", 
                       LogLevel.DEBUG, LogCategory.QUERY)
         
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            if self.use_sqlserver:
-                cursor.execute(
-                    f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC",
-                    (device_id,)
-                )
-            else:
-                cursor.execute(
-                    f"SELECT latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC LIMIT 1",
-                    (device_id,)
-                )
-            row = cursor.fetchone()
-            if row:
-                result = (row[2], row[0], row[1])  # timestamp, latitude, longitude
-                self.log_debug(f"Found last data point for device {device_id}: {result}", 
-                              LogLevel.DEBUG, LogCategory.QUERY)
-                return result
-            else:
-                self.log_debug(f"No data points found for device {device_id}", 
-                              LogLevel.DEBUG, LogCategory.QUERY)
-            return None
+            with self.get_connection_context() as conn:
+                if self.use_sqlserver:
+                    result = conn.execute(
+                        text(f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC"),
+                        (device_id,)
+                    )
+                else:
+                    result = conn.execute(
+                        text(f"SELECT latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC LIMIT 1"),
+                        (device_id,)
+                    )
+                row = result.fetchone()
+                if row:
+                    result_tuple = (row[2], row[0], row[1])  # timestamp, latitude, longitude
+                    self.log_debug(f"Found last data point for device {device_id}: {result_tuple}", 
+                                  LogLevel.DEBUG, LogCategory.QUERY)
+                    return result_tuple
+                else:
+                    self.log_debug(f"No data points found for device {device_id}", 
+                                  LogLevel.DEBUG, LogCategory.QUERY)
+                return None
         except Exception as e:
             self.log_debug(f"Failed to get last bike data point for device {device_id}: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
-        finally:
-            conn.close()
 
     def get_logs(self, limit: Optional[int] = None) -> Tuple[List[Dict], float]:
         """Get bike data logs with optional limit."""
         self.log_debug(f"Retrieving bike data logs with limit={limit}", 
                       LogLevel.DEBUG, LogCategory.QUERY)
         
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            if self.use_sqlserver:
-                if limit is None:
-                    cursor.execute(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
+            with self.get_connection_context() as conn:
+                if self.use_sqlserver:
+                    if limit is None:
+                        result = conn.execute(text(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"))
+                    else:
+                        result = conn.execute(text(f"SELECT TOP {limit} * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"))
                 else:
-                    cursor.execute(f"SELECT TOP {limit} * FROM {TABLE_BIKE_DATA} ORDER BY id DESC")
-            else:
-                query = f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
-                if limit is None:
-                    cursor.execute(query)
-                else:
-                    cursor.execute(query + " LIMIT ?", (limit,))
-            
-            columns = [column[0] for column in cursor.description]
-            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            cursor.execute(f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA}")
-            avg_row = cursor.fetchone()
-            rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
-            
-            self.log_debug(f"Retrieved {len(rows)} bike data logs, avg roughness: {rough_avg}", 
-                          LogLevel.DEBUG, LogCategory.QUERY)
-            return rows, rough_avg
+                    if limit is None:
+                        result = conn.execute(text(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"))
+                    else:
+                        result = conn.execute(text(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT ?"), (limit,))
+                
+                columns = list(result.keys())
+                rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                
+                avg_result = conn.execute(text(f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA}"))
+                avg_row = avg_result.fetchone()
+                rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
+                
+                self.log_debug(f"Retrieved {len(rows)} bike data logs, avg roughness: {rough_avg}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+                return rows, rough_avg
         except Exception as e:
             self.log_debug(f"Failed to retrieve bike data logs: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
-        finally:
-            conn.close()
 
     def get_filtered_logs(self, device_ids: Optional[List[str]] = None,
                          start_dt: Optional[datetime] = None,
@@ -1144,148 +1134,149 @@ class DatabaseManager:
         self.log_debug(f"Retrieving filtered bike data logs: {filter_desc}", 
                       LogLevel.DEBUG, LogCategory.QUERY)
         
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE 1=1"
-            params = []
-            
-            if device_ids:
-                placeholders = ",".join("?" for _ in device_ids)
-                query += f" AND device_id IN ({placeholders})"
-                params.extend(device_ids)
-            
-            if start_dt:
-                query += " AND timestamp >= ?"
-                params.append(start_dt)
-            
-            if end_dt:
-                query += " AND timestamp <= ?"
-                params.append(end_dt)
-            
-            query += " ORDER BY id DESC"
-            cursor.execute(query, params)
-            
-            columns = [column[0] for column in cursor.description]
-            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            # Calculate average for filtered data
-            avg_query = f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA} WHERE 1=1"
-            avg_params = []
-            if device_ids:
-                placeholders = ",".join("?" for _ in device_ids)
-                avg_query += f" AND device_id IN ({placeholders})"
-                avg_params.extend(device_ids)
-            if start_dt:
-                avg_query += " AND timestamp >= ?"
-                avg_params.append(start_dt)
-            if end_dt:
-                avg_query += " AND timestamp <= ?"
-                avg_params.append(end_dt)
-            
-            cursor.execute(avg_query, avg_params)
-            avg_row = cursor.fetchone()
-            rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
-            
-            self.log_debug(f"Retrieved {len(rows)} filtered logs, avg roughness: {rough_avg}", 
-                          LogLevel.DEBUG, LogCategory.QUERY)
-            return rows, rough_avg
+            with self.get_connection_context() as conn:
+                query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE 1=1"
+                params = []
+                
+                if device_ids:
+                    placeholders = ",".join("?" for _ in device_ids)
+                    query += f" AND device_id IN ({placeholders})"
+                    params.extend(device_ids)
+                
+                if start_dt:
+                    query += " AND timestamp >= ?"
+                    params.append(start_dt)
+                
+                if end_dt:
+                    query += " AND timestamp <= ?"
+                    params.append(end_dt)
+                
+                query += " ORDER BY id DESC"
+                result = conn.execute(text(query), params)
+                
+                columns = list(result.keys())
+                rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                
+                # Calculate average for filtered data
+                avg_query = f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA} WHERE 1=1"
+                avg_params = []
+                if device_ids:
+                    placeholders = ",".join("?" for _ in device_ids)
+                    avg_query += f" AND device_id IN ({placeholders})"
+                    avg_params.extend(device_ids)
+                if start_dt:
+                    avg_query += " AND timestamp >= ?"
+                    avg_params.append(start_dt)
+                if end_dt:
+                    avg_query += " AND timestamp <= ?"
+                    avg_params.append(end_dt)
+                
+                avg_result = conn.execute(text(avg_query), avg_params)
+                avg_row = avg_result.fetchone()
+                rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
+                
+                self.log_debug(f"Retrieved {len(rows)} filtered logs, avg roughness: {rough_avg}", 
+                              LogLevel.DEBUG, LogCategory.QUERY)
+                return rows, rough_avg
         except Exception as e:
             self.log_debug(f"Failed to retrieve filtered logs: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
-        finally:
-            conn.close()
 
     def get_device_ids_with_nicknames(self) -> List[Dict]:
         """Get list of unique device IDs with optional nicknames."""
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute(
-                f"""
-                SELECT DISTINCT bd.device_id, dn.nickname
-                FROM {TABLE_BIKE_DATA} bd
-                LEFT JOIN {TABLE_DEVICE_NICKNAMES} dn ON bd.device_id = dn.device_id
-                """
-            )
-            return [
-                {"id": row[0], "nickname": row[1]} for row in cursor.fetchall() if row[0]
-            ]
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                    SELECT DISTINCT bd.device_id, dn.nickname
+                    FROM {TABLE_BIKE_DATA} bd
+                    LEFT JOIN {TABLE_DEVICE_NICKNAMES} dn ON bd.device_id = dn.device_id
+                    """)
+                )
+                return [
+                    {"id": row[0], "nickname": row[1]} for row in result.fetchall() if row[0]
+                ]
+        except Exception as e:
+            self.log_debug(f"Failed to get device IDs with nicknames: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def get_date_range(self, device_ids: Optional[List[str]] = None) -> Tuple[Optional[str], Optional[str]]:
         """Get the oldest and newest timestamps, optionally filtered by device."""
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            query = f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}"
-            params = []
-            if device_ids:
-                placeholders = ",".join("?" for _ in device_ids)
-                query += f" WHERE device_id IN ({placeholders})"
-                params.extend(device_ids)
-            
-            cursor.execute(query, params)
-            row = cursor.fetchone()
-            start, end = row if row else (None, None)
-            
-            if start is not None:
-                start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
-            else:
-                start_str = None
-            if end is not None:
-                end_str = end.isoformat() if hasattr(end, "isoformat") else str(end)
-            else:
-                end_str = None
-            return start_str, end_str
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                query = f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}"
+                params = []
+                if device_ids:
+                    placeholders = ",".join("?" for _ in device_ids)
+                    query += f" WHERE device_id IN ({placeholders})"
+                    params.extend(device_ids)
+                
+                result = conn.execute(text(query), params)
+                row = result.fetchone()
+                start, end = row if row else (None, None)
+                
+                if start is not None:
+                    start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
+                else:
+                    start_str = None
+                if end is not None:
+                    end_str = end.isoformat() if hasattr(end, "isoformat") else str(end)
+                else:
+                    end_str = None
+                return start_str, end_str
+        except Exception as e:
+            self.log_debug(f"Failed to get date range: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def set_device_nickname(self, device_id: str, nickname: str) -> None:
         """Set or update a nickname for a device."""
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            if self.use_sqlserver:
-                cursor.execute(
-                    f"""
-                    MERGE {TABLE_DEVICE_NICKNAMES} AS target
-                    USING (SELECT ? AS device_id, ? AS nickname) AS src
-                    ON target.device_id = src.device_id
-                    WHEN MATCHED THEN UPDATE SET nickname = src.nickname
-                    WHEN NOT MATCHED THEN INSERT (device_id, nickname)
-                    VALUES (src.device_id, src.nickname);
-                    """,
-                    device_id, nickname
-                )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO RCI_device_nicknames (device_id, nickname)
-                    VALUES (?, ?)
-                    ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname
-                    """,
-                    (device_id, nickname)
-                )
-            conn.commit()
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                if self.use_sqlserver:
+                    conn.execute(
+                        text(f"""
+                        MERGE {TABLE_DEVICE_NICKNAMES} AS target
+                        USING (SELECT ? AS device_id, ? AS nickname) AS src
+                        ON target.device_id = src.device_id
+                        WHEN MATCHED THEN UPDATE SET nickname = src.nickname
+                        WHEN NOT MATCHED THEN INSERT (device_id, nickname)
+                        VALUES (src.device_id, src.nickname);
+                        """),
+                        (device_id, nickname)
+                    )
+                else:
+                    conn.execute(
+                        text(f"""
+                        INSERT INTO {TABLE_DEVICE_NICKNAMES} (device_id, nickname)
+                        VALUES (?, ?)
+                        ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname
+                        """),
+                        (device_id, nickname)
+                    )
+                conn.commit()
+        except Exception as e:
+            self.log_debug(f"Failed to set device nickname: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def get_device_nickname(self, device_id: str) -> Optional[str]:
         """Get nickname for a device id."""
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT nickname FROM RCI_device_nicknames WHERE device_id = ?",
-                device_id if self.use_sqlserver else (device_id,)
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-        finally:
-            conn.close()
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"SELECT nickname FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
+                    (device_id,)
+                )
+                row = result.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            self.log_debug(f"Failed to get device nickname: {e}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            raise
 
     def get_database_size(self) -> Tuple[float, Optional[float]]:
         """Return current database size and max size in GB."""
@@ -1298,7 +1289,7 @@ class DatabaseManager:
                 # Get max size - use string conversion to handle ODBC type issues
                 max_size_result = self.execute_scalar("SELECT CAST(DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes') AS NVARCHAR(50))")
                 max_gb: Optional[float] = None
-                if max_size_result and max_size_result not in (None, -1, 0, '-1', '0'):
+                if max_size_result and str(max_size_result) not in ('None', '-1', '0'):
                     try:
                         max_bytes = int(str(max_size_result))
                         if max_bytes > 0:
@@ -1307,7 +1298,7 @@ class DatabaseManager:
                         pass
             else:
                 db_file = BASE_DIR / "RCI_local.db"
-                size_mb = db_file.stat().st_size / (1024 * 1024)
+                size_mb = float(db_file.stat().st_size) / (1024 * 1024)
                 max_gb = None
             
             return size_mb, max_gb
@@ -1322,26 +1313,25 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
                 start_time = datetime.utcnow()
                 
                 if params:
-                    cursor.execute(query, params)
+                    result = conn.execute(text(query), params)
                 else:
-                    cursor.execute(query)
+                    result = conn.execute(text(query))
                 
                 # Get column names
-                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                columns = list(result.keys()) if result.keys() else []
                 
                 # Fetch all rows and convert to dictionaries
-                rows = cursor.fetchall()
-                result = [dict(zip(columns, row)) for row in rows] if columns else []
+                rows = result.fetchall()
+                result_list = [dict(zip(columns, row)) for row in rows] if columns else []
                 
                 end_time = datetime.utcnow()
                 duration = (end_time - start_time).total_seconds()
-                self.log_debug(f"Query completed in {duration:.3f}s, returned {len(result)} rows", 
+                self.log_debug(f"Query completed in {duration:.3f}s, returned {len(result_list)} rows", 
                               LogLevel.DEBUG, LogCategory.QUERY)
-                return result
+                return result_list
         except Exception as e:
             self.log_debug(f"Query failed: {query_short} - Error: {e}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
@@ -1355,13 +1345,12 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 start_time = datetime.utcnow()
-                cursor = conn.cursor()
                 if params:
-                    cursor.execute(query, params)
+                    result = conn.execute(text(query), params)
                 else:
-                    cursor.execute(query)
-                result = cursor.fetchone()
-                scalar_result = result[0] if result else None
+                    result = conn.execute(text(query))
+                row = result.fetchone()
+                scalar_result = row[0] if row else None
                 
                 end_time = datetime.utcnow()
                 duration = (end_time - start_time).total_seconds()
@@ -1403,13 +1392,12 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                cursor = conn.cursor()
                 if params:
-                    cursor.execute(query, params)
+                    result = conn.execute(text(query), params)
                 else:
-                    cursor.execute(query)
+                    result = conn.execute(text(query))
                 conn.commit()
-                rowcount = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
+                rowcount = result.rowcount if hasattr(result, 'rowcount') else 0
                 
                 execution_time = (time.time() - start_time) * 1000
                 
@@ -1815,6 +1803,18 @@ db_manager = DatabaseManager()
 # Utility functions for easy access to logging functionality
 def set_log_level(level: LogLevel) -> None:
     """Set the global log level for the database manager."""
+    db_manager.set_log_level(level)
+
+def set_log_categories(categories: List[LogCategory]) -> None:
+    """Set which log categories to record for the database manager."""
+    db_manager.set_log_categories(categories)
+
+def get_debug_logs(level_filter: Optional[LogLevel] = None,
+                  category_filter: Optional[LogCategory] = None,
+                  device_id_filter: Optional[str] = None,
+                  limit: Optional[int] = 100) -> List[Dict[str, Any]]:
+    """Get debug logs with filtering."""
+    return db_manager.get_debug_logs(level_filter, category_filter, device_id_filter, limit)
     db_manager.set_log_level(level)
 
 def set_log_categories(categories: List[LogCategory]) -> None:
