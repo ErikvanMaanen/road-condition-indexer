@@ -47,4 +47,4 @@ echo "   Timeout: 120s (allows time for SQL connectivity tests)"
 echo "   Preload: enabled (runs SQL tests before serving requests)"
 
 # Use gunicorn with uvicorn workers for production deployment
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 120 --preload --access-logfile=- --error-logfile=- --log-level info main:app
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 120 --preload --access-logfile=- --error-logfile=- --log-level debug main:app
