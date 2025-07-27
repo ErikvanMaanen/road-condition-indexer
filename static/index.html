@@ -21,26 +21,12 @@
             height: 150px;
             margin-top: 1rem;
         }
-        #map { width: 100%; height: 40vh; margin-bottom: 1rem; }
-        #map:fullscreen { width: 100%; height: 100%; }
         #status { margin-bottom: 1rem; font-weight: bold; }
         #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         input:disabled { opacity: 0.5; cursor: not-allowed; }
         #toggle { padding: 1rem 2rem; font-size: 1.25rem; }
-        #scale-container {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-            gap: 0.5rem;
-        }
-        #scale-bar {
-            flex: 1;
-            height: 12px;
-            background: linear-gradient(to right, green, yellow, red);
-            border: 1px solid #ccc;
-        }
         #status-indicators {
             position: fixed;
             top: 10px;
@@ -226,28 +212,12 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="roughness-filter" multiple style="min-width:180px;">
-            <option value="">[All Roughness]</option>
-            <option value="1">1 - Smooth road</option>
-            <option value="2">2 - Even surface</option>
-            <option value="3">3 - Light texture</option>
-            <option value="4">4 - Coarse texture</option>
-            <option value="5">5 - Moderate roughness</option>
-            <option value="6">6 - Bumpy cobbles</option>
-            <option value="7">7 - Fine gravel</option>
-            <option value="8">8 - Coarse gravel</option>
-            <option value="9">9 - Severely uneven</option>
-            <option value="10">10 - Extremely rough</option>
-        </select>
         <select id="device-filter" multiple></select>
     </div>
 </section>
-<div id="map"></div>
-<div id="scale-container">
-    <span>Smooth</span>
-    <div id="scale-bar"></div>
-    <span>Rough</span>
-</div>
+
+<!-- Include standardized map component -->
+<div id="map-container"></div>
 <div style="margin-bottom:1rem;">
     <label>
         <input type="checkbox" id="center-on-user" checked> Keep map centered on my location
@@ -327,6 +297,30 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// Load map partial
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const response = await fetch('map-partial.html');
+        const mapHtml = await response.text();
+        document.getElementById('map-container').innerHTML = mapHtml;
+        
+        // Initialize page after map partial is loaded
+        const isAuthenticated = await checkAuthentication();
+        if (!isAuthenticated) {
+            return; // Will be redirected
+        }
+        
+        initializePage();
+    } catch (error) {
+        console.error('Failed to load map partial:', error);
+        // Fallback to basic initialization
+        const isAuthenticated = await checkAuthentication();
+        if (isAuthenticated) {
+            initializePage();
+        }
+    }
+});
+
 // Authentication check - verify user is logged in
 async function checkAuthentication() {
     try {
@@ -353,7 +347,27 @@ async function checkAuthentication() {
     }
     
     // Only proceed with page initialization if authenticated
-    initializePage();
+    try {
+        // Check if functions are available
+        if (typeof initializeStandardMap !== 'function') {
+            addLog('Map initialization functions not loaded, using basic map');
+            // Basic fallback map initialization if partial didn't load
+            const mapContainer = document.getElementById('map-container');
+            if (mapContainer && !mapContainer.innerHTML) {
+                mapContainer.innerHTML = '<div id="map" style="width: 100%; height: 40vh; margin-bottom: 1rem;"></div>';
+                window.map = L.map('map');
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(window.map);
+                window.map.setView([52.028, 5.168], 16);
+            }
+        }
+        
+        initializePage();
+    } catch (error) {
+        console.error('Error during page initialization:', error);
+        addLog('Error during page initialization: ' + error.message);
+    }
 })();
 
 function initializePage() {
@@ -549,8 +563,6 @@ let lastSpeed = 0;
 let lastDir = 0;
 let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
-let map;
-let bicycleMarker = null; // Variable to store the bicycle marker
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
 const LABEL_COUNT = 10;
@@ -691,62 +703,27 @@ if (navigator.geolocation) {
 }
 
 function initMap() {
-    const defaultPos = [52.028, 5.168]; // Houten, NL
-    const zoom = 16; // Street view zoom level
-    map = L.map('map');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    
-    // Create a bicycle icon using SVG
-    const bicycleIcon = L.divIcon({
-        html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="blue" class="bicycle-pulse">
-                <circle cx="6" cy="17" r="3" stroke="black" stroke-width="1"/>
-                <circle cx="18" cy="17" r="3" stroke="black" stroke-width="1"/>
-                <path d="M8 11l8-4 2 4M6 15l5-9 2 6h6" stroke="black" stroke-width="1.5" fill="none"/>
-               </svg>`,
-        className: 'bicycle-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+    const map = initializeStandardMap({
+        center: [52.028, 5.168], // Houten, NL
+        zoom: 16, // Street view zoom level for recording
+        enableGeolocation: true,
+        enableBicycleMarker: true,
+        enableFullscreen: true,
+        onLocationFound: (coords, position) => {
+            locationStatus = true;
+            updateStatusIndicator('location', true);
+        },
+        onLocationError: (error) => {
+            locationStatus = false;
+            updateStatusIndicator('location', false, `GPS error: ${error.message}`);
+        }
     });
     
-    const setView = coords => {
-        userLocation = coords;
-        map.setView(coords, zoom);
-        
-        // Initialize the bicycle marker at the user's location
-        if (!bicycleMarker) {
-            bicycleMarker = L.marker(coords, { icon: bicycleIcon }).addTo(map);
-            bicycleMarker.bindPopup("You are here");
-        } else {
-            bicycleMarker.setLatLng(coords);
-        }
-    };
-    
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            pos => {
-                const coords = [pos.coords.latitude, pos.coords.longitude];
-                setView(coords);
-                addLog('Map centered on your location');
-                locationStatus = true;
-                updateStatusIndicator('location', true);
-            },
-            () => {
-                setView(defaultPos);
-                addLog('Using default location (Houten, NL)');
-                locationStatus = false;
-                updateStatusIndicator('location', false, 'GPS unavailable, using default location');
-            },
-            GEO_OPTIONS
-        );
-    } else {
-        setView(defaultPos);
-        addLog('Geolocation not supported, using default location');
-        locationStatus = false;
-        updateStatusIndicator('location', false, 'Geolocation not supported by browser');
-    }
-    addFullscreenControl(map);
+    // Initialize roughness filter
+    initializeRoughnessFilter(() => {
+        // Reload map data when filter changes
+        loadLogs();
+    });
 }
 
 function updateStatus() {
@@ -793,13 +770,10 @@ function loadLogs() {
         prog.value = 0;
         label.textContent = `0 / ${rows.length}`;
         loadBox.style.display = 'block';
-        if (map) {
-            map.eachLayer(layer => {
-                if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
-                    map.removeLayer(layer);
-                }
-            });
-        }
+        
+        // Clear existing map data
+        clearMapData();
+        
         roughMin = 0;
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
         roughScales = {};
@@ -862,23 +836,12 @@ function handlePosition(pos) {
     // Update user location
     userLocation = [latitude, longitude];
     
-    // Update the bicycle marker position
-    if (bicycleMarker) {
-        bicycleMarker.setLatLng([latitude, longitude]);
-        
-        // Update popup content with current speed and direction
-        bicycleMarker.setPopupContent(`You are here<br>Speed: ${lastSpeed.toFixed(1)} km/h<br>Direction: ${directionToCompass(lastDir)}`);
-        
-        // If popup is open, update its position
-        if (bicycleMarker.isPopupOpen()) {
-            bicycleMarker._popup.setLatLng([latitude, longitude]);
-        }
-    }
-    
-    // Center map on user if option is selected
-    const centerOnUser = document.getElementById('center-on-user').checked;
-    if (centerOnUser && map) {
-        map.setView(userLocation, map.getZoom());
+    // Update bicycle marker if it exists
+    if (window.bicycleMarker) {
+        updateBicycleMarker([latitude, longitude], {
+            speed: lastSpeed,
+            direction: lastDir
+        });
     }
     
     updateStatus();

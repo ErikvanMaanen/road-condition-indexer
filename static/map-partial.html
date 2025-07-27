@@ -1,0 +1,298 @@
+<!-- Map Component Partial -->
+<!-- This partial provides standardized map initialization and includes the roughness filter -->
+
+<div id="map"></div>
+<div id="scale-container">
+    <span>Smooth</span>
+    <div id="scale-bar"></div>
+    <span>Rough</span>
+</div>
+
+<!-- Roughness Filter Component -->
+<div id="roughness-filter-container" style="margin-bottom: 0.5rem;">
+    <label for="roughness-filter" style="font-weight: bold;">Filter by Roughness:</label>
+    <select id="roughness-filter" multiple style="min-width: 200px; margin-left: 0.5rem;">
+        <option value="">[All Roughness]</option>
+        <option value="1">1 - Smooth road</option>
+        <option value="2">2 - Even surface</option>
+        <option value="3">3 - Light texture</option>
+        <option value="4">4 - Coarse texture</option>
+        <option value="5">5 - Moderate roughness</option>
+        <option value="6">6 - Bumpy cobbles</option>
+        <option value="7">7 - Fine gravel</option>
+        <option value="8">8 - Coarse gravel</option>
+        <option value="9">9 - Severely uneven</option>
+        <option value="10">10 - Extremely rough</option>
+    </select>
+</div>
+
+<script>
+/**
+ * Standardized Map Initialization
+ * @param {Object} options - Configuration options
+ * @param {Array} options.center - [lat, lon] center coordinates (default: Houten, NL)
+ * @param {number} options.zoom - Initial zoom level (default: 15)
+ * @param {boolean} options.enableGeolocation - Enable automatic geolocation (default: true)
+ * @param {boolean} options.enableBicycleMarker - Enable bicycle marker for user tracking (default: false)
+ * @param {boolean} options.enableFullscreen - Add fullscreen control (default: true)
+ * @param {string} options.attribution - Map attribution text
+ * @param {Function} options.onLocationFound - Callback when location is found
+ * @param {Function} options.onLocationError - Callback when location fails
+ * @returns {L.Map} Leaflet map instance
+ */
+function initializeStandardMap(options = {}) {
+    const defaults = {
+        center: [52.028, 5.168], // Houten, NL
+        zoom: 15,
+        enableGeolocation: true,
+        enableBicycleMarker: false,
+        enableFullscreen: true,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        onLocationFound: null,
+        onLocationError: null
+    };
+    
+    const config = { ...defaults, ...options };
+    
+    // Initialize map
+    const map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: config.attribution
+    }).addTo(map);
+    
+    // Set initial view
+    map.setView(config.center, config.zoom);
+    
+    // Store map globally (legacy compatibility)
+    window.map = map;
+    
+    // Add fullscreen control if enabled
+    if (config.enableFullscreen && typeof addFullscreenControl === 'function') {
+        addFullscreenControl(map);
+    }
+    
+    // Handle geolocation if enabled
+    if (config.enableGeolocation && navigator.geolocation) {
+        const geoOptions = {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 10000
+        };
+        
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const coords = [position.coords.latitude, position.coords.longitude];
+                map.setView(coords, config.zoom);
+                
+                // Handle bicycle marker for user tracking
+                if (config.enableBicycleMarker) {
+                    createBicycleMarker(map, coords);
+                }
+                
+                // Custom callback
+                if (config.onLocationFound) {
+                    config.onLocationFound(coords, position);
+                }
+                
+                // Log success
+                if (typeof addLog === 'function') {
+                    addLog('Map centered on your location');
+                }
+            },
+            (error) => {
+                // Fallback to default location
+                map.setView(config.center, config.zoom);
+                
+                // Custom callback
+                if (config.onLocationError) {
+                    config.onLocationError(error);
+                }
+                
+                // Log error
+                if (typeof addLog === 'function') {
+                    addLog(`GPS error: ${error.message}, using default location`);
+                }
+            },
+            geoOptions
+        );
+    }
+    
+    // Force map to refresh after initialization
+    setTimeout(() => {
+        if (map) {
+            map.invalidateSize();
+        }
+    }, 100);
+    
+    return map;
+}
+
+/**
+ * Create and manage bicycle marker for user tracking
+ * @param {L.Map} map - Leaflet map instance
+ * @param {Array} coords - [lat, lon] initial coordinates
+ * @returns {L.Marker} Bicycle marker
+ */
+function createBicycleMarker(map, coords) {
+    // Create bicycle icon using SVG
+    const bicycleIcon = L.divIcon({
+        html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="blue" class="bicycle-pulse">
+                <circle cx="6" cy="17" r="3" stroke="black" stroke-width="1"/>
+                <circle cx="18" cy="17" r="3" stroke="black" stroke-width="1"/>
+                <path d="M8 11l8-4 2 4M6 15l5-9 2 6h6" stroke="black" stroke-width="1.5" fill="none"/>
+               </svg>`,
+        className: 'bicycle-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+    });
+    
+    // Create and add bicycle marker
+    const bicycleMarker = L.marker(coords, { icon: bicycleIcon }).addTo(map);
+    bicycleMarker.bindPopup("You are here");
+    
+    // Store globally for updates
+    window.bicycleMarker = bicycleMarker;
+    window.userLocation = coords;
+    
+    return bicycleMarker;
+}
+
+/**
+ * Update bicycle marker position and popup
+ * @param {Array} coords - [lat, lon] new coordinates
+ * @param {Object} info - Additional information (speed, direction, etc.)
+ */
+function updateBicycleMarker(coords, info = {}) {
+    if (window.bicycleMarker) {
+        window.bicycleMarker.setLatLng(coords);
+        window.userLocation = coords;
+        
+        // Update popup with additional info
+        if (info.speed !== undefined || info.direction !== undefined) {
+            let popup = "You are here";
+            if (info.speed !== undefined) {
+                popup += `<br>Speed: ${info.speed.toFixed(1)} km/h`;
+            }
+            if (info.direction !== undefined && typeof directionToCompass === 'function') {
+                popup += `<br>Direction: ${directionToCompass(info.direction)}`;
+            }
+            window.bicycleMarker.setPopupContent(popup);
+        }
+        
+        // Center map on user if enabled
+        if (window.map && document.getElementById('center-on-user')?.checked) {
+            window.map.setView(coords, window.map.getZoom());
+        }
+    }
+}
+
+/**
+ * Clear all data points from the map
+ */
+function clearMapData() {
+    if (window.map) {
+        window.map.eachLayer(layer => {
+            if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                window.map.removeLayer(layer);
+            }
+        });
+    }
+}
+
+/**
+ * Initialize roughness filter functionality
+ * @param {Function} onFilterChange - Callback when filter changes
+ */
+function initializeRoughnessFilter(onFilterChange) {
+    const filterSelect = document.getElementById('roughness-filter');
+    if (filterSelect && onFilterChange) {
+        filterSelect.addEventListener('change', onFilterChange);
+    }
+}
+
+// Export functions to global scope
+window.initializeStandardMap = initializeStandardMap;
+window.createBicycleMarker = createBicycleMarker;
+window.updateBicycleMarker = updateBicycleMarker;
+window.clearMapData = clearMapData;
+window.initializeRoughnessFilter = initializeRoughnessFilter;
+</script>
+
+<style>
+/* Map Component Styles */
+#map {
+    width: 100%;
+    height: 40vh;
+    margin-bottom: 1rem;
+    border: 1px solid #ccc;
+}
+
+#map:fullscreen {
+    width: 100%;
+    height: 100%;
+}
+
+#scale-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.5rem;
+}
+
+#scale-bar {
+    flex: 1;
+    height: 12px;
+    background: linear-gradient(to right, green, yellow, red);
+    border: 1px solid #ccc;
+}
+
+#roughness-filter-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+#roughness-filter {
+    padding: 0.25rem;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: white;
+}
+
+/* Bicycle marker animation */
+.bicycle-pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #map {
+        height: 50vh;
+    }
+    
+    #roughness-filter-container {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    #roughness-filter {
+        min-width: 100%;
+    }
+}
+</style>

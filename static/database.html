@@ -14,25 +14,11 @@
         button.danger:hover { background: #c82333; }
         button.warning { background: #ffc107; color: black; }
         button.warning:hover { background: #e0a800; }
-        #map { width: 100%; height: 40vh; margin-top: 1rem; }
-        #map:fullscreen { width: 100%; height: 100%; }
         #controls input { margin-right: 0.5rem; }
         #range-container { position:relative; height:30px; }
         #range-container input { position:absolute; left:0; right:0; width:100%; }
         #startRange { z-index:2; }
         #endRange { z-index:1; }
-        #scale-container {
-            display: flex;
-            align-items: center;
-            margin-top: 0.5rem;
-            gap: 0.5rem;
-        }
-        #scale-bar {
-            flex: 1;
-            height: 12px;
-            background: linear-gradient(to right, green, yellow, red);
-            border: 1px solid #ccc;
-        }
         #log {
             width: 100%;
             height: 150px;
@@ -102,23 +88,13 @@
 
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="roughness-filter" multiple style="min-width:180px;">
-            <option value="">[All Roughness]</option>
-            <option value="1">1 - Smooth road</option>
-            <option value="2">2 - Even surface</option>
-            <option value="3">3 - Light texture</option>
-            <option value="4">4 - Coarse texture</option>
-            <option value="5">5 - Moderate roughness</option>
-            <option value="6">6 - Bumpy cobbles</option>
-            <option value="7">7 - Fine gravel</option>
-            <option value="8">8 - Coarse gravel</option>
-            <option value="9">9 - Severely uneven</option>
-            <option value="10">10 - Extremely rough</option>
-        </select>
         <select id="deviceId" multiple></select>
         <button onclick="refreshSelection()">Refresh Selection</button>
     </div>
 </section>
+
+<!-- Include standardized map component -->
+<div id="map-container"></div>
 
 <section id="filter-time" style="margin-bottom:1rem;">
     <label>Time Range:</label>
@@ -129,13 +105,6 @@
         <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
     </div>
 </section>
-
-<div id="map"></div>
-<div id="scale-container">
-    <span>Smooth</span>
-    <div id="scale-bar"></div>
-    <span>Rough</span>
-</div>
 
 <div id="loading">Loading data...</div>
 
@@ -192,7 +161,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let selectedIds = [];
-let map;
 let deviceNicknames = {};
 let roughMin = 0;
 const LABEL_COUNT = 10;
@@ -273,13 +241,18 @@ function syncRanges() {
 }
 
 function initMap() {
-    const defaultPos = [52.028, 5.168]; // Houten, NL
-    const zoom = 12;
-    map = L.map('map');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'})
-        .addTo(map);
-    map.setView(defaultPos, zoom);
+    const map = initializeStandardMap({
+        center: [52.028, 5.168], // Houten, NL
+        zoom: 12,
+        enableGeolocation: false, // Database view doesn't need geolocation
+        enableBicycleMarker: false,
+        enableFullscreen: true
+    });
+    
+    // Initialize roughness filter
+    initializeRoughnessFilter(() => {
+        loadData();
+    });
 }
 
 function directionToCompass(deg) {
@@ -334,13 +307,7 @@ function loadData() {
             roughAvg = data.average || 0;
             
             // Clear map
-            if (map) {
-                map.eachLayer(layer => {
-                    if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
-                        map.removeLayer(layer);
-                    }
-                });
-            }
+            clearMapData();
             
             roughMin = 0;
             roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
@@ -563,9 +530,23 @@ async function authFetch(url, options) {
 }
 
 // Initialize page
-initMap();
-populateDeviceIds();
-syncRanges();
+(async function() {
+    try {
+        const response = await fetch('map-partial.html');
+        const mapHtml = await response.text();
+        document.getElementById('map-container').innerHTML = mapHtml;
+        
+        // Initialize page after map partial is loaded
+        initMap();
+        populateDeviceIds();
+        syncRanges();
+    } catch (error) {
+        console.error('Failed to load map partial:', error);
+        // Fallback initialization
+        populateDeviceIds();
+        syncRanges();
+    }
+})();
 
 // Event listeners
 document.getElementById('deviceId').addEventListener('change', () => {
@@ -573,7 +554,6 @@ document.getElementById('deviceId').addEventListener('change', () => {
         .map(o => o.value).filter(v => v);
     setDateRange().then(loadData);
 });
-document.getElementById('roughness-filter').addEventListener('change', loadData);
 document.getElementById('startDate').addEventListener('change', () => {
     syncRanges();
     loadData();

@@ -10,25 +10,11 @@
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
         #controls { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
-        #map { width: 100%; height: 40vh; margin-top: 1rem; }
-        #map:fullscreen { width: 100%; height: 100%; }
         #controls input { margin-right: 0.5rem; }
         #range-container { position:relative; height:30px; }
         #range-container input { position:absolute; left:0; right:0; width:100%; }
         #startRange { z-index:2; }
         #endRange { z-index:1; }
-        #scale-container {
-            display: flex;
-            align-items: center;
-            margin-top: 0.5rem;
-            gap: 0.5rem;
-        }
-        #scale-bar {
-            flex: 1;
-            height: 12px;
-            background: linear-gradient(to right, green, yellow, red);
-            border: 1px solid #ccc;
-        }
         #log {
             width: 100%;
             height: 150px;
@@ -61,19 +47,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="roughness-filter" multiple style="min-width:180px;">
-            <option value="">[All Roughness]</option>
-            <option value="1">1 - Smooth road</option>
-            <option value="2">2 - Even surface</option>
-            <option value="3">3 - Light texture</option>
-            <option value="4">4 - Coarse texture</option>
-            <option value="5">5 - Moderate roughness</option>
-            <option value="6">6 - Bumpy cobbles</option>
-            <option value="7">7 - Fine gravel</option>
-            <option value="8">8 - Coarse gravel</option>
-            <option value="9">9 - Severely uneven</option>
-            <option value="10">10 - Extremely rough</option>
-        </select>
         <select id="deviceId" multiple></select>
         <button id="rename-button" style="padding: 0.5rem;">Rename</button>
     </div>
@@ -83,6 +56,10 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
         <button id="cancel-rename">Cancel</button>
     </div>
 </section>
+
+<!-- Include standardized map component -->
+<div id="map-container"></div>
+
 <section id="filter-time" style="margin-bottom:1rem;">
     <input id="startDate" type="datetime-local">
     <input id="endDate" type="datetime-local">
@@ -91,12 +68,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
         <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
     </div>
 </section>
-<div id="map"></div>
-<div id="scale-container">
-    <span>Smooth</span>
-    <div id="scale-bar"></div>
-    <span>Rough</span>
-</div>
 <section id="controls" style="margin-bottom:1rem;">
     <button id="gpx-button">Generate GPX</button>
     <a id="gpx-link" style="display:none;">Download GPX</a>
@@ -113,7 +84,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 <script>
 const currentDeviceId = localStorage.getItem('deviceId');
 let selectedIds = [];
-let map;
 let deviceNicknames = {};
 let roughMin = 0;
 const LABEL_COUNT = 10;
@@ -206,42 +176,18 @@ function syncRanges() {
 }
 
 function initMap() {
-    const defaultPos = [52.028, 5.168]; // Houten, NL
-    const zoom = 12;
-    map = L.map('map');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
-    const setView = coords => map.setView(coords, zoom);
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            pos => setView([pos.coords.latitude, pos.coords.longitude]),
-            () => setView(defaultPos),
-            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-        );
-    } else {
-        setView(defaultPos);
-    }
-    addFullscreenControl(map);
-}
-
-function addFullscreenControl(m) {
-    const Full = L.Control.extend({
-        onAdd: function() {
-            const btn = L.DomUtil.create('button', 'leaflet-bar');
-            btn.textContent = '⤢';
-            L.DomEvent.on(btn, 'click', () => {
-                const el = m.getContainer();
-                addLog('Fullscreen button pressed');
-                if (!document.fullscreenElement) {
-                    el.requestFullscreen?.();
-                } else {
-                    document.exitFullscreen?.();
-                }
-            });
-            return btn;
-        }
+    const map = initializeStandardMap({
+        center: [52.028, 5.168], // Houten, NL
+        zoom: 12,
+        enableGeolocation: true,
+        enableBicycleMarker: false,
+        enableFullscreen: true
     });
-    m.addControl(new Full({position:'topleft'}));
+    
+    // Initialize roughness filter
+    initializeRoughnessFilter(() => {
+        updateMarkers();
+    });
 }
 
 // Load logs partial when DOM is ready
@@ -341,7 +287,7 @@ function filterRoughness(r) {
 }
 
 function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
-    if (!map || (lat === 0 && lon === 0)) return;
+    if (!window.map || (lat === 0 && lon === 0)) return;
     const opts = {
         color: colorForRoughness(roughness, min, max),
         radius: 4,
@@ -349,7 +295,7 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
         opacity: 0.9,
         fillOpacity: 0.9
     };
-    const marker = L.circleMarker([lat, lon], opts).addTo(map);
+    const marker = L.circleMarker([lat, lon], opts).addTo(window.map);
     let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
     if (nickname) popup = `Device: ${nickname}<br>` + popup;
     if (info) {
@@ -389,7 +335,7 @@ async function updateMarkers(showProgress = false) {
                 markers[i] = addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
             }
         } else if (markers[i]) {
-            map.removeLayer(markers[i]);
+            window.map.removeLayer(markers[i]);
             markers[i] = null;
         }
         if (showProgress) {
@@ -413,7 +359,7 @@ function loadData() {
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(async data => {
-            markers.forEach(m => { if (m) map.removeLayer(m); });
+            markers.forEach(m => { if (m) window.map.removeLayer(m); });
             markers = [];
             loadedRows = data.rows || [];
             roughAvg = data.average || 0;
@@ -462,9 +408,22 @@ async function checkAuthentication() {
 })();
 
 function initializePage() {
-    initMap();
-    populateDeviceIds();
-    syncRanges();
+    // Load map partial first
+    fetch('map-partial.html')
+        .then(response => response.text())
+        .then(mapHtml => {
+            document.getElementById('map-container').innerHTML = mapHtml;
+            // Initialize map after partial is loaded
+            initMap();
+            populateDeviceIds();
+            syncRanges();
+        })
+        .catch(error => {
+            console.error('Failed to load map partial:', error);
+            // Fallback initialization
+            populateDeviceIds();
+            syncRanges();
+        });
 }
 
 // Move event listeners to after authentication check
@@ -479,10 +438,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
             .map(o => o.value).filter(v => v);
         setDateRange().then(loadData);
-    });
-    
-    document.getElementById('roughness-filter').addEventListener('change', () => {
-        updateMarkers();
     });
     
     document.getElementById('gpx-button').addEventListener('click', () => {
