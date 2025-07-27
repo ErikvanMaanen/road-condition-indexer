@@ -417,11 +417,11 @@ class SQLConnectivityTester:
                 cursor = conn.cursor()
                 
                 # Test basic query
-                cursor.execute("SELECT 1 as test_value, GETDATE() as current_time")
+                cursor.execute("SELECT 1 as test_value, GETDATE() as server_time")
                 result = cursor.fetchone()
                 
                 # Test database-specific query
-                cursor.execute("SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_type = 'BASE TABLE'")
+                cursor.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_type = 'BASE TABLE'")
                 table_count_result = cursor.fetchone()
                 table_count = table_count_result[0] if table_count_result else 0
                 
@@ -433,7 +433,7 @@ class SQLConnectivityTester:
                     message=f"Successfully executed queries. Database has {table_count} tables.",
                     details={
                         "test_value": result[0] if result else None,
-                        "current_time": str(result[1]) if result else None,
+                        "server_time": str(result[1]) if result else None,
                         "table_count": table_count
                     }
                 )

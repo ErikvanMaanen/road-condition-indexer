@@ -641,14 +641,27 @@ class DatabaseManager:
             timestamp = self._get_utc_timestamp()
             additional_data_json = json.dumps(additional_data) if additional_data else None
 
-            self.execute_non_query(
-                f"""INSERT INTO {TABLE_USER_ACTIONS}
+            # Use named parameters to avoid SQLAlchemy parameter binding issues
+            query = f"""INSERT INTO {TABLE_USER_ACTIONS}
                    (timestamp, action_type, action_description, user_ip, user_agent,
                     device_id, session_id, additional_data, success, error_message)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (timestamp, action_type, action_description, user_ip, user_agent,
-                 device_id, session_id, additional_data_json, success, error_message),
-            )
+                   VALUES (:timestamp, :action_type, :action_description, :user_ip, :user_agent,
+                    :device_id, :session_id, :additional_data, :success, :error_message)"""
+            
+            params = {
+                'timestamp': timestamp,
+                'action_type': action_type,
+                'action_description': action_description,
+                'user_ip': user_ip,
+                'user_agent': user_agent,
+                'device_id': device_id,
+                'session_id': session_id,
+                'additional_data': additional_data_json,
+                'success': success,
+                'error_message': error_message
+            }
+            
+            self.execute_non_query(query, params)
 
             status = "SUCCESS" if success else "FAILED"
             log_message = f"USER_ACTION [{action_type}] {action_description} - {status}"
@@ -665,7 +678,7 @@ class DatabaseManager:
                 LogCategory.USER_ACTION,
             )
 
-    def log_sql_operation(self, operation_type: str, query: str, params: Optional[Tuple] = None,
+    def log_sql_operation(self, operation_type: str, query: str, params: Optional[Union[Tuple, Dict]] = None,
                          result_count: Optional[int] = None, execution_time_ms: Optional[float] = None,
                          success: bool = True, error_message: Optional[str] = None,
                          device_id: Optional[str] = None) -> None:
@@ -754,7 +767,23 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                result = conn.execute(text(query), params)
+                # Convert positional parameters to named for SQLAlchemy
+                param_dict = {
+                    'latitude': latitude,
+                    'longitude': longitude, 
+                    'speed': speed,
+                    'direction': direction,
+                    'roughness': roughness,
+                    'distance_m': distance_m,
+                    'device_id': device_id,
+                    'ip_address': ip_address
+                }
+                
+                named_query = f"""INSERT INTO {TABLE_BIKE_DATA} 
+                    (latitude, longitude, speed, direction, roughness, distance_m, device_id, ip_address) 
+                    VALUES (:latitude, :longitude, :speed, :direction, :roughness, :distance_m, :device_id, :ip_address)"""
+                
+                result = conn.execute(text(named_query), param_dict)
                 
                 # Check rowcount immediately after INSERT
                 if result.rowcount != 1:
@@ -843,11 +872,21 @@ class DatabaseManager:
             z_values_json = json.dumps(z_values)
             
             with self.get_connection_context() as conn:
-                conn.execute(
-                    text(f"INSERT INTO {TABLE_BIKE_SOURCE_DATA} (bike_data_id, z_values, speed, interval_seconds, freq_min, freq_max)"
-                        " VALUES (?, ?, ?, ?, ?, ?)"),
-                    (bike_data_id, z_values_json, speed, interval_seconds, freq_min, freq_max)
-                )
+                # Convert to named parameters for SQLAlchemy
+                param_dict = {
+                    'bike_data_id': bike_data_id,
+                    'z_values_json': z_values_json,
+                    'speed': speed,
+                    'interval_seconds': interval_seconds,
+                    'freq_min': freq_min,
+                    'freq_max': freq_max
+                }
+                
+                named_query = f"""INSERT INTO {TABLE_BIKE_SOURCE_DATA} 
+                    (bike_data_id, z_values, speed, interval_seconds, freq_min, freq_max)
+                    VALUES (:bike_data_id, :z_values_json, :speed, :interval_seconds, :freq_min, :freq_max)"""
+                
+                conn.execute(text(named_query), param_dict)
                 conn.commit()
                 self.log_debug(f"Successfully inserted source data for bike_data_id {bike_data_id}", 
                               LogLevel.DEBUG, LogCategory.QUERY)
@@ -1134,7 +1173,7 @@ class DatabaseManager:
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
 
-    def execute_non_query(self, query: str, params: Optional[Tuple] = None) -> int:
+    def execute_non_query(self, query: str, params: Optional[Union[Tuple, Dict]] = None) -> int:
         """Execute a non-query (INSERT, UPDATE, DELETE) and return affected rows."""
         import time
         start_time = time.time()
@@ -1165,7 +1204,26 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 if params:
-                    result = conn.execute(text(query), params)
+                    # Handle both tuple and dict parameters for SQLAlchemy
+                    if isinstance(params, dict):
+                        result = conn.execute(text(query), params)
+                    elif isinstance(params, (tuple, list)):
+                        # For positional parameters with ?, convert to dict for SQLAlchemy
+                        # Count the number of ? placeholders
+                        param_count = query.count('?')
+                        if len(params) == param_count:
+                            # Create numbered parameter dict for positional parameters
+                            param_dict = {f"param_{i}": params[i] for i in range(len(params))}
+                            # Replace ? with :param_0, :param_1, etc.
+                            modified_query = query
+                            for i in range(param_count):
+                                modified_query = modified_query.replace('?', f':param_{i}', 1)
+                            result = conn.execute(text(modified_query), param_dict)
+                        else:
+                            # Fallback: try to pass as-is
+                            result = conn.execute(text(query), params)
+                    else:
+                        result = conn.execute(text(query), params)
                 else:
                     result = conn.execute(text(query))
                 conn.commit()

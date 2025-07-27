@@ -332,6 +332,12 @@ def get_logs_partial():
     return FileResponse(BASE_DIR / "static" / "logs-partial.html")
 
 
+@app.get("/map-partial.html")
+def get_map_partial():
+    """Serve the map partial HTML file."""
+    return FileResponse(BASE_DIR / "static" / "map-partial.html")
+
+
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
