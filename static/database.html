@@ -76,6 +76,35 @@
             text-align: center;
             padding: 1rem;
         }
+        #device-management, #records-overview {
+            max-width: 800px;
+        }
+        #device-management h5, #records-overview h5 {
+            margin: 0.5rem 0;
+            color: #495057;
+        }
+        .device-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .device-item:last-child {
+            border-bottom: none;
+        }
+        table {
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +148,8 @@
         <button onclick="showUpdateForm()" class="warning">Update Selected Data</button>
         <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
         <button onclick="exportSelectedData()">Export Selected Data</button>
+        <button onclick="showDeviceManagement()">Manage Devices</button>
+        <button onclick="showRecordOverview()">Records Overview</button>
     </div>
 </section>
 
@@ -155,6 +186,46 @@
     </div>
 </div>
 
+<!-- Device Management -->
+<div id="device-management" class="confirmation-box">
+    <h4>Device Management</h4>
+    <div style="margin-bottom: 1rem;">
+        <h5>All Devices</h5>
+        <div id="device-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 1rem;">
+            Loading devices...
+        </div>
+    </div>
+    <div style="margin-bottom: 1rem;">
+        <h5>Edit Device Nickname</h5>
+        <div class="form-group">
+            <label for="edit-device-id">Device ID:</label>
+            <select id="edit-device-id">
+                <option value="">Select device...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="edit-device-nickname">New Nickname:</label>
+            <input type="text" id="edit-device-nickname" placeholder="Enter new nickname">
+        </div>
+        <button onclick="updateDeviceNickname()" class="warning">Update Nickname</button>
+    </div>
+    <div style="margin-top: 1rem;">
+        <button onclick="hideDeviceManagement()">Close</button>
+    </div>
+</div>
+
+<!-- Records Overview -->
+<div id="records-overview" class="confirmation-box">
+    <h4>Records Overview by Device</h4>
+    <div id="records-overview-content" style="max-height: 400px; overflow-y: auto;">
+        Loading overview...
+    </div>
+    <div style="margin-top: 1rem;">
+        <button onclick="hideRecordOverview()">Close</button>
+        <button onclick="refreshRecordOverview()">Refresh</button>
+    </div>
+</div>
+
 <!-- Include Activity Log and Debug Messages Partial -->
 <div id="logs-container"></div>
 
@@ -163,19 +234,6 @@
 let selectedIds = [];
 let deviceNicknames = {};
 let roughMin = 0;
-const LABEL_COUNT = 10;
-const ROUGHNESS_NAMES = [
-    'Smooth road',
-    'Even surface',
-    'Light texture',
-    'Coarse texture',
-    'Moderate roughness',
-    'Bumpy cobbles',
-    'Fine gravel',
-    'Coarse gravel',
-    'Severely uneven',
-    'Extremely rough'
-];
 let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
@@ -372,6 +430,14 @@ function updateDataSummary(data) {
     `;
 }
 
+// Helper function to hide all modal forms
+function hideAllForms() {
+    document.getElementById('update-form').style.display = 'none';
+    document.getElementById('delete-confirmation').style.display = 'none';
+    document.getElementById('device-management').style.display = 'none';
+    document.getElementById('records-overview').style.display = 'none';
+}
+
 function refreshSelection() {
     setDateRange().then(loadData);
 }
@@ -381,8 +447,8 @@ function showUpdateForm() {
         alert('No data selected. Please select devices and time range first.');
         return;
     }
+    hideAllForms();
     document.getElementById('update-form').style.display = 'block';
-    document.getElementById('delete-confirmation').style.display = 'none';
 }
 
 function hideUpdateForm() {
@@ -399,8 +465,8 @@ function showDeleteConfirmation() {
         return;
     }
     document.getElementById('delete-count').textContent = selectedData.length;
+    hideAllForms();
     document.getElementById('delete-confirmation').style.display = 'block';
-    document.getElementById('update-form').style.display = 'none';
 }
 
 function hideDeleteConfirmation() {
@@ -511,6 +577,259 @@ function exportSelectedData() {
     window.URL.revokeObjectURL(url);
     
     addLog(`Exported ${selectedData.length} records to CSV`);
+}
+
+// Device Management Functions
+function showDeviceManagement() {
+    hideAllForms();
+    document.getElementById('device-management').style.display = 'block';
+    loadDeviceList();
+    loadDeviceSelector();
+}
+
+function hideDeviceManagement() {
+    document.getElementById('device-management').style.display = 'none';
+    document.getElementById('edit-device-id').value = '';
+    document.getElementById('edit-device-nickname').value = '';
+}
+
+async function loadDeviceList() {
+    try {
+        const response = await authFetch('/device_ids');
+        const data = await response.json();
+        
+        const deviceListDiv = document.getElementById('device-list');
+        if (data.ids && data.ids.length > 0) {
+            deviceListDiv.innerHTML = data.ids.map(device => `
+                <div class="device-item">
+                    <div>
+                        <strong>ID:</strong> ${device.id}<br>
+                        <strong>Nickname:</strong> ${device.nickname || '<em style="color: #999;">No nickname</em>'}
+                    </div>
+                    <div>
+                        <button onclick="editDevice('${device.id}', '${device.nickname || ''}')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            deviceListDiv.innerHTML = '<p>No devices found</p>';
+        }
+    } catch (error) {
+        document.getElementById('device-list').innerHTML = '<p>Error loading devices</p>';
+        addDebug('Failed to load device list: ' + error.message);
+    }
+}
+
+async function loadDeviceSelector() {
+    try {
+        const response = await authFetch('/device_ids');
+        const data = await response.json();
+        
+        const selector = document.getElementById('edit-device-id');
+        selector.innerHTML = '<option value="">Select device...</option>';
+        
+        if (data.ids && data.ids.length > 0) {
+            data.ids.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.id;
+                option.textContent = device.nickname ? `${device.nickname} (${device.id})` : device.id;
+                selector.appendChild(option);
+            });
+        }
+    } catch (error) {
+        addDebug('Failed to load device selector: ' + error.message);
+    }
+}
+
+function editDevice(deviceId, currentNickname) {
+    document.getElementById('edit-device-id').value = deviceId;
+    document.getElementById('edit-device-nickname').value = currentNickname;
+    document.getElementById('edit-device-nickname').focus();
+}
+
+async function updateDeviceNickname() {
+    const deviceId = document.getElementById('edit-device-id').value;
+    const nickname = document.getElementById('edit-device-nickname').value.trim();
+    
+    if (!deviceId) {
+        alert('Please select a device');
+        return;
+    }
+    
+    if (!nickname) {
+        alert('Please enter a nickname');
+        return;
+    }
+    
+    try {
+        const response = await authFetch('/set_nickname', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId, nickname: nickname })
+        });
+        
+        if (response.ok) {
+            addLog(`Updated nickname for device ${deviceId} to "${nickname}"`);
+            loadDeviceList();
+            loadDeviceSelector();
+            populateDeviceIds(); // Refresh main device selector
+            document.getElementById('edit-device-nickname').value = '';
+        } else {
+            throw new Error('Failed to update nickname');
+        }
+    } catch (error) {
+        addDebug('Failed to update device nickname: ' + error.message);
+        alert('Failed to update nickname: ' + error.message);
+    }
+}
+
+// Records Overview Functions
+function showRecordOverview() {
+    hideAllForms();
+    document.getElementById('records-overview').style.display = 'block';
+    loadRecordOverview();
+}
+
+function hideRecordOverview() {
+    document.getElementById('records-overview').style.display = 'none';
+}
+
+function refreshRecordOverview() {
+    loadRecordOverview();
+}
+
+async function loadRecordOverview() {
+    try {
+        const overviewDiv = document.getElementById('records-overview-content');
+        overviewDiv.innerHTML = 'Loading overview...';
+        
+        // Get all devices
+        const devicesResponse = await authFetch('/device_ids');
+        const devicesData = await devicesResponse.json();
+        
+        if (!devicesData.ids || devicesData.ids.length === 0) {
+            overviewDiv.innerHTML = '<p>No devices found</p>';
+            return;
+        }
+        
+        // Get record counts for each device
+        const deviceStats = [];
+        
+        for (const device of devicesData.ids) {
+            try {
+                const params = new URLSearchParams();
+                params.append('device_id', device.id);
+                
+                const response = await authFetch('/filteredlogs?' + params.toString());
+                const data = await response.json();
+                
+                const recordCount = data.rows ? data.rows.length : 0;
+                const avgRoughness = data.average || 0;
+                
+                // Get date range for this device
+                const dateResponse = await authFetch('/date_range?' + params.toString());
+                const dateData = await dateResponse.json();
+                
+                deviceStats.push({
+                    id: device.id,
+                    nickname: device.nickname,
+                    recordCount: recordCount,
+                    avgRoughness: avgRoughness,
+                    firstRecord: dateData.start,
+                    lastRecord: dateData.end
+                });
+            } catch (error) {
+                console.error(`Failed to get stats for device ${device.id}:`, error);
+                deviceStats.push({
+                    id: device.id,
+                    nickname: device.nickname,
+                    recordCount: 0,
+                    avgRoughness: 0,
+                    firstRecord: null,
+                    lastRecord: null
+                });
+            }
+        }
+        
+        // Sort by record count (descending)
+        deviceStats.sort((a, b) => b.recordCount - a.recordCount);
+        
+        // Generate overview HTML
+        const totalRecords = deviceStats.reduce((sum, device) => sum + device.recordCount, 0);
+        const devicesWithData = deviceStats.filter(device => device.recordCount > 0).length;
+        const devicesWithoutData = deviceStats.length - devicesWithData;
+        
+        let html = `
+            <div style="margin-bottom: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                <h5 style="margin: 0 0 0.5rem 0;">Summary</h5>
+                <p style="margin: 0;"><strong>Total Devices:</strong> ${deviceStats.length}</p>
+                <p style="margin: 0;"><strong>Devices with Data:</strong> ${devicesWithData}</p>
+                ${devicesWithoutData > 0 ? `<p style="margin: 0; color: #e67e22;"><strong>Devices without Data:</strong> ${devicesWithoutData}</p>` : ''}
+                <p style="margin: 0;"><strong>Total Records:</strong> ${totalRecords.toLocaleString()}</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: left;">Device</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Records</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Avg Roughness</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: left;">Date Range</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        deviceStats.forEach(device => {
+            const percentage = totalRecords > 0 ? ((device.recordCount / totalRecords) * 100).toFixed(1) : '0.0';
+            const dateRange = device.firstRecord && device.lastRecord ? 
+                `${new Date(device.firstRecord).toLocaleDateString('nl-NL')} - ${new Date(device.lastRecord).toLocaleDateString('nl-NL')}` : 
+                'No data';
+            
+            html += `
+                <tr style="${device.recordCount === 0 ? 'background-color: #fff3cd;' : ''}">
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem;">
+                        <strong>${device.nickname || device.id}</strong>
+                        ${device.nickname ? `<br><small style="color: #666;">${device.id}</small>` : ''}
+                        ${device.recordCount > 0 ? `<br><button onclick="viewDeviceData('${device.id}')" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; margin-top: 0.25rem;">View Data</button>` : ''}
+                    </td>
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">
+                        ${device.recordCount.toLocaleString()}
+                        <br><small style="color: #666;">(${percentage}%)</small>
+                    </td>
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">
+                        ${device.recordCount > 0 ? device.avgRoughness.toFixed(3) : 'N/A'}
+                    </td>
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem;">
+                        <small>${dateRange}</small>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table>';
+        overviewDiv.innerHTML = html;
+        
+    } catch (error) {
+        document.getElementById('records-overview-content').innerHTML = '<p>Error loading overview</p>';
+        addDebug('Failed to load record overview: ' + error.message);
+    }
+}
+
+function viewDeviceData(deviceId) {
+    // Close the overview modal
+    hideRecordOverview();
+    
+    // Set the device selector to this specific device
+    const deviceSelector = document.getElementById('deviceId');
+    Array.from(deviceSelector.options).forEach(option => {
+        option.selected = option.value === deviceId;
+    });
+    
+    // Update selected IDs and load data
+    selectedIds = [deviceId];
+    setDateRange().then(loadData);
+    
+    addLog(`Viewing data for device: ${deviceNicknames[deviceId] || deviceId}`);
 }
 
 async function authFetch(url, options) {
