@@ -261,17 +261,6 @@
 let allLogMessages = [];
 let deviceId = '';
 
-// Initialize device ID from localStorage or generate new one
-function initializeDeviceId() {
-    deviceId = localStorage.getItem('deviceId') || '';
-    if (!deviceId) {
-        deviceId = crypto.randomUUID ? crypto.randomUUID() : 'unknown-' + Date.now();
-        localStorage.setItem('deviceId', deviceId);
-    }
-    // Take only last 8 characters for display
-    deviceId = deviceId.slice(-8);
-}
-
 // Format short date/time
 function formatShortDateTime() {
     const now = new Date();
@@ -484,7 +473,10 @@ function toggleLogs() {
 
 // Initialize when partial is loaded
 function initializeLogs() {
-    initializeDeviceId();
+    if (typeof window.initializeDeviceId === 'function') {
+        window.initializeDeviceId();
+    }
+    deviceId = (window.deviceId || '').slice(-8);
     // Add event listeners for filters
     const levelFilter = document.getElementById('log-level-filter');
     const categoryFilter = document.getElementById('log-category-filter');

@@ -487,8 +487,15 @@ async function loadLogsPartial() {
 function initializeDeviceId() {
     let deviceId = localStorage.getItem('deviceId');
     if (!deviceId) {
-        deviceId = 'device-' + Math.random().toString(36).substr(2, 16);
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            deviceId = window.crypto.randomUUID();
+        } else {
+            deviceId = 'device-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
+        }
         localStorage.setItem('deviceId', deviceId);
+        if (typeof setCookie === 'function') {
+            setCookie('deviceId', deviceId, 365);
+        }
     }
     window.deviceId = deviceId;
     return deviceId;
