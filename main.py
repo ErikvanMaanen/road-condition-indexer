@@ -305,6 +305,12 @@ def get_utils_js():
     return FileResponse(BASE_DIR / "static" / "utils.js", media_type="application/javascript")
 
 
+@app.get("/static/utils.js")
+def get_static_utils_js():
+    """Redirect old static utils.js requests to the new path."""
+    return RedirectResponse(url="/utils.js", status_code=301)
+
+
 @app.get("/leaflet.css")
 def get_leaflet_css():
     """Serve the leaflet.css file."""
@@ -321,6 +327,12 @@ def get_leaflet_js():
 def get_login_page():
     """Serve the login page - this should be accessible without authentication."""
     return FileResponse(BASE_DIR / "static" / "login.html")
+
+
+@app.get("/static/logs-partial.html")
+def get_logs_partial():
+    """Serve the logs partial HTML file."""
+    return FileResponse(BASE_DIR / "static" / "logs-partial.html")
 
 
 @app.get("/welcome.html")

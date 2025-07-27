@@ -1173,20 +1173,21 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE 1=1"
-                params = []
+                params = {}
                 
                 if device_ids:
-                    placeholders = ",".join("?" for _ in device_ids)
+                    placeholders = ",".join(f":device_id_{i}" for i in range(len(device_ids)))
                     query += f" AND device_id IN ({placeholders})"
-                    params.extend(device_ids)
+                    for i, device_id in enumerate(device_ids):
+                        params[f"device_id_{i}"] = device_id
                 
                 if start_dt:
-                    query += " AND timestamp >= ?"
-                    params.append(start_dt)
+                    query += " AND timestamp >= :start_dt"
+                    params["start_dt"] = start_dt
                 
                 if end_dt:
-                    query += " AND timestamp <= ?"
-                    params.append(end_dt)
+                    query += " AND timestamp <= :end_dt"
+                    params["end_dt"] = end_dt
                 
                 query += " ORDER BY id DESC"
                 result = conn.execute(text(query), params)
@@ -1196,17 +1197,18 @@ class DatabaseManager:
                 
                 # Calculate average for filtered data
                 avg_query = f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA} WHERE 1=1"
-                avg_params = []
+                avg_params = {}
                 if device_ids:
-                    placeholders = ",".join("?" for _ in device_ids)
+                    placeholders = ",".join(f":device_id_{i}" for i in range(len(device_ids)))
                     avg_query += f" AND device_id IN ({placeholders})"
-                    avg_params.extend(device_ids)
+                    for i, device_id in enumerate(device_ids):
+                        avg_params[f"device_id_{i}"] = device_id
                 if start_dt:
-                    avg_query += " AND timestamp >= ?"
-                    avg_params.append(start_dt)
+                    avg_query += " AND timestamp >= :start_dt"
+                    avg_params["start_dt"] = start_dt
                 if end_dt:
-                    avg_query += " AND timestamp <= ?"
-                    avg_params.append(end_dt)
+                    avg_query += " AND timestamp <= :end_dt"
+                    avg_params["end_dt"] = end_dt
                 
                 avg_result = conn.execute(text(avg_query), avg_params)
                 avg_row = avg_result.fetchone()
@@ -1244,11 +1246,12 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 query = f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE_BIKE_DATA}"
-                params = []
+                params = {}
                 if device_ids:
-                    placeholders = ",".join("?" for _ in device_ids)
+                    placeholders = ",".join(f":device_id_{i}" for i in range(len(device_ids)))
                     query += f" WHERE device_id IN ({placeholders})"
-                    params.extend(device_ids)
+                    for i, device_id in enumerate(device_ids):
+                        params[f"device_id_{i}"] = device_id
                 
                 result = conn.execute(text(query), params)
                 row = result.fetchone()
