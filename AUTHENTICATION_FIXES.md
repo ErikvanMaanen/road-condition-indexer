@@ -117,7 +117,6 @@ def get_logs(request: Request, limit: Optional[int] = None, dep: None = Depends(
 - `/login` - Authentication endpoint
 - `/auth_check` - Session validation
 - `/health` - Health check for monitoring
-- `/robots.txt` - Search engine directives
 - `/utils.js`, `/leaflet.css`, `/leaflet.js` - Required static assets
 - `/static/login.html` - Login page access
 
