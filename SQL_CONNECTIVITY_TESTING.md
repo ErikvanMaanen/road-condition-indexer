@@ -92,7 +92,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 Run the standalone connectivity test script:
 
 ```bash
-python test_sql_connectivity.py
+python tests/test_sql_connectivity.py
 ```
 
 This provides detailed diagnostics without starting the full application.
@@ -226,7 +226,7 @@ The connectivity tests include performance benchmarking:
 ### Local Development Setup
 1. Copy `.env.example` to `.env`
 2. Fill in your SQL Server connection details
-3. Run `python test_sql_connectivity.py` to verify connectivity
+3. Run `python tests/test_sql_connectivity.py` to verify connectivity
 4. Start the application with `python main.py` or `uvicorn main:app`
 
 ### Azure Deployment
@@ -239,7 +239,7 @@ The connectivity tests include performance benchmarking:
 
 ### Test connectivity manually
 ```bash
-python test_sql_connectivity.py
+python tests/test_sql_connectivity.py
 ```
 
 ### Check environment variables (local)

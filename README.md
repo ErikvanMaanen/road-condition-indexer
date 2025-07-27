@@ -64,7 +64,7 @@ See [SQL_CONNECTIVITY_TESTING.md](SQL_CONNECTIVITY_TESTING.md) for detailed docu
 3. **Test SQL Connectivity** (Recommended):
    Before starting the application, test your SQL Server connectivity:
    ```bash
-   python test_sql_connectivity.py
+   python tests/test_sql_connectivity.py
    ```
    
    This standalone test will:
