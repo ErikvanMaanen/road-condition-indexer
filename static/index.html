@@ -25,10 +25,50 @@
         }
         #status { margin-bottom: 1rem; font-weight: bold; }
         #button-bar { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
-        button { padding: 0.5rem 1rem; font-size: 1rem; }
+        button { padding: 0.5rem 1rem; font-size: 1rem; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         input:disabled { opacity: 0.5; cursor: not-allowed; }
-        #toggle { padding: 1rem 2rem; font-size: 1.25rem; }
+        select { padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        #toggle { padding: 0.75rem 1.5rem; font-size: 1.1rem; font-weight: bold; border-radius: 6px; border: 2px solid #ccc; transition: all 0.3s ease; }
+        #toggle.recording { 
+            background-color: #f44336; 
+            color: white; 
+            border-color: #d32f2f;
+            box-shadow: 0 0 10px rgba(244, 67, 54, 0.3);
+            animation: pulse-recording 2s infinite;
+        }
+        #toggle.recording:hover {
+            background-color: #d32f2f;
+            box-shadow: 0 0 15px rgba(244, 67, 54, 0.5);
+        }
+        #toggle.stopped { 
+            background-color: #4CAF50; 
+            color: white; 
+            border-color: #45a049; 
+        }
+        #toggle.stopped:hover {
+            background-color: #45a049;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+        }
+        @keyframes pulse-recording {
+            0% { box-shadow: 0 0 10px rgba(244, 67, 54, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(244, 67, 54, 0.6); }
+            100% { box-shadow: 0 0 10px rgba(244, 67, 54, 0.3); }
+        }
+        /* Responsive design for device filter and start button */
+        @media (max-width: 600px) {
+            #filter-dev > div {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            #device-filter {
+                margin-bottom: 0.5rem;
+            }
+            #toggle {
+                font-size: 1rem;
+                padding: 0.75rem;
+            }
+        }
         #status-indicators {
             position: fixed;
             top: 10px;
@@ -214,7 +254,8 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="device-filter" multiple></select>
+        <select id="device-filter" multiple style="flex: 1;"></select>
+        <button id="toggle">▶️ Start Recording</button>
     </div>
 </section>
 
@@ -286,8 +327,7 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
         </button>
     </div>
     <div id="button-bar">
-        <button id="toggle">Start</button>
-        <button id="update-button" style="margin-left:1rem; display:none;">Update Records</button>
+        <button id="update-button" style="display:none;">Update Records</button>
     </div>
     <div id="loading" style="display:none; margin-top:1rem;">
         <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
@@ -785,7 +825,7 @@ function updateStatusIndicator(type, status, explanation = '') {
 }
 
 function checkDatabaseStatus() {
-    fetch('/device_ids')
+    fetch('/health')
         .then(response => {
             if (response.ok) {
                 databaseStatus = true;
@@ -857,7 +897,13 @@ let recordCount = 0;
 function updateToggleButton() {
     const btn = document.getElementById('toggle');
     if (btn) {
-        btn.textContent = loggingEnabled ? 'Stop' : 'Start';
+        if (loggingEnabled) {
+            btn.textContent = '⏹️ Stop Recording';
+            btn.className = 'recording';
+        } else {
+            btn.textContent = '▶️ Start Recording';
+            btn.className = 'stopped';
+        }
     }
 }
 

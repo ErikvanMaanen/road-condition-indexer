@@ -70,6 +70,10 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </section>
 <section id="controls" style="margin-bottom:1rem;">
     <button id="gpx-button">Generate GPX</button>
+    <button id="refresh-button">Refresh Data</button>
+    <label style="margin-left: 1rem;">
+        <input type="checkbox" id="auto-refresh" checked> Auto-refresh every 30 seconds
+    </label>
     <a id="gpx-link" style="display:none;">Download GPX</a>
     <div id="loading" style="display:none; margin-top:1rem;">
         <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
@@ -110,6 +114,8 @@ let sliderMax = 0;
 const pageRefreshTime = Date.now();
 let loadedRows = [];
 let markers = [];
+let autoRefreshInterval = null;
+let isAutoRefreshEnabled = true;
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -498,6 +504,11 @@ function loadData() {
     ids.forEach(id => params.append('device_id', id));
     if (start) params.append('start', fromCESTDateTimeLocal(start));
     if (end) params.append('end', fromCESTDateTimeLocal(end));
+    
+    // Show loading indicator
+    const loadBox = document.getElementById('loading');
+    if (loadBox) loadBox.style.display = 'block';
+    
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(async data => {
@@ -516,8 +527,74 @@ function loadData() {
             });
             updateRoughnessLabels();
             await updateMarkers(true);
+            
+            // Add log message for refresh
+            if (typeof addLog === 'function') {
+                addLog(`Data refreshed: ${loadedRows.length} records loaded`, 'Data', 'INFO');
+            }
         })
-        .catch(console.error);
+        .catch(error => {
+            console.error('Error loading data:', error);
+            if (typeof addLog === 'function') {
+                addLog(`Error loading data: ${error.message}`, 'Data', 'ERROR');
+            }
+        })
+        .finally(() => {
+            // Hide loading indicator
+            const loadBox = document.getElementById('loading');
+            if (loadBox) loadBox.style.display = 'none';
+        });
+}
+
+function refreshData() {
+    if (typeof addLog === 'function') {
+        addLog('Manual data refresh triggered', 'UI', 'INFO');
+    }
+    loadData();
+}
+
+function startAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+    
+    if (isAutoRefreshEnabled) {
+        autoRefreshInterval = setInterval(() => {
+            if (typeof addLog === 'function') {
+                addLog('Auto-refresh: updating data', 'System', 'INFO');
+            }
+            loadData();
+        }, 30000); // 30 seconds
+        
+        if (typeof addLog === 'function') {
+            addLog('Auto-refresh enabled (30 seconds)', 'System', 'INFO');
+        }
+    }
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        
+        if (typeof addLog === 'function') {
+            addLog('Auto-refresh disabled', 'System', 'INFO');
+        }
+    }
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('auto-refresh');
+    isAutoRefreshEnabled = checkbox.checked;
+    
+    if (isAutoRefreshEnabled) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+    
+    // Save preference to localStorage
+    localStorage.setItem('devicePageAutoRefresh', isAutoRefreshEnabled.toString());
 }
 
 // Authentication check - verify user is logged in
@@ -550,6 +627,12 @@ async function checkAuthentication() {
 })();
 
 function initializePage() {
+    // Load auto-refresh preference from localStorage
+    const savedAutoRefresh = localStorage.getItem('devicePageAutoRefresh');
+    if (savedAutoRefresh !== null) {
+        isAutoRefreshEnabled = savedAutoRefresh === 'true';
+    }
+    
     // Load map partial using proper script execution
     loadMapPartial().then(mapLoaded => {
         if (mapLoaded) {
@@ -580,12 +663,22 @@ function initializePage() {
                 }
                 populateDeviceIds();
                 syncRanges();
+                
+                // Start auto-refresh if enabled
+                if (isAutoRefreshEnabled) {
+                    startAutoRefresh();
+                }
             });
         } else {
             console.warn('Map partial failed to load, using fallback');
             createFallbackMap();
             populateDeviceIds();
             syncRanges();
+            
+            // Start auto-refresh if enabled
+            if (isAutoRefreshEnabled) {
+                startAutoRefresh();
+            }
         }
     });
 }
@@ -687,6 +780,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('gpx-button').addEventListener('click', () => {
         addLog('Generate GPX pressed');
         generateGpx();
+    });
+    
+    document.getElementById('refresh-button').addEventListener('click', () => {
+        addLog('Manual refresh requested');
+        refreshData();
+    });
+    
+    // Set initial state of auto-refresh checkbox
+    const autoRefreshCheckbox = document.getElementById('auto-refresh');
+    autoRefreshCheckbox.checked = isAutoRefreshEnabled;
+    
+    autoRefreshCheckbox.addEventListener('change', () => {
+        toggleAutoRefresh();
     });
     
     let sliderUpdating = false;
@@ -803,6 +909,11 @@ document.addEventListener('fullscreenchange', () => {
     if (map) {
         map.invalidateSize();
     }
+});
+
+// Clean up auto-refresh interval when page is unloaded
+window.addEventListener('beforeunload', () => {
+    stopAutoRefresh();
 });
 </script>
 
