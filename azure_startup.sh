@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Simplified Azure App Service startup script for Python 3.12
+# Azure App Service startup script for Road Condition Indexer (Python 3.12)
 echo "🚀 Azure App Service startup for Road Condition Indexer (Python 3.12)"
-echo "📊 Using SQLAlchemy database backend with automatic fallback"
+echo "📊 Using SQLAlchemy with Azure SQL Server (SQL Server only - no fallback)"
 
 # Set critical environment variables for Python 3.12
 export PYTHONUNBUFFERED=1
@@ -23,18 +23,28 @@ fi
 echo "✅ Application files found"
 echo "🐍 Python version: $(python3 --version 2>&1)"
 
-# Check database configuration (informational only)
-if [ -n "$AZURE_SQL_SERVER" ] && [ -n "$AZURE_SQL_DATABASE" ]; then
-    echo "📊 Database backend: Azure SQL Server (pymssql driver)"
+# Check database configuration (required for startup)
+if [ -n "$AZURE_SQL_SERVER" ] && [ -n "$AZURE_SQL_DATABASE" ] && [ -n "$AZURE_SQL_USER" ] && [ -n "$AZURE_SQL_PASSWORD" ]; then
+    echo "✅ Azure SQL Server configuration detected"
     echo "   Server: $AZURE_SQL_SERVER"
     echo "   Database: $AZURE_SQL_DATABASE"
+    echo "   User: $AZURE_SQL_USER"
+    echo "� SQL connectivity tests will run automatically on startup"
 else
-    echo "📊 Database backend: SQLite (automatic fallback)"
-    echo "   Database file: RCI_local.db (will be created automatically)"
+    echo "❌ Missing required Azure SQL Server environment variables"
+    echo "   Required: AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USER, AZURE_SQL_PASSWORD"
+    echo "   Application will fail to start without proper SQL Server configuration"
+    exit 1
 fi
 
 echo "✅ No ODBC driver required - using native pymssql connection"
+echo "🧪 Comprehensive SQL connectivity tests integrated into startup process"
 
-# Start the application with minimal configuration for Python 3.12
-echo "🌟 Starting uvicorn server on Python 3.12..."
-uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info
+# Start the application with production-ready configuration
+echo "🌟 Starting gunicorn with uvicorn workers for production..."
+echo "   Workers: 4 (adjust based on App Service plan)"
+echo "   Timeout: 120s (allows time for SQL connectivity tests)"
+echo "   Preload: enabled (runs SQL tests before serving requests)"
+
+# Use gunicorn with uvicorn workers for production deployment
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 120 --preload --access-logfile=- --error-logfile=- --log-level info main:app
