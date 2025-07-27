@@ -33,6 +33,9 @@ from database import (
     DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS
 )
 
+# Import SQL connectivity testing
+from sql_connectivity_tests import run_startup_connectivity_tests, ConnectivityTestResult
+
 # Import logging utilities
 from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
 
@@ -599,7 +602,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 
 def startup_init():
-    """Initialize the database on startup with optimized logging and error handling."""
+    """Initialize the database on startup with comprehensive SQL connectivity testing."""
     import time
     startup_start_time = time.time()
     
@@ -607,18 +610,35 @@ def startup_init():
     log_info("🚀 Application startup initiated", LogCategory.STARTUP)
     
     try:
-        # Step 1: Database Table Initialization
+        # Step 1: Comprehensive SQL Connectivity Tests
+        log_info("🔍 Running comprehensive SQL connectivity tests...", LogCategory.STARTUP)
+        try:
+            connectivity_report = run_startup_connectivity_tests(timeout_seconds=30, retry_attempts=3)
+            
+            if connectivity_report.overall_status == ConnectivityTestResult.SUCCESS:
+                log_info("✅ SQL connectivity tests passed - database is ready", LogCategory.STARTUP)
+            elif connectivity_report.overall_status == ConnectivityTestResult.WARNING:
+                log_warning("⚠️ SQL connectivity tests passed with warnings - monitoring recommended", LogCategory.STARTUP)
+            else:
+                log_error("❌ SQL connectivity tests failed - application may not function properly", LogCategory.STARTUP)
+                # Continue anyway for now, but this indicates serious issues
+                
+        except Exception as e:
+            log_error(f"❌ SQL connectivity testing failed: {str(e)}", LogCategory.STARTUP)
+            log_warning("⚠️ Continuing with basic database initialization...", LogCategory.STARTUP)
+        
+        # Step 2: Database Table Initialization
         log_info("🔧 Initializing database tables...", LogCategory.STARTUP)
         db_manager.init_tables()
         log_info("✅ Database tables initialized successfully", LogCategory.STARTUP)
         
-        # Step 2: Basic connectivity test
-        log_info("🔍 Testing database connectivity...", LogCategory.STARTUP)
+        # Step 3: Basic connectivity verification (fallback test)
+        log_info("🔍 Verifying basic database connectivity...", LogCategory.STARTUP)
         test_result = db_manager.execute_scalar("SELECT 1")
         if test_result != 1:
-            raise Exception("Database connectivity test failed")
+            raise Exception("Basic database connectivity test failed")
         
-        # Step 3: Table verification (SQL Server only)
+        # Step 4: Table verification (SQL Server only)
         tables_result = db_manager.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
         
         tables = [row['name'] for row in tables_result]
@@ -630,7 +650,7 @@ def startup_init():
         else:
             log_info(f"✅ All required tables verified: {len(tables)} tables", LogCategory.STARTUP)
         
-        # Step 4: Quick data summary
+        # Step 5: Quick data summary
         try:
             bike_data_count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
             log_info(f"📊 Database contains {bike_data_count} bike data records", LogCategory.STARTUP)
@@ -638,7 +658,7 @@ def startup_init():
             log_warning(f"⚠️ Could not get data count: {e}", LogCategory.STARTUP)
             bike_data_count = 0
         
-        # Step 5: Quick integrity check (non-blocking)
+        # Step 6: Quick integrity check (non-blocking)
         try:
             integrity_ok = db_manager.check_database_integrity()
             if integrity_ok:

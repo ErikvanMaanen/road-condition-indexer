@@ -1,24 +1,26 @@
 # Road Condition Indexer
 
-This project collects road roughness data from mobile devices and stores it in a database. The backend is built with FastAPI and uses SQLAlchemy for robust database management with support for both Azure SQL Server and SQLite.
+This project collects road roughness data from mobile devices and stores it in a database. The backend is built with FastAPI and uses SQLAlchemy for robust database management with Azure SQL Server.
 
 ## Database Backend
 
-The application uses a modern SQLAlchemy-based database layer with automatic fallback capability:
+The application uses a modern SQLAlchemy-based database layer with SQL Server enforcement:
 
-### **Primary Backend: Azure SQL Server**
+### **Database: Azure SQL Server (Required)**
 - **Driver**: SQLAlchemy with pymssql 
 - **Connection**: Secure, connection-pooled access to Azure SQL
 - **Features**: Production-scale, automatic failover, backup capabilities
 - **Configuration**: Set Azure SQL environment variables (see Setup section)
+- **Fail-Fast**: Application will not start without proper SQL Server configuration
 
-### **Fallback Backend: SQLite** 
-- **Driver**: SQLAlchemy with built-in SQLite support
-- **Connection**: Local file-based database (`RCI_local.db`)
-- **Features**: Zero-configuration, perfect for development and testing
-- **Activation**: Automatic when Azure SQL environment variables are not provided
+### **SQL Connectivity Testing**
+The application includes comprehensive SQL connectivity testing that runs automatically on startup:
+- **Environment Detection**: Automatically detects Azure App Service vs local development
+- **Progressive Testing**: DNS resolution → Port connectivity → Authentication → Query execution → Performance benchmarking
+- **Detailed Diagnostics**: Provides specific error messages and recommendations for connectivity issues
+- **Performance Monitoring**: Measures and reports connection and query performance
 
-The application automatically detects available configuration and chooses the appropriate backend without requiring code changes.
+See [SQL_CONNECTIVITY_TESTING.md](SQL_CONNECTIVITY_TESTING.md) for detailed documentation.
 
 ## Endpoints
 
@@ -33,8 +35,10 @@ The application automatically detects available configuration and chooses the ap
 
 ## Setup
 
-1. **Environment Configuration** (Optional for Azure SQL):
-   Create an `.env` file with your Azure SQL connection details:
+1. **Environment Configuration** (Required):
+
+   **For Local Development:**
+   Create a `.env` file with your Azure SQL connection details:
    ```env
    AZURE_SQL_SERVER=your-server.database.windows.net
    AZURE_SQL_DATABASE=your-database-name
@@ -43,7 +47,8 @@ The application automatically detects available configuration and chooses the ap
    AZURE_SQL_PORT=1433
    ```
    
-   **Note**: If these variables are not provided, the application will automatically use SQLite for local development.
+   **For Azure App Service:**
+   Set the same variables as Application Settings in your Azure App Service configuration.
 
 2. **Install Dependencies**:
    ```bash
@@ -56,16 +61,31 @@ The application automatically detects available configuration and chooses the ap
    - `fastapi>=0.104.0` - Web framework
    - `numpy`, `scipy` - Scientific computing for data processing
 
-3. **Environment Verification** (Recommended):
+3. **Test SQL Connectivity** (Recommended):
+   Before starting the application, test your SQL Server connectivity:
+   ```bash
+   python test_sql_connectivity.py
+   ```
+   
+   This standalone test will:
+   - Verify all environment variables are set
+   - Test DNS resolution and port connectivity
+   - Validate authentication and database access
+   - Benchmark connection performance
+   - Provide specific troubleshooting recommendations
+
+4. **Environment Verification** (Optional):
    ```bash
    python setup_env.py
    ```
    This will verify your Python environment, check dependencies, and test database connectivity.
 
-4. **Start the API Server**:
+5. **Start the API Server**:
    ```bash
    uvicorn main:app --reload --host 0.0.0.0
    ```
+   
+   The application will automatically run SQL connectivity tests on startup and provide detailed diagnostic information.
 
 ## Key Improvements in Database Handling
 
