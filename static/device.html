@@ -83,6 +83,8 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const currentDeviceId = localStorage.getItem('deviceId');
+// Make deviceId available globally for logs partial
+window.deviceId = currentDeviceId;
 let selectedIds = [];
 let deviceNicknames = {};
 let roughMin = 0;

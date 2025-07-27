@@ -571,6 +571,8 @@ function initializePage() {
 
 let deviceId = localStorage.getItem('deviceId');
 let selectedIds = deviceId ? [deviceId] : [];
+// Make deviceId available globally for logs partial
+window.deviceId = deviceId;
 function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
     document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
@@ -580,6 +582,8 @@ if (!deviceId) {
     localStorage.setItem('deviceId', deviceId);
     setCookie('deviceId', deviceId, 365);
 }
+// Update window.deviceId whenever deviceId changes
+window.deviceId = deviceId;
 
 // Initialize source data recording toggle from localStorage
 let recordSourceData = localStorage.getItem('recordSourceData') === 'true';

@@ -259,7 +259,8 @@
 <script>
 // Debug Messages JavaScript Functions
 let allLogMessages = [];
-let deviceId = '';
+// Use existing deviceId from parent page or window object
+let logsDeviceId = window.deviceId || localStorage.getItem('deviceId') || '';
 
 // Format short date/time
 function formatShortDateTime() {
@@ -281,12 +282,16 @@ function addDebug(msg, category = 'Debug', level = 'DEBUG') {
 // Add message to all messages with full details
 function addMessage(msg, level = 'INFO', category = 'General') {
     const timestamp = formatShortDateTime();
+    // Get current deviceId from various possible sources
+    const currentDeviceId = window.deviceId || 
+                           (typeof logsDeviceId !== 'undefined' ? logsDeviceId : '') || 
+                           localStorage.getItem('deviceId') || '';
     const logEntry = {
         timestamp: timestamp,
         level: level,
         category: category,
         message: msg,
-        deviceId: deviceId
+        deviceId: currentDeviceId
     };
     allLogMessages.push(logEntry);
     // Limit to last 1000 messages to prevent memory issues
@@ -476,7 +481,7 @@ function initializeLogs() {
     if (typeof window.initializeDeviceId === 'function') {
         window.initializeDeviceId();
     }
-    deviceId = (window.deviceId || '').slice(-8);
+    logsDeviceId = (window.deviceId || '').slice(-8);
     // Add event listeners for filters
     const levelFilter = document.getElementById('log-level-filter');
     const categoryFilter = document.getElementById('log-category-filter');
