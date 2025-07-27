@@ -311,6 +311,14 @@ function addFullscreenControl(m) {
 function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
     if (!window.map) return;
     
+    // Validate input parameters
+    if (typeof lat !== 'number' || typeof lon !== 'number' || typeof roughness !== 'number') {
+        console.warn('addPoint: Invalid parameters', { lat, lon, roughness });
+        return;
+    }
+    
+    if (lat === 0 && lon === 0) return; // Skip invalid coordinates
+    
     const marker = L.circleMarker([lat, lon], {
         radius: 4,
         fillColor: colorForRoughness(roughness, min, max),
@@ -320,14 +328,16 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
         fillOpacity: 0.8
     });
 
-    let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
+    let popup = `Roughness: ${roughnessLabel(roughness)} (${(roughness || 0).toFixed(2)})`;
     if (info) {
         const timeStr = formatDutchTime(info.timestamp);
+        const speed = (info.speed_kmh || 0).toFixed(1);
+        const roughnessValue = (info.roughness || 0).toFixed(2);
         popup = `Device: ${nickname || info.device_id}<br>` +
                 `Time: ${timeStr}<br>` +
-                `Speed: ${info.speed_kmh.toFixed(1)} km/h<br>` +
+                `Speed: ${speed} km/h<br>` +
                 `Dir: ${directionToCompass(info.direction)}<br>` +
-                `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
+                `Roughness: ${roughnessLabel(info.roughness)} (${roughnessValue})`;
     }
 
     marker.bindPopup(popup);

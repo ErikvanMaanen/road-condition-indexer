@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Condition Indexer</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
     <script src="utils.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
+        #map { height: 40vh; width: 100%; margin-bottom: 1rem; border: 1px solid #ccc; }
+        #scale-bar { height: 12px; background: linear-gradient(to right, green, yellow, red); border: 1px solid #ccc; flex: 1; }
         #log {
             width: 100%;
             height: 150px;
@@ -295,12 +297,29 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 
 
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <script>
-// Load map partial with proper script execution
+// Wait for document and resources to be ready before loading map
+document.addEventListener('DOMContentLoaded', () => {
+    // Ensure Leaflet is loaded
+    if (typeof L === 'undefined') {
+        console.error('Leaflet library not loaded');
+        return;
+    }
+});
 async function loadMapPartial() {
     try {
+        const mapContainer = document.getElementById('map-container');
+        if (!mapContainer) {
+            console.error('Map container not found');
+            return false;
+        }
+
         const response = await fetch('map-partial.html');
+        if (!response.ok) {
+            throw new Error(`Failed to load map-partial.html: ${response.status} ${response.statusText}`);
+        }
+
         const mapHtml = await response.text();
         
         // Parse the HTML to extract script content
@@ -308,7 +327,6 @@ async function loadMapPartial() {
         const doc = parser.parseFromString(mapHtml, 'text/html');
         
         // Insert the HTML content (excluding scripts)
-        const mapContainer = document.getElementById('map-container');
         const scripts = doc.querySelectorAll('script');
         const styles = doc.querySelectorAll('style');
         
@@ -339,6 +357,66 @@ async function loadMapPartial() {
         return true;
     } catch (error) {
         console.error('Failed to load map partial:', error);
+        if (typeof addDebug === 'function') {
+            addDebug('Map partial loading error: ' + error.message, 'System', 'ERROR');
+        }
+        return false;
+    }
+}
+
+async function loadLogsPartial() {
+    try {
+        const logsContainer = document.getElementById('logs-container');
+        if (!logsContainer) {
+            console.error('Logs container not found');
+            return false;
+        }
+
+        const response = await fetch('logs-partial.html');
+        if (!response.ok) {
+            throw new Error(`Failed to load logs-partial.html: ${response.status} ${response.statusText}`);
+        }
+
+        const logsHtml = await response.text();
+        
+        // Parse the HTML to extract script content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(logsHtml, 'text/html');
+        
+        // Insert the HTML content (excluding scripts)
+        const scripts = doc.querySelectorAll('script');
+        const styles = doc.querySelectorAll('style');
+        
+        // Remove scripts and styles from the content to insert them separately
+        scripts.forEach(script => script.remove());
+        styles.forEach(style => style.remove());
+        
+        // Insert the HTML content
+        logsContainer.innerHTML = doc.body.innerHTML;
+        
+        // Insert and execute styles
+        styles.forEach(style => {
+            const newStyle = document.createElement('style');
+            newStyle.textContent = style.textContent;
+            document.head.appendChild(newStyle);
+        });
+        
+        // Insert and execute scripts
+        for (const script of scripts) {
+            const newScript = document.createElement('script');
+            newScript.textContent = script.textContent;
+            document.head.appendChild(newScript);
+            
+            // Wait a moment for script to execute
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Failed to load logs partial:', error);
+        if (typeof addDebug === 'function') {
+            addDebug('Logs partial loading error: ' + error.message, 'System', 'ERROR');
+        }
         return false;
     }
 }
@@ -370,6 +448,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Load map partial first
     const mapLoaded = await loadMapPartial();
+    
+    // Load logs partial
+    const logsLoaded = await loadLogsPartial();
     
     if (mapLoaded) {
         // Wait for map functions to be available
@@ -476,7 +557,12 @@ function initializePage() {
     updateStatus();
     initMap();
     populateDeviceFilter();
-    pollDebug();
+    
+    // Only start pollDebug if debug element exists
+    if (document.getElementById('debug')) {
+        pollDebug();
+    }
+    
     // Initial status check
     checkDatabaseStatus();
     // Check database status periodically
@@ -499,13 +585,13 @@ if (!deviceId) {
 let recordSourceData = localStorage.getItem('recordSourceData') === 'true';
 // Set the initial checkbox state
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('record-source-data').checked = recordSourceData;
+    const recordSourceDataElement = document.getElementById('record-source-data');
+    if (recordSourceDataElement) {
+        recordSourceDataElement.checked = recordSourceData;
+    }
 
     // Set initial state of start/stop button
     updateToggleButton();
-    
-    // Load logs partial
-    loadLogsPartial();
     
     // Load current threshold settings
     loadSettings();
@@ -666,19 +752,6 @@ let lastRoughness = 0;
 let lastAcc = {x:0, y:0, z:0};
 let orientationData = {alpha:0, beta:0, gamma:0};
 let roughMin = 0;
-const LABEL_COUNT = 10;
-const ROUGHNESS_NAMES = [
-    'Smooth road',
-    'Even surface',
-    'Light texture',
-    'Coarse texture',
-    'Moderate roughness',
-    'Bumpy cobbles',
-    'Fine gravel',
-    'Coarse gravel',
-    'Severely uneven',
-    'Extremely rough'
-];
 let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
@@ -867,10 +940,16 @@ function loadLogs() {
         const loadBox = document.getElementById('loading');
         const prog = document.getElementById('load-progress');
         const label = document.getElementById('load-label');
-        prog.max = rows.length;
-        prog.value = 0;
-        label.textContent = `0 / ${rows.length}`;
-        loadBox.style.display = 'block';
+        
+        if (prog && label) {
+            prog.max = rows.length;
+            prog.value = 0;
+            label.textContent = `0 / ${rows.length}`;
+        }
+        
+        if (loadBox) {
+            loadBox.style.display = 'block';
+        }
         
         // Clear existing map data
         clearMapData();
@@ -879,6 +958,7 @@ function loadLogs() {
         roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
         roughScales = {};
         rows.forEach(row => {
+            if (!row || typeof row.roughness !== 'number' || !row.device_id) return;
             const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
             s.min = Math.min(s.min, row.roughness);
             s.max = Math.max(s.max, row.roughness);
@@ -887,15 +967,20 @@ function loadLogs() {
         updateRoughnessLabels();
         for (let i = rows.length - 1; i >= 0; i--) {
             const row = rows[i];
+            if (!row || typeof row.roughness !== 'number' || typeof row.latitude !== 'number' || typeof row.longitude !== 'number') continue;
             if (!filterRoughness(row.roughness)) continue;
             const name = deviceNicknames[row.device_id] || '';
             const scale = roughScales[row.device_id] || {min:0,max:1};
             addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
-            prog.value = rows.length - i;
-            label.textContent = `${rows.length - i} / ${rows.length}`;
+            if (prog && label) {
+                prog.value = rows.length - i;
+                label.textContent = `${rows.length - i} / ${rows.length}`;
+            }
             if ((rows.length - i) % 100 === 0) await new Promise(r => setTimeout(r, 0));
         }
-        loadBox.style.display = 'none';
+        if (loadBox) {
+            loadBox.style.display = 'none';
+        }
         addLog(`Total records loaded: ${rows.length}`);
         recordCount = rows.length;
     }).catch(err => console.error(err));
@@ -1043,7 +1128,10 @@ async function stopGeolocation() {
 
 function pollDebug() {
     fetch('/debuglog').then(r => r.json()).then(data => {
-        document.getElementById('debug').value = data.log.join('\n');
+        const debugElement = document.getElementById('debug');
+        if (debugElement) {
+            debugElement.value = data.log.join('\n');
+        }
     }).catch(console.error).finally(() => setTimeout(pollDebug, 10000));
 }
 
@@ -1077,19 +1165,38 @@ if (saveNicknameBtn) {
     });
 }
 
-document.getElementById('device-filter').addEventListener('change', () => {
-    selectedIds = Array.from(document.getElementById('device-filter').selectedOptions)
-        .map(o => o.value).filter(v => v);
-    loadNickname();
-    loadLogs();
-});
-document.getElementById('roughness-filter').addEventListener('change', () => {
-    loadLogs();
-});
-document.getElementById('record-source-data').addEventListener('change', (e) => {
-    recordSourceData = e.target.checked;
-    addLog(`Source data recording ${recordSourceData ? 'enabled' : 'disabled'}`);
-    localStorage.setItem('recordSourceData', recordSourceData);
+// Add event listeners after DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const deviceFilter = document.getElementById('device-filter');
+    if (deviceFilter) {
+        deviceFilter.addEventListener('change', () => {
+            selectedIds = Array.from(deviceFilter.selectedOptions)
+                .map(o => o.value).filter(v => v);
+            loadNickname();
+            // Only call loadLogs if we have the necessary functions available
+            if (typeof loadLogs === 'function') {
+                loadLogs();
+            }
+        });
+    }
+
+    const roughnessFilter = document.getElementById('roughness-filter');
+    if (roughnessFilter) {
+        roughnessFilter.addEventListener('change', () => {
+            if (typeof loadLogs === 'function') {
+                loadLogs();
+            }
+        });
+    }
+
+    const recordSourceDataElement = document.getElementById('record-source-data');
+    if (recordSourceDataElement) {
+        recordSourceDataElement.addEventListener('change', (e) => {
+            recordSourceData = e.target.checked;
+            addLog(`Source data recording ${recordSourceData ? 'enabled' : 'disabled'}`);
+            localStorage.setItem('recordSourceData', recordSourceData);
+        });
+    }
 });
 
 document.addEventListener('fullscreenchange', () => {
@@ -1102,6 +1209,49 @@ document.addEventListener('fullscreenchange', () => {
 
 let wakeLock = null;
 let wakeLockSupported = false;
+
+function updateWakeLockStatus() {
+    const statusElement = document.getElementById('wake-lock-status');
+    const manualButton = document.getElementById('manual-wake-lock');
+    const indicator = document.getElementById('wakelock-indicator');
+    const explanation = document.getElementById('wakelock-explanation');
+    
+    if (!statusElement) return;
+    
+    if (!('wakeLock' in navigator)) {
+        statusElement.innerHTML = '❌ Wake Lock not supported in this browser';
+        statusElement.style.color = 'red';
+        if (manualButton) manualButton.disabled = true;
+        if (indicator) {
+            indicator.className = 'status-indicator status-red';
+            explanation.textContent = 'Not supported';
+        }
+        return;
+    }
+    
+    const isActive = wakeLock !== null && !wakeLock.released;
+    
+    if (isActive) {
+        statusElement.innerHTML = '🔆 Screen locked on - won\'t turn off during recording';
+        statusElement.style.color = 'green';
+        if (indicator) {
+            indicator.className = 'status-indicator status-green';
+            explanation.textContent = 'Screen stays on';
+        }
+    } else {
+        statusElement.innerHTML = '💤 Screen may turn off - tap "Toggle Wake Lock" to prevent';
+        statusElement.style.color = 'orange';
+        if (indicator) {
+            indicator.className = 'status-indicator status-red';
+            explanation.textContent = 'Screen may turn off';
+        }
+    }
+    
+    if (manualButton) {
+        manualButton.textContent = isActive ? 'Release Wake Lock' : 'Request Wake Lock';
+        manualButton.disabled = false;
+    }
+}
 
 async function requestWakeLock() {
     if (!('wakeLock' in navigator)) {
@@ -1218,8 +1368,13 @@ async function toggleWakeLock() {
 // Initialize wake lock status display
 updateWakeLockStatus();
 
-// Add manual wake lock button event listener
-document.getElementById('manual-wake-lock').addEventListener('click', toggleWakeLock);
+// Add manual wake lock button event listener after DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const manualWakeLockBtn = document.getElementById('manual-wake-lock');
+    if (manualWakeLockBtn) {
+        manualWakeLockBtn.addEventListener('click', toggleWakeLock);
+    }
+});
 
 // Re-request wake lock when page becomes visible again (only if recording)
 if ('wakeLock' in navigator) {
