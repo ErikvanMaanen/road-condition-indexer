@@ -529,20 +529,119 @@ async function authFetch(url, options) {
     return res;
 }
 
+// Load map partial with proper script execution
+async function loadMapPartial() {
+    try {
+        const response = await fetch('map-partial.html');
+        const html = await response.text();
+        
+        // Parse HTML to properly handle scripts and styles
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Extract and apply styles
+        const styles = doc.querySelectorAll('style');
+        styles.forEach(style => {
+            const newStyle = document.createElement('style');
+            newStyle.textContent = style.textContent;
+            document.head.appendChild(newStyle);
+        });
+        
+        // Extract scripts for separate execution
+        const scripts = doc.querySelectorAll('script');
+        const scriptContents = Array.from(scripts).map(script => script.textContent);
+        
+        // Get HTML content without scripts
+        const container = document.getElementById('map-container');
+        container.innerHTML = doc.body.innerHTML;
+        
+        // Execute scripts after DOM is updated
+        for (const scriptContent of scriptContents) {
+            if (scriptContent.trim()) {
+                const script = document.createElement('script');
+                script.textContent = scriptContent;
+                document.body.appendChild(script);
+            }
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Failed to load map partial:', error);
+        return false;
+    }
+}
+
+// Fallback map creation for database page
+function createFallbackMap() {
+    const mapContainer = document.getElementById('map-container');
+    if (mapContainer) {
+        mapContainer.innerHTML = `
+            <div id="map" style="width: 100%; height: 40vh; margin-bottom: 1rem; border: 1px solid #ccc;"></div>
+            <div id="scale-container" style="display: flex; align-items: center; margin-bottom: 1rem; gap: 0.5rem;">
+                <span>Smooth</span>
+                <div id="scale-bar" style="flex: 1; height: 12px; background: linear-gradient(to right, green, yellow, red); border: 1px solid #ccc;"></div>
+                <span>Rough</span>
+            </div>
+        `;
+        
+        // Create basic map
+        window.map = L.map('map');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(window.map);
+        window.map.setView([52.028, 5.168], 12);
+        
+        // Add basic fullscreen control if available
+        if (typeof addFullscreenControl === 'function') {
+            addFullscreenControl(window.map);
+        }
+        
+        // Basic functions for compatibility
+        window.clearMapData = function() {
+            if (window.map) {
+                window.map.eachLayer(layer => {
+                    if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                        window.map.removeLayer(layer);
+                    }
+                });
+            }
+        };
+    }
+}
+
 // Initialize page
 (async function() {
     try {
-        const response = await fetch('map-partial.html');
-        const mapHtml = await response.text();
-        document.getElementById('map-container').innerHTML = mapHtml;
+        const mapLoaded = await loadMapPartial();
         
-        // Initialize page after map partial is loaded
-        initMap();
+        if (mapLoaded) {
+            // Wait for map functions to be available
+            let attempts = 0;
+            const maxAttempts = 50; // 5 seconds max
+            
+            while (typeof initializeStandardMap !== 'function' && attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            
+            if (typeof initializeStandardMap === 'function') {
+                initMap();
+            } else {
+                console.warn('Map functions not loaded, using fallback');
+                createFallbackMap();
+            }
+        } else {
+            console.warn('Map partial failed to load, using fallback');
+            createFallbackMap();
+        }
+        
+        // Initialize page regardless of map status
         populateDeviceIds();
         syncRanges();
     } catch (error) {
-        console.error('Failed to load map partial:', error);
+        console.error('Failed to initialize page:', error);
         // Fallback initialization
+        createFallbackMap();
         populateDeviceIds();
         syncRanges();
     }
