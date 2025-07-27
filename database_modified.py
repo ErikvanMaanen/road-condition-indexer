@@ -96,11 +96,6 @@ class DatabaseManager:
             handlers=[logging.StreamHandler()]
         )
         self.logger = logging.getLogger(__name__)
-
-    @property
-    def use_sqlserver(self) -> bool:
-        """Always return True since this class only supports SQL Server."""
-        return True
     
     def set_log_level(self, level: LogLevel) -> None:
         """Change the minimum log level."""
@@ -893,6 +888,7 @@ class DatabaseManager:
                     result = conn.execute(text(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"))
                 else:
                     result = conn.execute(text(f"SELECT TOP {limit} * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"))
+                        result = conn.execute(text(f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT ?"), (limit,))
                 
                 columns = list(result.keys())
                 rows = [dict(zip(columns, row)) for row in result.fetchall()]
@@ -1355,25 +1351,45 @@ class DatabaseManager:
             # Create archive table for debug logs if it doesn't exist
             archive_table_name = "RCI_debug_log_archive"
             
-            # SQL Server syntax for archive table creation
-            create_archive_query = f"""
-                IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'{archive_table_name}') AND type in (N'U'))
-                CREATE TABLE {archive_table_name} (
-                    id INT IDENTITY PRIMARY KEY,
-                    timestamp DATETIME DEFAULT GETDATE(),
-                    level NVARCHAR(20),
-                    category NVARCHAR(50),
-                    device_id NVARCHAR(100),
-                    message NVARCHAR(4000),
-                    stack_trace NVARCHAR(MAX)
-                )
-            """
-            archive_query = f"""
-                INSERT INTO {archive_table_name} 
-                (timestamp, level, category, device_id, message, stack_trace)
-                SELECT timestamp, level, category, device_id, message, stack_trace
-                FROM {TABLE_DEBUG_LOG}
-            """
+            if self.use_sqlserver:
+                # SQL Server syntax
+                create_archive_query = f"""
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'{archive_table_name}') AND type in (N'U'))
+                    CREATE TABLE {archive_table_name} (
+                        id INT IDENTITY PRIMARY KEY,
+                        timestamp DATETIME DEFAULT GETDATE(),
+                        level NVARCHAR(20),
+                        category NVARCHAR(50),
+                        device_id NVARCHAR(100),
+                        message NVARCHAR(4000),
+                        stack_trace NVARCHAR(MAX)
+                    )
+                """
+                archive_query = f"""
+                    INSERT INTO {archive_table_name} 
+                    (timestamp, level, category, device_id, message, stack_trace)
+                    SELECT timestamp, level, category, device_id, message, stack_trace
+                    FROM {TABLE_DEBUG_LOG}
+                """
+            else:
+                # SQLite syntax
+                create_archive_query = f"""
+                    CREATE TABLE IF NOT EXISTS {archive_table_name} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        level TEXT,
+                        category TEXT,
+                        device_id TEXT,
+                        message TEXT,
+                        stack_trace TEXT
+                    )
+                """
+                archive_query = f"""
+                    INSERT INTO {archive_table_name} 
+                    (timestamp, level, category, device_id, message, stack_trace)
+                    SELECT timestamp, level, category, device_id, message, stack_trace
+                    FROM {TABLE_DEBUG_LOG}
+                """
             
             # Create archive table
             self.execute_non_query(create_archive_query)
@@ -1405,16 +1421,25 @@ class DatabaseManager:
             raise ValueError("Access denied: Only RCI_ tables are allowed")
             
         # Check if table exists
-        exists = self.execute_scalar(
-            "SELECT 1 FROM sys.tables WHERE name = ?",
-            (old_name,)
-        )
+        if self.use_sqlserver:
+            exists = self.execute_scalar(
+                "SELECT 1 FROM sys.tables WHERE name = ?",
+                (old_name,)
+            )
+        else:
+            exists = self.execute_scalar(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (old_name,)
+            )
         
         if not exists:
             raise ValueError("Unknown table")
         
         # Rename table
-        self.execute_non_query(f"EXEC sp_rename '{old_name}', '{new_name}'")
+        if self.use_sqlserver:
+            self.execute_non_query(f"EXEC sp_rename '{old_name}', '{new_name}'")
+        else:
+            self.execute_non_query(f"ALTER TABLE {old_name} RENAME TO {new_name}")
 
     def table_exists(self, table_name: str) -> bool:
         """Check if a table exists."""
@@ -1422,10 +1447,16 @@ class DatabaseManager:
         if not table_name.startswith("RCI_"):
             return False
             
-        return bool(self.execute_scalar(
-            "SELECT 1 FROM sys.tables WHERE name = ?",
-            (table_name,)
-        ))
+        if self.use_sqlserver:
+            return bool(self.execute_scalar(
+                "SELECT 1 FROM sys.tables WHERE name = ?",
+                (table_name,)
+            ))
+        else:
+            return bool(self.execute_scalar(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ))
 
     def get_table_summary(self) -> List[Dict[str, Any]]:
         """Get summary information for RCI tables including row count and last update."""
@@ -1435,16 +1466,23 @@ class DatabaseManager:
         tables = []
         
         # Get all RCI table names
-        table_names = self.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
-        names = [row['name'] for row in table_names]
+        if self.use_sqlserver:
+            table_names = self.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
+            names = [row['name'] for row in table_names]
+        else:
+            table_names = self.execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+            names = [row['name'] for row in table_names]
         
         for table in names:
             if not name_re.match(table):
                 continue  # Skip any table that doesn't match RCI_* pattern
                 
             try:
-                # Get column information (SQL Server syntax)
-                cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table}")
+                # Get column information
+                if self.use_sqlserver:
+                    cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table}")
+                else:
+                    cols_result = self.execute_query(f"SELECT * FROM {table} LIMIT 0")
                 
                 cols = list(cols_result[0].keys()) if cols_result else []
                 
@@ -1455,7 +1493,10 @@ class DatabaseManager:
                 # Get last update timestamp if available
                 last_update = None
                 if "timestamp" in cols:
-                    last_ts = self.execute_scalar(f"SELECT TOP 1 timestamp FROM {table} ORDER BY timestamp DESC")
+                    if self.use_sqlserver:
+                        last_ts = self.execute_scalar(f"SELECT TOP 1 timestamp FROM {table} ORDER BY timestamp DESC")
+                    else:
+                        last_ts = self.execute_scalar(f"SELECT timestamp FROM {table} ORDER BY timestamp DESC LIMIT 1")
                     
                     if last_ts:
                         last_update = last_ts.isoformat() if hasattr(last_ts, 'isoformat') else str(last_ts)
@@ -1484,21 +1525,32 @@ class DatabaseManager:
         if not table_name.startswith("RCI_"):
             raise ValueError("Access denied: Only RCI_ tables are allowed")
         
-        # Get column information to determine ordering (SQL Server syntax)
-        cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table_name}")
+        # Get column information to determine ordering
+        if self.use_sqlserver:
+            cols_result = self.execute_query(f"SELECT TOP 0 * FROM {table_name}")
+        else:
+            cols_result = self.execute_query(f"SELECT * FROM {table_name} LIMIT 0")
         
         cols = list(cols_result[0].keys()) if cols_result else []
         
         # Determine ordering column
         order_col: Optional[str] = "timestamp" if "timestamp" in cols else ("id" if "id" in cols else None)
         
-        # Build query (SQL Server syntax)
+        # Build query
         if order_col:
-            query = f"SELECT TOP {limit} * FROM {table_name} ORDER BY {order_col} DESC"
-            rows = self.execute_query(query)
+            if self.use_sqlserver:
+                query = f"SELECT TOP {limit} * FROM {table_name} ORDER BY {order_col} DESC"
+                rows = self.execute_query(query)
+            else:
+                query = f"SELECT * FROM {table_name} ORDER BY {order_col} DESC LIMIT ?"
+                rows = self.execute_query(query, (limit,))
         else:
-            query = f"SELECT TOP {limit} * FROM {table_name}"
-            rows = self.execute_query(query)
+            if self.use_sqlserver:
+                query = f"SELECT TOP {limit} * FROM {table_name}"
+                rows = self.execute_query(query)
+            else:
+                query = f"SELECT * FROM {table_name} LIMIT ?"
+                rows = self.execute_query(query, (limit,))
         
         return rows
 

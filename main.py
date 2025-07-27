@@ -618,11 +618,8 @@ def startup_init():
         if test_result != 1:
             raise Exception("Database connectivity test failed")
         
-        # Step 3: Table verification
-        if db_manager.use_sqlserver:
-            tables_result = db_manager.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
-        else:
-            tables_result = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'")
+        # Step 3: Table verification (SQL Server only)
+        tables_result = db_manager.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
         
         tables = [row['name'] for row in tables_result]
         expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS]
@@ -663,7 +660,7 @@ def startup_init():
                 "duration_ms": total_time,
                 "tables_count": len(tables),
                 "bike_data_records": bike_data_count,
-                "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite"
+                "database_type": "SQL Server"
             }
         )
         
@@ -909,7 +906,7 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
         
         # Log additional context for debugging
         log_error(f"Database manager type: {type(db_manager).__name__}", device_id=entry.device_id)
-        log_error(f"Database manager use_sqlserver: {getattr(db_manager, 'use_sqlserver', 'unknown')}", device_id=entry.device_id)
+        log_error(f"Database manager initialized (SQL Server only)", device_id=entry.device_id)
         
         raise HTTPException(status_code=500, detail="Database error") from exc
         
@@ -1010,7 +1007,7 @@ def get_logs(request: Request, limit: Optional[int] = None, dep: None = Depends(
         log_debug(f"About to call db_manager.get_logs(limit={limit})")
         
         # Log database connection status
-        log_debug(f"Database manager details: use_sqlserver={getattr(db_manager, 'use_sqlserver', 'unknown')}")
+        log_debug(f"Database manager details: SQL Server only")
         
         rows, rough_avg = db_manager.get_logs(limit)
         
@@ -1335,10 +1332,8 @@ def test_database_connection():
         
         # Test table existence
         log_debug("Checking table existence...")
-        if db_manager.use_sqlserver:
-            tables_query = "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'"
-        else:
-            tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'"
+        # Get tables (SQL Server only)
+        tables_query = "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'"
         
         tables_result = db_manager.execute_query(tables_query)
         tables = [row['name'] for row in tables_result]
@@ -1348,11 +1343,8 @@ def test_database_connection():
         count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
         log_debug(f"✅ Total rows in {TABLE_BIKE_DATA}: {count}")
         
-        # Test recent data
-        if db_manager.use_sqlserver:
-            recent_query = f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
-        else:
-            recent_query = f"SELECT * FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 1"
+        # Test recent data (SQL Server only)
+        recent_query = f"SELECT TOP 1 * FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
         
         recent_result = db_manager.execute_query(recent_query)
         recent_dict = recent_result[0] if recent_result else None
@@ -1364,7 +1356,7 @@ def test_database_connection():
         
         return {
             "status": "success",
-            "database_type": "SQL Server" if db_manager.use_sqlserver else "SQLite",
+            "database_type": "SQL Server",
             "tables_found": tables,
             "total_records": count,
             "most_recent": recent_dict if recent_dict else None,
@@ -1402,10 +1394,7 @@ def get_database_stats():
         
         # Get recent entries from bike data
         try:
-            if db_manager.use_sqlserver:
-                recent_query = f"SELECT TOP 5 id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
-            else:
-                recent_query = f"SELECT id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC LIMIT 5"
+            recent_query = f"SELECT TOP 5 id, timestamp, device_id, latitude, longitude, roughness FROM {TABLE_BIKE_DATA} ORDER BY id DESC"
             
             recent_results = db_manager.execute_query(recent_query)
             recent_entries = []
@@ -1469,7 +1458,7 @@ def get_database_stats():
             "last_point_count": len(LAST_POINT)
         }
         
-        stats["database_type"] = "SQL Server" if db_manager.use_sqlserver else "SQLite"
+        stats["database_type"] = "SQL Server"
         stats["timestamp"] = datetime.utcnow().isoformat()
         
         log_info(f"✅ Database statistics retrieved successfully")
@@ -1768,19 +1757,12 @@ def repair_database(dep: None = Depends(password_dependency)):
 def manage_tables(dep: None = Depends(password_dependency)):
     """Return table contents for management page."""
     try:
-        if db_manager.use_sqlserver:
-            names = db_manager.execute_query("SELECT name FROM sys.tables")
-            names = [row['name'] for row in names]
-        else:
-            names = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table'")
-            names = [row['name'] for row in names]
+        names = db_manager.execute_query("SELECT name FROM sys.tables")
+        names = [row['name'] for row in names]
         
         tables = {}
         for name in names:
-            if db_manager.use_sqlserver:
-                rows = db_manager.execute_query(f"SELECT TOP 20 * FROM {name}")
-            else:
-                rows = db_manager.execute_query(f"SELECT * FROM {name} LIMIT 20")
+            rows = db_manager.execute_query(f"SELECT TOP 20 * FROM {name}")
             tables[name] = rows
         
         db_manager.log_debug("Fetched table info")
