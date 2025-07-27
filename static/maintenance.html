@@ -819,13 +819,17 @@ async function loadDebug(){
     if(res.ok){
         const data = await res.json();
         const t = document.getElementById('debug');
-        t.value = data.log.join('\n');
-        t.scrollTop = t.scrollHeight;
+        if (t) {
+            t.value = data.log.join('\n');
+            t.scrollTop = t.scrollHeight;
+        }
     }
 }
 
 async function testTable(name){
-    addLog('Testing ' + name);
+    if (typeof addLog === 'function') {
+        addLog('Testing ' + name);
+    }
     const pre = document.getElementById('table-records');
     pre.textContent = '';
     try{
@@ -837,15 +841,21 @@ async function testTable(name){
         if(!res.ok){
             const text = await res.text();
             pre.textContent = text;
-            addLog('Error: ' + text);
+            if (typeof addLog === 'function') {
+                addLog('Error: ' + text);
+            }
         }else{
             const data = await res.json();
             pre.textContent = JSON.stringify(data.rows, null, 2);
-            addLog('Success');
+            if (typeof addLog === 'function') {
+                addLog('Success');
+            }
         }
     }catch(e){
         pre.textContent = e.toString();
-        addLog('Exception: ' + e);
+        if (typeof addLog === 'function') {
+            addLog('Exception: ' + e);
+        }
     }
     loadDebug();
     loadSummary();
@@ -890,8 +900,36 @@ document.getElementById('fastapi-test-btn').addEventListener('click', async func
     }
 });
 
+// Fallback toggleLogs function in case logs partial doesn't load
+if (typeof toggleLogs === 'undefined') {
+    window.toggleLogs = function() {
+        const logsSection = document.getElementById('logs');
+        const toggleButton = document.getElementById('toggle-logs');
+        
+        if (logsSection && toggleButton) {
+            if (logsSection.style.display === 'none') {
+                logsSection.style.display = 'block';
+                toggleButton.textContent = 'Hide Logs';
+            } else {
+                logsSection.style.display = 'none';
+                toggleButton.textContent = 'Show Logs';
+            }
+        }
+    };
+}
+
 // Load logs partial when DOM is ready
-document.addEventListener('DOMContentLoaded', loadLogsPartial);
+document.addEventListener('DOMContentLoaded', async () => {
+    if (typeof loadLogsPartial === 'function') {
+        try {
+            await loadLogsPartial();
+        } catch (error) {
+            console.error('Failed to load logs partial:', error);
+        }
+    } else {
+        console.warn('loadLogsPartial function not available');
+    }
+});
 </script>
 
 <!-- Include Activity Log and Debug Messages Partial -->
