@@ -80,8 +80,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 
-# Remove direct static file mounting to prevent authentication bypass
-# Static files are now served through individual authenticated routes
+
+# Serve all static files automatically (public, no auth)
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 # MD5 hash for the default password
 PASSWORD_HASH = "08457aa99f426e5e8410798acd74c23b"
