@@ -1189,7 +1189,8 @@ class DatabaseManager:
                     params.append(end_dt)
                 
                 query += " ORDER BY id DESC"
-                result = conn.execute(text(query), params)
+                exec_params = tuple(params)
+                result = conn.execute(text(query), exec_params)
                 
                 columns = list(result.keys())
                 rows = [dict(zip(columns, row)) for row in result.fetchall()]
@@ -1208,7 +1209,8 @@ class DatabaseManager:
                     avg_query += " AND timestamp <= ?"
                     avg_params.append(end_dt)
                 
-                avg_result = conn.execute(text(avg_query), avg_params)
+                avg_exec_params = tuple(avg_params)
+                avg_result = conn.execute(text(avg_query), avg_exec_params)
                 avg_row = avg_result.fetchone()
                 rough_avg = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
                 
@@ -1250,7 +1252,8 @@ class DatabaseManager:
                     query += f" WHERE device_id IN ({placeholders})"
                     params.extend(device_ids)
                 
-                result = conn.execute(text(query), params)
+                exec_params = tuple(params)
+                result = conn.execute(text(query), exec_params)
                 row = result.fetchone()
                 start, end = row if row else (None, None)
                 
