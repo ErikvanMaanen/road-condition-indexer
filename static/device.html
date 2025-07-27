@@ -86,8 +86,9 @@ const currentDeviceId = localStorage.getItem('deviceId');
 let selectedIds = [];
 let deviceNicknames = {};
 let roughMin = 0;
-const LABEL_COUNT = 10;
-const ROUGHNESS_NAMES = [
+// LABEL_COUNT is already defined in utils.js
+// Using local ROUGHNESS_NAMES to override the ones from utils.js
+const ROUGHNESS_NAMES_DEVICE = [
     'Smooth road',
     'Even surface',
     'Light texture',
@@ -193,6 +194,137 @@ function initMap() {
 // Load logs partial when DOM is ready
 document.addEventListener('DOMContentLoaded', loadLogsPartial);
 
+async function loadLogsPartial() {
+    try {
+        const logsContainer = document.getElementById('logs-container');
+        if (!logsContainer) {
+            console.error('Logs container not found');
+            return false;
+        }
+
+        const response = await fetch('logs-partial.html');
+        if (!response.ok) {
+            throw new Error(`Failed to load logs-partial.html: ${response.status} ${response.statusText}`);
+        }
+
+        const logsHtml = await response.text();
+        
+        // Parse the HTML to extract script content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(logsHtml, 'text/html');
+        
+        // Insert the HTML content (excluding scripts)
+        const scripts = doc.querySelectorAll('script');
+        const styles = doc.querySelectorAll('style');
+        
+        // Remove scripts and styles from the content to insert them separately
+        scripts.forEach(script => script.remove());
+        styles.forEach(style => style.remove());
+        
+        // Insert the HTML content
+        logsContainer.innerHTML = doc.body.innerHTML;
+        
+        // Insert and execute styles
+        styles.forEach(style => {
+            const newStyle = document.createElement('style');
+            newStyle.textContent = style.textContent;
+            document.head.appendChild(newStyle);
+        });
+        
+        // Create a namespace for the logs partial to avoid variable collisions
+        if (!window.logsPartialNamespace) {
+            window.logsPartialNamespace = {};
+            
+            // Define toggleLogs in the global scope to make it accessible
+            window.toggleLogs = function() {
+                const logsSection = document.getElementById('logs');
+                const toggleButton = document.getElementById('toggle-logs');
+                
+                if (logsSection && toggleButton) {
+                    if (logsSection.style.display === 'none') {
+                        logsSection.style.display = 'block';
+                        toggleButton.textContent = 'Hide Logs';
+                    } else {
+                        logsSection.style.display = 'none';
+                        toggleButton.textContent = 'Show Logs';
+                    }
+                }
+            };
+            
+            // Add the necessary functions and variables from logs-partial.html
+            window.addLog = function(message, category = 'UI', level = 'INFO') {
+                const timestamp = new Date().toISOString();
+                const deviceIdForLogs = window.deviceId || localStorage.getItem('deviceId') || '';
+                const logMsg = {
+                    timestamp,
+                    message,
+                    category,
+                    level,
+                    deviceId: deviceIdForLogs
+                };
+                
+                // Add to log array and update display
+                if (window.logsPartialNamespace.allLogMessages) {
+                    window.logsPartialNamespace.allLogMessages.push(logMsg);
+                    window.logsPartialNamespace.renderLogMessages();
+                }
+                
+                return logMsg;
+            };
+            
+            // Initialize rendering of logs
+            window.logsPartialNamespace.allLogMessages = [];
+            
+            window.logsPartialNamespace.renderLogMessages = function() {
+                const logsTable = document.getElementById('logs-table-body');
+                if (!logsTable) return;
+                
+                // Clear existing rows
+                logsTable.innerHTML = '';
+                
+                // Get the most recent messages (up to 100)
+                const recentMessages = window.logsPartialNamespace.allLogMessages.slice(-100);
+                
+                // Create and append rows
+                recentMessages.forEach(msg => {
+                    const row = document.createElement('tr');
+                    row.className = msg.level;
+                    
+                    const time = new Date(msg.timestamp).toLocaleTimeString();
+                    
+                    row.innerHTML = `
+                        <td class="log-time">${time}</td>
+                        <td class="log-level">${msg.level}</td>
+                        <td class="log-category">${msg.category}</td>
+                        <td class="log-message">${msg.message}</td>
+                    `;
+                    
+                    logsTable.appendChild(row);
+                });
+                
+                // Auto-scroll to bottom
+                const logsContainer = document.getElementById('logs');
+                if (logsContainer) {
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+            };
+        }
+        
+        // Add a log message to indicate logs have been loaded
+        if (typeof addLog === 'function') {
+            addLog('Logs system initialized', 'System', 'INFO');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Failed to load logs partial:', error);
+        if (typeof addDebug === 'function') {
+            addDebug('Logs partial loading error: ' + error.message, 'System', 'ERROR');
+        }
+        return false;
+    }
+}
+
 function generateGpx() {
     fetch('/gpx').then(r => r.blob()).then(blob => {
         const url = URL.createObjectURL(blob);
@@ -273,7 +405,7 @@ function updateRoughnessLabels() {
             const opt = select.options[i + 1];
             if (!opt) continue;
             const [low, high] = roughnessRange(i);
-            opt.textContent = `${i + 1} - ${ROUGHNESS_NAMES[i]} (${low.toFixed(2)}-${high.toFixed(2)})`;
+            opt.textContent = `${i + 1} - ${ROUGHNESS_NAMES_DEVICE[i]} (${low.toFixed(2)}-${high.toFixed(2)})`;
         }
     }
 }
@@ -311,11 +443,19 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
 }
 
 async function updateMarkers(showProgress = false) {
+    // Make sure loadedRows is defined
+    if (!Array.isArray(loadedRows)) {
+        console.warn('loadedRows is not defined yet');
+        loadedRows = [];
+        return; // Don't try to update markers if we don't have data
+    }
+
     const startVal = Date.parse(document.getElementById('startDate').value);
     const endVal = Date.parse(document.getElementById('endDate').value);
     const loadBox = document.getElementById('loading');
     const prog = document.getElementById('load-progress');
     const label = document.getElementById('load-label');
+    
     if (showProgress) {
         loadBox.style.display = 'block';
         prog.max = loadedRows.length;
