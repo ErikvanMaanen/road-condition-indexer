@@ -334,6 +334,46 @@
         .edit-form.active {
             display: block;
         }
+        
+        /* Collapsible Section Styles */
+        .collapsible-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        .collapsible-header {
+            background: #f8f9fa;
+            padding: 1rem;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+        .collapsible-header:hover {
+            background: #e9ecef;
+        }
+        .collapsible-header h2,
+        .collapsible-header h3 {
+            margin: 0;
+            color: #495057;
+        }
+        .collapsible-toggle {
+            font-size: 1.2rem;
+            color: #6c757d;
+            transition: transform 0.2s ease;
+        }
+        .collapsible-content {
+            padding: 1rem;
+            display: none;
+        }
+        .collapsible-content.expanded {
+            display: block;
+        }
+        .collapsible-section.expanded .collapsible-toggle {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body>
@@ -345,97 +385,121 @@
 <h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Database Management</h1>
 
 <!-- Device Management Section -->
-<section id="device-management-section" class="device-management-section">
-    <h2>Device Management</h2>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <p>Manage all registered devices, their nicknames, and view record statistics.</p>
-        <button onclick="refreshDeviceList()" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Refresh List</button>
+<section id="device-management-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('device-management')">
+        <h2>Device Management</h2>
+        <span class="collapsible-toggle">▼</span>
     </div>
-    
-    <div id="device-list-container">
-        Loading devices...
-    </div>
-    
-    <!-- Add New Device Form -->
-    <div class="device-form">
-        <h4>Add New Device</h4>
-        <div class="form-group">
-            <label for="new-device-id">Device ID:</label>
-            <input type="text" id="new-device-id" placeholder="Enter new device ID (e.g., BIKE001)">
+    <div id="device-management" class="collapsible-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <p>Manage all registered devices, their nicknames, and view record statistics.</p>
+            <button onclick="refreshDeviceList()" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Refresh List</button>
         </div>
-        <div class="form-group">
-            <label for="new-device-nickname">Device Nickname (Optional):</label>
-            <input type="text" id="new-device-nickname" placeholder="Enter friendly name for the device">
+        
+        <div id="device-list-container">
+            Loading devices...
         </div>
-        <button onclick="addNewDevice()" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Add Device</button>
     </div>
 </section>
 
-<section id="filter-dev" style="margin-bottom:1rem;">
-    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="deviceId" multiple></select>
-        <button onclick="refreshSelection()">Refresh Selection</button>
+<section id="filter-dev-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('filter-dev')">
+        <h3>Device Filter</h3>
+        <span class="collapsible-toggle">▼</span>
+    </div>
+    <div id="filter-dev" class="collapsible-content">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <select id="deviceId" multiple></select>
+            <button onclick="refreshSelection()">Refresh Selection</button>
+        </div>
     </div>
 </section>
 
-<!-- Include standardized map component -->
-<div id="map-container"></div>
-
-<section id="filter-time" style="margin-bottom:1rem;">
-    <div class="time-range-controls">
-        <div class="time-input-group">
-            <label for="startDate">Start Date & Time:</label>
-            <input id="startDate" type="datetime-local">
-        </div>
-        <div class="time-input-group">
-            <label for="endDate">End Date & Time:</label>
-            <input id="endDate" type="datetime-local">
-        </div>
-        <div>
-            <button id="applyTimeRange" style="background: #28a745; color: white; border: none; padding: 0.75rem 1rem; border-radius: 4px; cursor: pointer; white-space: nowrap;">Apply Range</button>
-        </div>
+<!-- Map Section -->
+<section id="map-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('map-content')">
+        <h3>Map View</h3>
+        <span class="collapsible-toggle">▼</span>
     </div>
-    
-    <div class="time-range-container">
-        <div class="time-range-slider" id="timeRangeSlider">
-            <div class="time-range-track">
-                <div class="time-range-fill" id="timeRangeFill"></div>
+    <div id="map-content" class="collapsible-content">
+        <!-- Include standardized map component -->
+        <div id="map-container"></div>
+    </div>
+</section>
+
+<section id="filter-time-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('filter-time')">
+        <h3>Time Filter</h3>
+        <span class="collapsible-toggle">▼</span>
+    </div>
+    <div id="filter-time" class="collapsible-content">
+        <div class="time-range-controls">
+            <div class="time-input-group">
+                <label for="startDate">Start Date & Time:</label>
+                <input id="startDate" type="datetime-local">
             </div>
-            <div class="time-range-handle start" id="startHandle" data-handle="start"></div>
-            <div class="time-range-handle end" id="endHandle" data-handle="end"></div>
+            <div class="time-input-group">
+                <label for="endDate">End Date & Time:</label>
+                <input id="endDate" type="datetime-local">
+            </div>
+            <div>
+                <button id="applyTimeRange" style="background: #28a745; color: white; border: none; padding: 0.75rem 1rem; border-radius: 4px; cursor: pointer; white-space: nowrap;">Apply Range</button>
+            </div>
         </div>
-        <div class="time-range-labels">
-            <span id="minTimeLabel">No data</span>
-            <div class="time-range-info" id="rangeInfo">Select time range</div>
-            <span id="maxTimeLabel">available</span>
+        
+        <div class="time-range-container">
+            <div class="time-range-slider" id="timeRangeSlider">
+                <div class="time-range-track">
+                    <div class="time-range-fill" id="timeRangeFill"></div>
+                </div>
+                <div class="time-range-handle start" id="startHandle" data-handle="start"></div>
+                <div class="time-range-handle end" id="endHandle" data-handle="end"></div>
+            </div>
+            <div class="time-range-labels">
+                <span id="minTimeLabel">No data</span>
+                <div class="time-range-info" id="rangeInfo">Select time range</div>
+                <span id="maxTimeLabel">available</span>
+            </div>
         </div>
-    </div>
-    
-    <div class="quick-time-buttons">
-        <button class="quick-time-btn" data-range="today">Today</button>
-        <button class="quick-time-btn" data-range="yesterday">Yesterday</button>
-        <button class="quick-time-btn" data-range="last7days">Last 7 Days</button>
-        <button class="quick-time-btn" data-range="last30days">Last 30 Days</button>
-        <button class="quick-time-btn" data-range="thisweek">This Week</button>
-        <button class="quick-time-btn" data-range="thismonth">This Month</button>
-        <button class="quick-time-btn" data-range="all">All Data</button>
+        
+        <div class="quick-time-buttons">
+            <button class="quick-time-btn" data-range="today">Today</button>
+            <button class="quick-time-btn" data-range="yesterday">Yesterday</button>
+            <button class="quick-time-btn" data-range="last7days">Last 7 Days</button>
+            <button class="quick-time-btn" data-range="last30days">Last 30 Days</button>
+            <button class="quick-time-btn" data-range="thisweek">This Week</button>
+            <button class="quick-time-btn" data-range="thismonth">This Month</button>
+            <button class="quick-time-btn" data-range="all">All Data</button>
+        </div>
     </div>
 </section>
 
 <div id="loading">Loading data...</div>
 
-<div class="data-info">
-    <h3>Selected Data Summary</h3>
-    <p id="data-summary">Select devices and time range to see data summary</p>
-</div>
+<section id="data-summary-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('data-summary-content')">
+        <h3>Selected Data Summary</h3>
+        <span class="collapsible-toggle">▼</span>
+    </div>
+    <div id="data-summary-content" class="collapsible-content">
+        <div class="data-info">
+            <p id="data-summary">Select devices and time range to see data summary</p>
+        </div>
+    </div>
+</section>
 
-<section id="database-operations" style="margin-bottom:1rem;">
-    <h3>Database Operations</h3>
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <button onclick="showUpdateForm()" class="warning">Update Selected Data</button>
-        <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
-        <button onclick="exportSelectedData()">Export Selected Data</button>
-        <button onclick="showRecordOverview()">Records Overview</button>
+<section id="database-operations-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('database-operations')">
+        <h3>Database Operations</h3>
+        <span class="collapsible-toggle">▼</span>
+    </div>
+    <div id="database-operations" class="collapsible-content">
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button onclick="showUpdateForm()" class="warning">Update Selected Data</button>
+            <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
+            <button onclick="exportSelectedData()">Export Selected Data</button>
+            <button onclick="showRecordOverview()">Records Overview</button>
+        </div>
     </div>
 </section>
 
@@ -498,6 +562,20 @@ let roughScales = {};
 let sliderMin = 0;
 let sliderMax = 0;
 let selectedData = [];
+
+// Collapsible section toggle function
+function toggleSection(sectionId) {
+    const content = document.getElementById(sectionId);
+    const section = content.closest('.collapsible-section');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        section.classList.remove('expanded');
+    } else {
+        content.classList.add('expanded');
+        section.classList.add('expanded');
+    }
+}
 
 function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
@@ -1280,7 +1358,7 @@ async function loadDeviceList() {
             
             deviceListContainer.innerHTML = deviceCards.join('');
         } else {
-            deviceListContainer.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 2rem;">No devices found. Add a device below to get started.</p>';
+            deviceListContainer.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 2rem;">No devices found.</p>';
         }
     } catch (error) {
         document.getElementById('device-list-container').innerHTML = '<p style="color: #dc3545;">Error loading devices</p>';
@@ -1396,41 +1474,6 @@ async function deleteDevice(deviceId, deleteData = false) {
     } catch (error) {
         addDebug('Failed to delete device: ' + error.message);
         alert('Failed to delete device: ' + error.message);
-    }
-}
-
-async function addNewDevice() {
-    const deviceIdInput = document.getElementById('new-device-id');
-    const nicknameInput = document.getElementById('new-device-nickname');
-    
-    const deviceId = deviceIdInput.value.trim();
-    const nickname = nicknameInput.value.trim();
-    
-    if (!deviceId) {
-        alert('Please enter a device ID');
-        return;
-    }
-    
-    try {
-        // Add the device by setting its nickname (or empty nickname)
-        const response = await authFetch('/nickname', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id: deviceId, nickname: nickname || deviceId })
-        });
-        
-        if (response.ok) {
-            addLog(`Added new device: ${deviceId}${nickname ? ` (${nickname})` : ''}`);
-            deviceIdInput.value = '';
-            nicknameInput.value = '';
-            await loadDeviceList();
-            populateDeviceIds(); // Refresh main device selector
-        } else {
-            throw new Error('Failed to add device');
-        }
-    } catch (error) {
-        addDebug('Failed to add device: ' + error.message);
-        alert('Failed to add device: ' + error.message);
     }
 }
 
@@ -1610,6 +1653,16 @@ async function authFetch(url, options) {
 // Initialize page after all resources are loaded
 window.addEventListener('load', async function() {
     try {
+        // Ensure all sections are closed by default
+        const collapsibleSections = document.querySelectorAll('.collapsible-section');
+        collapsibleSections.forEach(section => {
+            const content = section.querySelector('.collapsible-content');
+            if (content) {
+                content.classList.remove('expanded');
+                section.classList.remove('expanded');
+            }
+        });
+        
         // Ensure Leaflet is loaded before initializing map
         if (typeof L === 'undefined') {
             console.error('Leaflet not loaded, waiting...');
