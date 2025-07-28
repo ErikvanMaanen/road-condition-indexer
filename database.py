@@ -1282,17 +1282,37 @@ class DatabaseManager:
             with self.get_connection_context() as conn:
                 start_time = datetime.utcnow()
                 
-                if params:
+                # Execute query with proper parameter handling
+                if params is not None and len(params) > 0:
                     result = conn.execute(text(query), params)
                 else:
                     result = conn.execute(text(query))
                 
-                # Get column names
-                columns = list(result.keys()) if result.keys() else []
+                # Get column names safely
+                try:
+                    columns = list(result.keys())
+                except AttributeError:
+                    # Fallback for different SQLAlchemy versions
+                    columns = []
                 
                 # Fetch all rows and convert to dictionaries
                 rows = result.fetchall()
-                result_list = [dict(zip(columns, row)) for row in rows] if columns else []
+                result_list = []
+                
+                if columns and rows:
+                    result_list = [dict(zip(columns, row)) for row in rows]
+                elif rows and not columns:
+                    # If we can't get column names, try to get them from the first row
+                    try:
+                        if hasattr(rows[0], '_fields'):
+                            columns = list(rows[0]._fields)
+                            result_list = [dict(zip(columns, row)) for row in rows]
+                        else:
+                            # Last resort: create generic column names
+                            columns = [f'col_{i}' for i in range(len(rows[0]))]
+                            result_list = [dict(zip(columns, row)) for row in rows]
+                    except (AttributeError, IndexError):
+                        result_list = []
                 
                 end_time = datetime.utcnow()
                 duration = (end_time - start_time).total_seconds()
@@ -1312,10 +1332,13 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 start_time = datetime.utcnow()
-                if params:
+                
+                # Execute query with proper parameter handling
+                if params is not None and len(params) > 0:
                     result = conn.execute(text(query), params)
                 else:
                     result = conn.execute(text(query))
+                    
                 row = result.fetchone()
                 scalar_result = row[0] if row else None
                 
@@ -1848,68 +1871,96 @@ class DatabaseManager:
                 "details": []
             }
             
+            # Test basic connectivity first
+            try:
+                test_result = self.execute_scalar("SELECT 1 as test_value")
+                if test_result != 1:
+                    raise Exception("Basic connectivity test failed")
+                results["details"].append("✅ Database connectivity test passed")
+            except Exception as e:
+                results["passed"] = False
+                results["status"] = "failed"
+                results["details"].append(f"❌ Database connectivity test failed: {str(e)}")
+                return results
+            
             # Check for orphaned records
             if self.table_exists(TABLE_BIKE_DATA) and self.table_exists(TABLE_DEVICE_NICKNAMES):
-                orphaned_query = f"""
-                    SELECT COUNT(*) 
-                    FROM {TABLE_BIKE_DATA} b
-                    LEFT JOIN {TABLE_DEVICE_NICKNAMES} d ON b.device_id = d.device_id
-                    WHERE b.device_id IS NOT NULL 
-                    AND b.device_id != '' 
-                    AND d.device_id IS NULL
-                """
-                orphaned_count = self.execute_scalar(orphaned_query) or 0
-                
-                if orphaned_count > 0:
-                    results["details"].append(f"⚠️ Found {orphaned_count} bike data records with unregistered device IDs")
-                else:
-                    results["details"].append("✅ No orphaned bike data records found")
+                try:
+                    orphaned_query = f"""
+                        SELECT COUNT(*) 
+                        FROM {TABLE_BIKE_DATA} b
+                        LEFT JOIN {TABLE_DEVICE_NICKNAMES} d ON b.device_id = d.device_id
+                        WHERE b.device_id IS NOT NULL 
+                        AND b.device_id != '' 
+                        AND d.device_id IS NULL
+                    """
+                    orphaned_count = self.execute_scalar(orphaned_query)
+                    orphaned_count = orphaned_count or 0
+                    
+                    if orphaned_count > 0:
+                        results["details"].append(f"⚠️ Found {orphaned_count} bike data records with unregistered device IDs")
+                    else:
+                        results["details"].append("✅ No orphaned bike data records found")
+                except Exception as e:
+                    results["details"].append(f"⚠️ Could not check orphaned records: {str(e)}")
             
             # Check for invalid coordinates
             if self.table_exists(TABLE_BIKE_DATA):
-                invalid_coords_query = f"""
-                    SELECT COUNT(*) 
-                    FROM {TABLE_BIKE_DATA}
-                    WHERE latitude IS NULL OR longitude IS NULL
-                    OR latitude < -90 OR latitude > 90
-                    OR longitude < -180 OR longitude > 180
-                """
-                invalid_coords = self.execute_scalar(invalid_coords_query) or 0
-                
-                if invalid_coords > 0:
-                    results["passed"] = False
-                    results["status"] = "failed"
-                    results["details"].append(f"❌ Found {invalid_coords} records with invalid coordinates")
-                else:
-                    results["details"].append("✅ All coordinates are valid")
+                try:
+                    invalid_coords_query = f"""
+                        SELECT COUNT(*) 
+                        FROM {TABLE_BIKE_DATA}
+                        WHERE latitude IS NULL OR longitude IS NULL
+                        OR latitude < -90 OR latitude > 90
+                        OR longitude < -180 OR longitude > 180
+                    """
+                    invalid_coords = self.execute_scalar(invalid_coords_query)
+                    invalid_coords = invalid_coords or 0
+                    
+                    if invalid_coords > 0:
+                        results["passed"] = False
+                        results["status"] = "failed"
+                        results["details"].append(f"❌ Found {invalid_coords} records with invalid coordinates")
+                    else:
+                        results["details"].append("✅ All coordinates are valid")
+                except Exception as e:
+                    results["details"].append(f"⚠️ Could not check coordinates: {str(e)}")
             
             # Check for future timestamps
             if self.table_exists(TABLE_BIKE_DATA):
-                future_timestamps_query = f"""
-                    SELECT COUNT(*) 
-                    FROM {TABLE_BIKE_DATA}
-                    WHERE timestamp > GETDATE()
-                """
-                future_count = self.execute_scalar(future_timestamps_query) or 0
-                
-                if future_count > 0:
-                    results["details"].append(f"⚠️ Found {future_count} records with future timestamps")
-                else:
-                    results["details"].append("✅ No future timestamps found")
+                try:
+                    future_timestamps_query = f"""
+                        SELECT COUNT(*) 
+                        FROM {TABLE_BIKE_DATA}
+                        WHERE timestamp > GETDATE()
+                    """
+                    future_count = self.execute_scalar(future_timestamps_query)
+                    future_count = future_count or 0
+                    
+                    if future_count > 0:
+                        results["details"].append(f"⚠️ Found {future_count} records with future timestamps")
+                    else:
+                        results["details"].append("✅ No future timestamps found")
+                except Exception as e:
+                    results["details"].append(f"⚠️ Could not check future timestamps: {str(e)}")
             
             # Check for negative speeds or distances
             if self.table_exists(TABLE_BIKE_DATA):
-                negative_values_query = f"""
-                    SELECT COUNT(*) 
-                    FROM {TABLE_BIKE_DATA}
-                    WHERE speed < 0 OR distance_m < 0
-                """
-                negative_count = self.execute_scalar(negative_values_query) or 0
-                
-                if negative_count > 0:
-                    results["details"].append(f"⚠️ Found {negative_count} records with negative speed or distance")
-                else:
-                    results["details"].append("✅ No negative speed or distance values found")
+                try:
+                    negative_values_query = f"""
+                        SELECT COUNT(*) 
+                        FROM {TABLE_BIKE_DATA}
+                        WHERE speed < 0 OR distance_m < 0
+                    """
+                    negative_count = self.execute_scalar(negative_values_query)
+                    negative_count = negative_count or 0
+                    
+                    if negative_count > 0:
+                        results["details"].append(f"⚠️ Found {negative_count} records with negative speed or distance")
+                    else:
+                        results["details"].append("✅ No negative speed or distance values found")
+                except Exception as e:
+                    results["details"].append(f"⚠️ Could not check negative values: {str(e)}")
             
             if not results["passed"]:
                 results["message"] = "Some data verification checks failed"
@@ -1938,48 +1989,67 @@ class DatabaseManager:
                 "details": []
             }
             
-            # Check for tables without primary keys
-            tables_without_pk_query = """
-                SELECT t.name
-                FROM sys.tables t
-                LEFT JOIN sys.key_constraints kc ON t.object_id = kc.parent_object_id AND kc.type = 'PK'
-                WHERE t.name LIKE 'RCI_%' AND kc.name IS NULL
-            """
-            tables_without_pk = self.execute_query(tables_without_pk_query)
-            
-            if tables_without_pk:
-                table_names = [row['name'] for row in tables_without_pk]
+            # Test basic connectivity first
+            try:
+                test_result = self.execute_scalar("SELECT 1 as test_value")
+                if test_result != 1:
+                    raise Exception("Basic connectivity test failed")
+                results["details"].append("✅ Database connectivity test passed")
+            except Exception as e:
                 results["passed"] = False
                 results["status"] = "failed"
-                results["details"].append(f"❌ Tables without primary key: {', '.join(table_names)}")
-            else:
-                results["details"].append("✅ All RCI tables have primary keys")
+                results["details"].append(f"❌ Database connectivity test failed: {str(e)}")
+                return results
+            
+            # Check for tables without primary keys
+            try:
+                tables_without_pk_query = """
+                    SELECT t.name
+                    FROM sys.tables t
+                    LEFT JOIN sys.key_constraints kc ON t.object_id = kc.parent_object_id AND kc.type = 'PK'
+                    WHERE t.name LIKE 'RCI_%' AND kc.name IS NULL
+                """
+                tables_without_pk = self.execute_query(tables_without_pk_query)
+                
+                if tables_without_pk:
+                    table_names = [row['name'] for row in tables_without_pk]
+                    results["passed"] = False
+                    results["status"] = "failed"
+                    results["details"].append(f"❌ Tables without primary key: {', '.join(table_names)}")
+                else:
+                    results["details"].append("✅ All RCI tables have primary keys")
+            except Exception as e:
+                results["details"].append(f"⚠️ Could not check primary keys: {str(e)}")
             
             # Check index fragmentation for key tables
             key_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES]
             for table in key_tables:
                 if self.table_exists(table):
                     try:
-                        # Get index fragmentation info
+                        # Get index fragmentation info - simplified query for better compatibility
                         frag_query = f"""
                             SELECT 
                                 i.name AS index_name,
-                                ps.avg_fragmentation_in_percent
-                            FROM sys.dm_db_index_physical_stats(DB_ID(), OBJECT_ID('{table}'), NULL, NULL, 'LIMITED') ps
-                            INNER JOIN sys.indexes i ON ps.object_id = i.object_id AND ps.index_id = i.index_id
-                            WHERE ps.avg_fragmentation_in_percent > 30
+                                COALESCE(ps.avg_fragmentation_in_percent, 0) as avg_fragmentation_in_percent
+                            FROM sys.indexes i
+                            LEFT JOIN sys.dm_db_index_physical_stats(DB_ID(), OBJECT_ID('{table}'), NULL, NULL, 'LIMITED') ps 
+                                ON i.object_id = ps.object_id AND i.index_id = ps.index_id
+                            WHERE i.object_id = OBJECT_ID('{table}')
+                            AND i.type > 0
+                            AND COALESCE(ps.avg_fragmentation_in_percent, 0) > 30
                         """
                         fragmented_indexes = self.execute_query(frag_query)
                         
                         if fragmented_indexes:
                             for idx in fragmented_indexes:
-                                results["details"].append(f"⚠️ Index {idx['index_name']} on {table} is {idx['avg_fragmentation_in_percent']:.1f}% fragmented")
+                                frag_pct = idx.get('avg_fragmentation_in_percent', 0)
+                                results["details"].append(f"⚠️ Index {idx['index_name']} on {table} is {frag_pct:.1f}% fragmented")
                         else:
                             results["details"].append(f"✅ Indexes on {table} are well-maintained")
                             
-                    except Exception:
+                    except Exception as e:
                         # Index fragmentation check might not be available in all SQL Server editions
-                        results["details"].append(f"ℹ️ Index fragmentation check skipped for {table}")
+                        results["details"].append(f"ℹ️ Index fragmentation check skipped for {table}: {str(e)}")
             
             if not results["passed"]:
                 results["message"] = "Some index verification checks failed"
