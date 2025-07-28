@@ -929,17 +929,6 @@ def delete_device_data(entry: DeviceDeletionEntry, dep: None = Depends(password_
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
-@app.get("/device_stats")
-def get_device_stats(device_id: str = Query(...), dep: None = Depends(password_dependency)):
-    """Get detailed statistics for a device including record counts per table."""
-    try:
-        stats = db_manager.get_device_statistics(device_id)
-        return stats
-    except Exception as exc:
-        log_error(f"Device stats error: {exc}")
-        raise HTTPException(status_code=500, detail="Database error") from exc
-
-
 @app.get("/gpx")
 def get_gpx(limit: Optional[int] = None):
     """Return log records as a GPX file."""

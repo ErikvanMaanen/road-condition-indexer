@@ -20,7 +20,7 @@ The application includes comprehensive SQL connectivity testing that runs automa
 - **Detailed Diagnostics**: Provides specific error messages and recommendations for connectivity issues
 - **Performance Monitoring**: Measures and reports connection and query performance
 
-See [SQL_CONNECTIVITY_TESTING.md](SQL_CONNECTIVITY_TESTING.md) for detailed documentation.
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed connectivity testing and issue resolution.
 
 ## Endpoints
 
@@ -244,7 +244,7 @@ The application includes comprehensive logging capabilities:
 - **Startup Process Logging** for system diagnostics
 - **Frontend Logging Components** for client-side debugging
 
-For detailed logging documentation, see `LOGGING.md`.
+For detailed logging documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Testing
 
@@ -261,11 +261,19 @@ python test_runner.py
 python test_runner.py full
 ```
 
-For detailed testing documentation, see `TESTING.md`.
+For detailed testing documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## Documentation
+
+This project includes comprehensive documentation organized into the following guides:
+
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guidelines, testing, logging, and code architecture
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Azure deployment, CI/CD, and production configuration
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues, error codes, and recovery procedures
 
 ## Developer Guidelines
 
-For AI assistants and developers working on this project, see `AGENTS.md` for detailed guidelines on:
+For AI assistants and developers working on this project, see [DEVELOPMENT.md](DEVELOPMENT.md) for detailed guidelines on:
 - Project architecture and components
 - Database management and security
 - Testing strategies
