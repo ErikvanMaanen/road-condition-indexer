@@ -56,15 +56,8 @@
             50% { box-shadow: 0 0 20px rgba(244, 67, 54, 0.6); }
             100% { box-shadow: 0 0 10px rgba(244, 67, 54, 0.3); }
         }
-        /* Responsive design for device filter and start button */
+        /* Responsive design for start button */
         @media (max-width: 600px) {
-            #filter-dev > div {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            #device-filter {
-                margin-bottom: 0.5rem;
-            }
             #toggle {
                 font-size: 1rem;
                 padding: 0.75rem;
@@ -207,11 +200,11 @@
 <div id="status-indicators">
     <div class="status-item">
         <div id="location-indicator" class="status-indicator status-red"></div>
-        <span>Location</span>
+        <span id="location-text">Location</span>
     </div>
     <div class="status-item">
         <div id="acceleration-indicator" class="status-indicator status-red"></div>
-        <span>Motion</span>
+        <span id="motion-text">Motion</span>
     </div>
     <div class="status-item">
         <div id="database-indicator" class="status-indicator status-red"></div>
@@ -220,6 +213,15 @@
     <div class="status-item">
         <div id="wakelock-indicator" class="status-indicator status-red"></div>
         <span>Wake Lock</span>
+    </div>
+    <div class="status-item" style="border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px;">
+        <span id="coordinates-text" style="font-family: monospace; font-size: 0.75rem;">---.-----, ---.-----</span>
+    </div>
+    <div class="status-item">
+        <span id="speed-text" style="font-family: monospace; font-size: 0.75rem;">--- km/h | ---°</span>
+    </div>
+    <div class="status-item">
+        <span id="roughness-text" style="font-family: monospace; font-size: 0.75rem;">R: ---.--</span>
     </div>
 </div>
 <nav id="page-links" style="margin-bottom:1rem;">
@@ -235,16 +237,10 @@ maintLink.addEventListener('mouseleave',()=>maintLink.style.opacity='0.2');
 maintLink.addEventListener('focus',()=>maintLink.style.opacity='1');
 maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
-<section id="filter-dev" style="margin-bottom:1rem;">
-    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="device-filter" multiple style="flex: 1;"></select>
+<section id="recording-controls" style="margin-bottom:1rem;">
+    <div style="display: flex; justify-content: center; margin-bottom: 0.5rem;">
         <button id="toggle">▶️ Start Recording</button>
     </div>
-</section>
-
-<!-- Status Display -->
-<section id="status-section" style="margin-bottom:1rem;">
-    <div id="status" style="font-weight: bold; padding: 0.5rem; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem;"></div>
 </section>
 
 <!-- Include standardized map component -->
@@ -574,7 +570,6 @@ function initializePage() {
     // Move all the existing initialization code here
     updateStatus();
     initMap();
-    populateDeviceFilter();
     
     // Only start pollDebug if debug element exists
     if (document.getElementById('debug')) {
@@ -588,10 +583,12 @@ function initializePage() {
     
     // Request wake lock by default when page loads
     requestWakeLock();
+    
+    // Load logs for current device only
+    loadLogs();
 }
 
 let deviceId = localStorage.getItem('deviceId');
-let selectedIds = deviceId ? [deviceId] : [];
 // Make deviceId available globally for logs partial
 window.deviceId = deviceId;
 function setCookie(name, value, days) {
@@ -654,120 +651,14 @@ const fingerprint = [
 const LOG_ENDPOINT = '/bike-data';
 
 function loadNickname() {
-    const nickInput = document.getElementById('nickname');
-    const saveBtn = document.getElementById('save-nickname');
-    
-    // Main page doesn't have nickname controls, so just return silently
-    if (!nickInput || !saveBtn) {
-        currentNickname = '';
-        return;
-    }
-    
-    if (selectedIds.length !== 1) {
-        nickInput.value = '';
-        nickInput.placeholder = selectedIds.length === 0 ? 'Device nickname' : 'Select single device to edit nickname';
-        nickInput.disabled = true;
-        saveBtn.disabled = true;
-        currentNickname = '';
-        return;
-    }
-    
-    const id = selectedIds[0];
-    // Validate that we have a valid device ID before making the request
-    if (!id || id.trim() === '') {
-        nickInput.value = '';
-        nickInput.placeholder = 'Invalid device ID';
-        nickInput.disabled = true;
-        saveBtn.disabled = true;
-        currentNickname = '';
-        return;
-    }
-    
-    nickInput.disabled = false;
-    saveBtn.disabled = false;
-    nickInput.placeholder = 'Device nickname';
-    fetch(`/nickname?device_id=${encodeURIComponent(id)}`)
-        .then(r => r.json())
-        .then(data => {
-            currentNickname = data.nickname || '';
-            nickInput.value = currentNickname;
-        })
-        .catch(console.error);
+    // Main page doesn't need nickname functionality
+    currentNickname = '';
 }
 
 function saveNickname() {
-    const nickInput = document.getElementById('nickname');
-    const saveBtn = document.getElementById('save-nickname');
-    if (!nickInput || !saveBtn || selectedIds.length !== 1 || nickInput.disabled || saveBtn.disabled) return;
-    
-    const deviceId = selectedIds[0];
-    // Validate that we have a valid device ID before making the request
-    if (!deviceId || deviceId.trim() === '') {
-        console.error('Cannot save nickname: invalid device ID');
-        return;
-    }
-    
-    const name = nickInput.value;
-    fetch('/nickname', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, nickname: name })
-    }).then(() => {
-        // Update local nickname without reloading all devices
-        deviceNicknames[deviceId] = name;
-        currentNickname = name;
-        
-        // Update the device option in the select dropdown
-        const select = document.getElementById('device-filter');
-        for (let i = 0; i < select.options.length; i++) {
-            if (select.options[i].value === deviceId) {
-                select.options[i].textContent = name ? `${name} (${deviceId})` : deviceId;
-                break;
-            }
-        }
-        addLog(`Saved nickname: ${name}`);
-    }).catch(err => {
-        addLog('Failed to save nickname: ' + err);
-        console.error(err);
-    });
+    // Main page doesn't need nickname functionality
 }
 
-function populateDeviceFilter() {
-    fetch('/device_ids').then(r => r.json()).then(data => {
-        const select = document.getElementById('device-filter');
-        select.innerHTML = '';
-        const optAll = document.createElement('option');
-        optAll.value = '';
-        optAll.textContent = '[All Devices]';
-        select.appendChild(optAll);
-        deviceNicknames = {};
-        data.ids.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item.id;
-            if (item.nickname) deviceNicknames[item.id] = item.nickname;
-            opt.textContent = item.nickname ? `${item.nickname} (${item.id})` : item.id;
-            select.appendChild(opt);
-        });
-        if (deviceId && !data.ids.some(i => i.id === deviceId)) {
-            const opt = document.createElement('option');
-            opt.value = deviceId;
-            opt.textContent = deviceId;
-            select.appendChild(opt);
-        }
-        Array.from(select.options).forEach(o => {
-            if (selectedIds.includes(o.value)) o.selected = true;
-        });
-        selectedIds = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
-        // Update database status indicator
-        databaseStatus = true;
-        updateStatusIndicator('database', true);
-    }).then(() => { loadNickname(); loadLogs(); })
-      .catch(err => {
-          console.error(err);
-          databaseStatus = false;
-          updateStatusIndicator('database', false);
-      });
-}
 let xValues = [];
 let yValues = [];
 let zValues = [];
@@ -782,7 +673,6 @@ let roughMin = 0;
 let roughMax = LABEL_COUNT;
 let roughAvg = 0;
 let roughScales = {};
-let deviceNicknames = {};
 let currentNickname = '';
 let motionDataReceived = false;
 let motionPermissionTimer = null;
@@ -799,6 +689,9 @@ function updateStatusIndicator(type, status) {
     if (indicator) {
         indicator.className = `status-indicator ${status ? 'status-green' : 'status-red'}`;
     }
+    
+    // Update the status display when indicators change
+    updateStatus();
 }
 
 function checkDatabaseStatus() {
@@ -928,13 +821,27 @@ function initMap() {
 }
 
 function updateStatus() {
-    const el = document.getElementById('status');
-    el.textContent =
-        `${lastLat.toFixed(5)}, ${lastLon.toFixed(5)} | ` +
-        `${lastSpeed.toFixed(1)} km/h | ` +
-        `${lastDir.toFixed(0)}° | ` +
-        `x: ${lastAcc.x.toFixed(2)}, y: ${lastAcc.y.toFixed(2)}, z: ${lastAcc.z.toFixed(2)} | ` +
-        `R: ${lastRoughness.toFixed(2)}`;
+    const coordinatesEl = document.getElementById('coordinates-text');
+    const speedEl = document.getElementById('speed-text');
+    const roughnessEl = document.getElementById('roughness-text');
+    const locationTextEl = document.getElementById('location-text');
+    const motionTextEl = document.getElementById('motion-text');
+    
+    if (coordinatesEl) {
+        coordinatesEl.textContent = `${lastLat.toFixed(5)}, ${lastLon.toFixed(5)}`;
+    }
+    if (speedEl) {
+        speedEl.textContent = `${lastSpeed.toFixed(1)} km/h | ${lastDir.toFixed(0)}°`;
+    }
+    if (roughnessEl) {
+        roughnessEl.textContent = `R: ${lastRoughness.toFixed(2)}`;
+    }
+    if (locationTextEl) {
+        locationTextEl.textContent = locationStatus ? 'GPS Active' : 'GPS Searching';
+    }
+    if (motionTextEl) {
+        motionTextEl.textContent = accelerationStatus ? 'Motion Active' : 'Motion Waiting';
+    }
 }
 
 function zUp(acc) {
@@ -951,13 +858,15 @@ function zUp(acc) {
 }
 
 function loadLogs() {
-    const select = document.getElementById('device-filter');
-    const ids = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
-    let url = '/logs';
-    if (ids.length > 0) {
+    // Load logs for current device only
+    let url = '/filteredlogs';
+    if (deviceId) {
         const params = new URLSearchParams();
-        ids.forEach(id => params.append('device_id', id));
+        params.append('device_id', deviceId);
         url = '/filteredlogs?' + params.toString();
+    } else {
+        // Fallback to all logs if no device ID
+        url = '/logs';
     }
     fetch(url).then(r => r.json()).then(async data => {
         const rows = Array.isArray(data) ? data : data.rows;
@@ -994,9 +903,8 @@ function loadLogs() {
             const row = rows[i];
             if (!row || typeof row.roughness !== 'number' || typeof row.latitude !== 'number' || typeof row.longitude !== 'number') continue;
             if (!filterRoughness(row.roughness)) continue;
-            const name = deviceNicknames[row.device_id] || '';
             const scale = roughScales[row.device_id] || {min:0,max:1};
-            addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+            addPoint(row.latitude, row.longitude, row.roughness, row, '', scale.min, scale.max);
             if (prog && label) {
                 prog.value = rows.length - i;
                 label.textContent = `${rows.length - i} / ${rows.length}`;
@@ -1190,19 +1098,6 @@ if (saveNicknameBtn) {
 
 // Add event listeners after DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    const deviceFilter = document.getElementById('device-filter');
-    if (deviceFilter) {
-        deviceFilter.addEventListener('change', () => {
-            selectedIds = Array.from(deviceFilter.selectedOptions)
-                .map(o => o.value).filter(v => v);
-            loadNickname();
-            // Only call loadLogs if we have the necessary functions available
-            if (typeof loadLogs === 'function') {
-                loadLogs();
-            }
-        });
-    }
-
     const roughnessFilter = document.getElementById('roughness-filter');
     if (roughnessFilter) {
         roughnessFilter.addEventListener('change', () => {
