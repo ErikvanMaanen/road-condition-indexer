@@ -804,9 +804,7 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                     start_dt = start_dt.replace(tzinfo=pytz.UTC)
                 elif start_dt.tzinfo != pytz.UTC:
                     start_dt = start_dt.astimezone(pytz.UTC)
-                log_debug(f"Parsed start datetime: {start} -> {start_dt}")
             except ValueError as e:
-                log_debug(f"Failed to parse start datetime '{start}': {e}")
                 raise HTTPException(status_code=400, detail=f"Invalid start datetime format: {start}")
         
         if end:
@@ -819,9 +817,7 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                     end_dt = end_dt.replace(tzinfo=pytz.UTC)
                 elif end_dt.tzinfo != pytz.UTC:
                     end_dt = end_dt.astimezone(pytz.UTC)
-                log_debug(f"Parsed end datetime: {end} -> {end_dt}")
             except ValueError as e:
-                log_debug(f"Failed to parse end datetime '{end}': {e}")
                 raise HTTPException(status_code=400, detail=f"Invalid end datetime format: {end}")
         
         rows, rough_avg = db_manager.get_filtered_logs(device_id, start_dt, end_dt)
