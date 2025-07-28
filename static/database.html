@@ -384,47 +384,20 @@
 </nav>
 <h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Database Management</h1>
 
-<!-- Device Management Section -->
-<section id="device-management-section" class="collapsible-section">
-    <div class="collapsible-header" onclick="toggleSection('device-management')">
-        <h2>Device Management</h2>
-        <span class="collapsible-toggle">▼</span>
-    </div>
-    <div id="device-management" class="collapsible-content">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <p>Manage all registered devices, their nicknames, and view record statistics.</p>
-            <button onclick="refreshDeviceList()" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Refresh List</button>
-        </div>
-        
-        <div id="device-list-container">
-            Loading devices...
-        </div>
+<!-- Device Filter Section - Always Visible -->
+<section id="filter-dev-section" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa;">
+    <h3 style="margin: 0 0 1rem 0; color: #495057;">Device Filter</h3>
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <select id="deviceId" multiple></select>
+        <button onclick="refreshSelection()">Refresh Selection</button>
     </div>
 </section>
 
-<section id="filter-dev-section" class="collapsible-section">
-    <div class="collapsible-header" onclick="toggleSection('filter-dev')">
-        <h3>Device Filter</h3>
-        <span class="collapsible-toggle">▼</span>
-    </div>
-    <div id="filter-dev" class="collapsible-content">
-        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-            <select id="deviceId" multiple></select>
-            <button onclick="refreshSelection()">Refresh Selection</button>
-        </div>
-    </div>
-</section>
-
-<!-- Map Section -->
-<section id="map-section" class="collapsible-section">
-    <div class="collapsible-header" onclick="toggleSection('map-content')">
-        <h3>Map View</h3>
-        <span class="collapsible-toggle">▼</span>
-    </div>
-    <div id="map-content" class="collapsible-content">
-        <!-- Include standardized map component -->
-        <div id="map-container"></div>
-    </div>
+<!-- Map Section - Always Visible -->
+<section id="map-section" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa;">
+    <h3 style="margin: 0 0 1rem 0; color: #495057;">Map View</h3>
+    <!-- Include standardized map component -->
+    <div id="map-container"></div>
 </section>
 
 <section id="filter-time-section" class="collapsible-section">
@@ -499,6 +472,24 @@
             <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
             <button onclick="exportSelectedData()">Export Selected Data</button>
             <button onclick="showRecordOverview()">Records Overview</button>
+        </div>
+    </div>
+</section>
+
+<!-- Device Management Section -->
+<section id="device-management-section" class="collapsible-section">
+    <div class="collapsible-header" onclick="toggleSection('device-management')">
+        <h2>Device Management</h2>
+        <span class="collapsible-toggle">▼</span>
+    </div>
+    <div id="device-management" class="collapsible-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <p>Manage all registered devices, their nicknames, and view record statistics.</p>
+            <button onclick="refreshDeviceList()" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Refresh List</button>
+        </div>
+        
+        <div id="device-list-container">
+            Loading devices...
         </div>
     </div>
 </section>
@@ -1653,7 +1644,7 @@ async function authFetch(url, options) {
 // Initialize page after all resources are loaded
 window.addEventListener('load', async function() {
     try {
-        // Ensure all sections are closed by default
+        // Ensure all collapsible sections are closed by default (except always-visible ones)
         const collapsibleSections = document.querySelectorAll('.collapsible-section');
         collapsibleSections.forEach(section => {
             const content = section.querySelector('.collapsible-content');
