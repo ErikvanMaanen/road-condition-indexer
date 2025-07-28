@@ -909,8 +909,8 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 result = conn.execute(
-                    text(f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = ? ORDER BY id DESC"),
-                    (device_id,)
+                    text(f"SELECT TOP 1 latitude, longitude, timestamp FROM {TABLE_BIKE_DATA} WHERE device_id = :device_id ORDER BY id DESC"),
+                    {"device_id": device_id}
                 )
                 row = result.fetchone()
                 if row:
@@ -1118,8 +1118,8 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 result = conn.execute(
-                    text(f"SELECT nickname FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
-                    (device_id,)
+                    text(f"SELECT nickname FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = :device_id"),
+                    {"device_id": device_id}
                 )
                 row = result.fetchone()
                 return row[0] if row else None
@@ -1133,8 +1133,8 @@ class DatabaseManager:
         try:
             with self.get_connection_context() as conn:
                 conn.execute(
-                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
-                    (device_id,)
+                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = :device_id"),
+                    {"device_id": device_id}
                 )
                 conn.commit()
         except Exception as e:
@@ -1153,24 +1153,24 @@ class DatabaseManager:
             with self.get_connection_context() as conn:
                 # Always delete the device nickname/registration
                 result = conn.execute(
-                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
-                    (device_id,)
+                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = :device_id"),
+                    {"device_id": device_id}
                 )
                 deleted_counts['device_registrations'] = result.rowcount
                 
                 if delete_data:
                     # Delete from bike_data table
                     result = conn.execute(
-                        text(f"DELETE FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
-                        (device_id,)
+                        text(f"DELETE FROM {TABLE_BIKE_DATA} WHERE device_id = :device_id"),
+                        {"device_id": device_id}
                     )
                     deleted_counts['bike_data_records'] = result.rowcount
                     
                     # Delete from source_data table if it exists
                     try:
                         result = conn.execute(
-                            text(f"DELETE FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = ?"),
-                            (device_id,)
+                            text(f"DELETE FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = :device_id"),
+                            {"device_id": device_id}
                         )
                         deleted_counts['source_data_records'] = result.rowcount
                     except Exception:
@@ -1200,16 +1200,16 @@ class DatabaseManager:
             with self.get_connection_context() as conn:
                 # Get bike_data count
                 result = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
-                    (device_id,)
+                    text(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA} WHERE device_id = :device_id"),
+                    {"device_id": device_id}
                 )
                 stats['table_counts']['bike_data'] = result.scalar() or 0
                 
                 # Get source_data count if table exists
                 try:
                     result = conn.execute(
-                        text(f"SELECT COUNT(*) FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = ?"),
-                        (device_id,)
+                        text(f"SELECT COUNT(*) FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = :device_id"),
+                        {"device_id": device_id}
                     )
                     stats['table_counts']['source_data'] = result.scalar() or 0
                 except Exception:
@@ -1219,9 +1219,9 @@ class DatabaseManager:
                 result = conn.execute(
                     text(f"""
                     SELECT MIN(timestamp) as min_time, MAX(timestamp) as max_time 
-                    FROM {TABLE_BIKE_DATA} WHERE device_id = ?
+                    FROM {TABLE_BIKE_DATA} WHERE device_id = :device_id
                     """),
-                    (device_id,)
+                    {"device_id": device_id}
                 )
                 row = result.fetchone()
                 if row and row[0]:
@@ -1233,8 +1233,8 @@ class DatabaseManager:
                 
                 # Get average roughness
                 result = conn.execute(
-                    text(f"SELECT AVG(CAST(roughness AS FLOAT)) FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
-                    (device_id,)
+                    text(f"SELECT AVG(CAST(roughness AS FLOAT)) FROM {TABLE_BIKE_DATA} WHERE device_id = :device_id"),
+                    {"device_id": device_id}
                 )
                 avg_roughness = result.scalar()
                 stats['average_roughness'] = float(avg_roughness) if avg_roughness else 0.0
