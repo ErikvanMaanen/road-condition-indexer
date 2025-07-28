@@ -332,13 +332,28 @@ function addFullscreenControl(m) {
             button.innerHTML = '⛶';
             button.title = 'Fullscreen';
             button.onclick = function() {
+                const mapContainer = m.getContainer();
                 if (document.fullscreenElement) {
                     document.exitFullscreen();
                     addLog('Exited fullscreen');
                 } else {
-                    document.documentElement.requestFullscreen();
-                    addLog('Fullscreen button pressed');
+                    // Request fullscreen on the map container element
+                    if (mapContainer.requestFullscreen) {
+                        mapContainer.requestFullscreen();
+                    } else if (mapContainer.mozRequestFullScreen) {
+                        mapContainer.mozRequestFullScreen();
+                    } else if (mapContainer.webkitRequestFullscreen) {
+                        mapContainer.webkitRequestFullscreen();
+                    } else if (mapContainer.msRequestFullscreen) {
+                        mapContainer.msRequestFullscreen();
+                    }
+                    addLog('Map fullscreen activated');
                 }
+                
+                // Invalidate map size after a short delay to ensure proper rendering
+                setTimeout(() => {
+                    m.invalidateSize();
+                }, 100);
             };
             return button;
         }

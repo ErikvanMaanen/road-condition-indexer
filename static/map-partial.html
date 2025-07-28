@@ -123,6 +123,15 @@ function initializeStandardMap(options = {}) {
         }
     }, 100);
     
+    // Add fullscreen change listener to handle map resize
+    document.addEventListener('fullscreenchange', () => {
+        if (map) {
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+        }
+    });
+    
     return map;
 }
 
@@ -227,8 +236,36 @@ window.initializeRoughnessFilter = initializeRoughnessFilter;
 }
 
 #map:fullscreen {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 9999;
+}
+
+/* Fullscreen button styling */
+.fullscreen-btn {
+    background: white;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 4px;
+    color: #333;
+    font-size: 18px;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+    transition: all 0.2s ease;
+}
+
+.fullscreen-btn:hover {
+    background: #f4f4f4;
+    border-color: rgba(0,0,0,0.4);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.fullscreen-btn:active {
+    transform: translateY(1px);
 }
 
 #scale-container {
