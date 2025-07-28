@@ -370,3 +370,14 @@ window.createMapContainer = createMapContainer;
 window.createFallbackMap = createFallbackMap;
 window.loadMapPartial = loadMapPartial;
 window.initializeMapWithFallback = initializeMapWithFallback;
+
+// Export clearMapData function globally for compatibility
+window.clearMapData = function() {
+    if (window.map) {
+        window.map.eachLayer(layer => {
+            if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                window.map.removeLayer(layer);
+            }
+        });
+    }
+};

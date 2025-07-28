@@ -301,6 +301,14 @@
         .btn-delete-device:hover {
             background: #c82333;
         }
+        .btn-delete-data {
+            background: #8b0000;
+            color: white;
+            font-weight: bold;
+        }
+        .btn-delete-data:hover {
+            background: #660000;
+        }
         .device-management-section {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -1165,26 +1173,23 @@ async function loadDeviceList() {
         
         const deviceListContainer = document.getElementById('device-list-container');
         if (data.ids && data.ids.length > 0) {
-            // Get record counts for each device
+            // Get detailed statistics for each device
             const deviceCards = [];
             
             for (const device of data.ids) {
                 try {
-                    // Get record count and date range for this device
-                    const statsResponse = await authFetch(`/date_range?device_id=${device.id}`);
-                    const statsData = await statsResponse.json();
+                    // Get detailed device statistics
+                    const statsResponse = await authFetch(`/device_stats?device_id=${device.id}`);
+                    const stats = await statsResponse.json();
                     
-                    // Get total record count
-                    const countResponse = await authFetch(`/filteredlogs?device_id=${device.id}`);
-                    const countData = await countResponse.json();
-                    const recordCount = countData.rows ? countData.rows.length : 0;
+                    const totalRecords = (stats.table_counts?.bike_data || 0) + (stats.table_counts?.source_data || 0);
                     
                     let firstRecord = 'N/A';
                     let lastRecord = 'N/A';
                     
-                    if (statsData.start && statsData.end) {
-                        firstRecord = new Date(statsData.start).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
-                        lastRecord = new Date(statsData.end).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+                    if (stats.first_record && stats.last_record) {
+                        firstRecord = new Date(stats.first_record).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+                        lastRecord = new Date(stats.last_record).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
                     }
                     
                     deviceCards.push(`
@@ -1197,8 +1202,20 @@ async function loadDeviceList() {
                             </div>
                             <div class="device-stats">
                                 <div class="device-stat">
+                                    <div class="device-stat-label">Bike Data Records</div>
+                                    <div class="device-stat-value">${(stats.table_counts?.bike_data || 0).toLocaleString()}</div>
+                                </div>
+                                <div class="device-stat">
+                                    <div class="device-stat-label">Source Data Records</div>
+                                    <div class="device-stat-value">${(stats.table_counts?.source_data || 0).toLocaleString()}</div>
+                                </div>
+                                <div class="device-stat">
                                     <div class="device-stat-label">Total Records</div>
-                                    <div class="device-stat-value">${recordCount.toLocaleString()}</div>
+                                    <div class="device-stat-value">${totalRecords.toLocaleString()}</div>
+                                </div>
+                                <div class="device-stat">
+                                    <div class="device-stat-label">Average Roughness</div>
+                                    <div class="device-stat-value">${(stats.average_roughness || 0).toFixed(3)}</div>
                                 </div>
                                 <div class="device-stat">
                                     <div class="device-stat-label">First Record</div>
@@ -1211,7 +1228,8 @@ async function loadDeviceList() {
                             </div>
                             <div class="device-actions">
                                 <button class="btn-edit" onclick="showEditForm('${device.id}', '${device.nickname || ''}')">Edit Nickname</button>
-                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', ${recordCount})">Delete Device</button>
+                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', ${totalRecords}, false)">Delete Device Only</button>
+                                ${totalRecords > 0 ? `<button class="btn-delete-data" onclick="confirmDeleteDevice('${device.id}', ${totalRecords}, true)">Delete Device + Data</button>` : ''}
                             </div>
                             <div id="edit-form-${device.id}" class="edit-form">
                                 <div class="form-group">
@@ -1243,7 +1261,7 @@ async function loadDeviceList() {
                             </div>
                             <div class="device-actions">
                                 <button class="btn-edit" onclick="showEditForm('${device.id}', '${device.nickname || ''}')">Edit Nickname</button>
-                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', 0)">Delete Device</button>
+                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', 0, false)">Delete Device</button>
                             </div>
                             <div id="edit-form-${device.id}" class="edit-form">
                                 <div class="form-group">
@@ -1321,28 +1339,55 @@ async function updateDeviceNickname(deviceId) {
     }
 }
 
-function confirmDeleteDevice(deviceId, recordCount) {
-    const message = recordCount > 0 
-        ? `Are you sure you want to delete device ${deviceId}?\n\nThis device has ${recordCount} records. Deleting the device will NOT delete the records, but it will remove the device registration and nickname.\n\nThis action cannot be undone.`
-        : `Are you sure you want to delete device ${deviceId}?\n\nThis action cannot be undone.`;
-    
-    if (confirm(message)) {
-        deleteDevice(deviceId);
+function confirmDeleteDevice(deviceId, recordCount, deleteData = false) {
+    let message;
+    if (deleteData && recordCount > 0) {
+        message = `⚠️ WARNING: You are about to delete device ${deviceId} AND ALL ITS DATA!\n\n` +
+                 `This will permanently delete:\n` +
+                 `• Device registration and nickname\n` +
+                 `• ${recordCount.toLocaleString()} data records from bike_data table\n` +
+                 `• Associated records from source_data table\n\n` +
+                 `THIS ACTION CANNOT BE UNDONE!\n\n` +
+                 `Type "DELETE" to confirm:`;
+        
+        const confirmation = prompt(message);
+        if (confirmation === 'DELETE') {
+            deleteDevice(deviceId, true);
+        }
+    } else {
+        message = recordCount > 0 
+            ? `Are you sure you want to delete device ${deviceId}?\n\n` +
+              `This will remove the device registration and nickname but will NOT delete the ${recordCount.toLocaleString()} data records.\n\n` +
+              `This action cannot be undone.`
+            : `Are you sure you want to delete device ${deviceId}?\n\nThis action cannot be undone.`;
+        
+        if (confirm(message)) {
+            deleteDevice(deviceId, false);
+        }
     }
 }
 
-async function deleteDevice(deviceId) {
+async function deleteDevice(deviceId, deleteData = false) {
     try {
-        // Note: You may need to implement a delete device endpoint on the backend
-        // For now, we'll just remove the nickname (effectively "unregistering" the device)
-        const response = await authFetch('/nickname', {
+        const endpoint = deleteData ? '/device_data' : '/nickname';
+        const response = await authFetch(endpoint, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id: deviceId })
+            body: JSON.stringify({ device_id: deviceId, delete_data: deleteData })
         });
         
         if (response.ok) {
-            addLog(`Deleted device registration for ${deviceId}`);
+            const result = await response.json();
+            if (deleteData && result.deleted_counts) {
+                const counts = result.deleted_counts;
+                let message = `Deleted device ${deviceId} and data:\n`;
+                if (counts.device_registrations) message += `• Device registrations: ${counts.device_registrations}\n`;
+                if (counts.bike_data_records) message += `• Bike data records: ${counts.bike_data_records}\n`;
+                if (counts.source_data_records) message += `• Source data records: ${counts.source_data_records}\n`;
+                addLog(message.trim());
+            } else {
+                addLog(`Deleted device registration for ${deviceId}`);
+            }
             await loadDeviceList();
             populateDeviceIds(); // Refresh main device selector
         } else {
@@ -1418,31 +1463,25 @@ async function loadRecordOverview() {
             return;
         }
         
-        // Get record counts for each device
+        // Get detailed statistics for each device
         const deviceStats = [];
         
         for (const device of devicesData.ids) {
             try {
-                const params = new URLSearchParams();
-                params.append('device_id', device.id);
+                const statsResponse = await authFetch(`/device_stats?device_id=${device.id}`);
+                const stats = await statsResponse.json();
                 
-                const response = await authFetch('/filteredlogs?' + params.toString());
-                const data = await response.json();
-                
-                const recordCount = data.rows ? data.rows.length : 0;
-                const avgRoughness = data.average || 0;
-                
-                // Get date range for this device
-                const dateResponse = await authFetch('/date_range?' + params.toString());
-                const dateData = await dateResponse.json();
+                const totalRecords = (stats.table_counts?.bike_data || 0) + (stats.table_counts?.source_data || 0);
                 
                 deviceStats.push({
                     id: device.id,
                     nickname: device.nickname,
-                    recordCount: recordCount,
-                    avgRoughness: avgRoughness,
-                    firstRecord: dateData.start,
-                    lastRecord: dateData.end
+                    recordCount: totalRecords,
+                    bikeDataCount: stats.table_counts?.bike_data || 0,
+                    sourceDataCount: stats.table_counts?.source_data || 0,
+                    avgRoughness: stats.average_roughness || 0,
+                    firstRecord: stats.first_record,
+                    lastRecord: stats.last_record
                 });
             } catch (error) {
                 console.error(`Failed to get stats for device ${device.id}:`, error);
@@ -1450,6 +1489,8 @@ async function loadRecordOverview() {
                     id: device.id,
                     nickname: device.nickname,
                     recordCount: 0,
+                    bikeDataCount: 0,
+                    sourceDataCount: 0,
                     avgRoughness: 0,
                     firstRecord: null,
                     lastRecord: null
@@ -1462,6 +1503,8 @@ async function loadRecordOverview() {
         
         // Generate overview HTML
         const totalRecords = deviceStats.reduce((sum, device) => sum + device.recordCount, 0);
+        const totalBikeData = deviceStats.reduce((sum, device) => sum + device.bikeDataCount, 0);
+        const totalSourceData = deviceStats.reduce((sum, device) => sum + device.sourceDataCount, 0);
         const devicesWithData = deviceStats.filter(device => device.recordCount > 0).length;
         const devicesWithoutData = deviceStats.length - devicesWithData;
         
@@ -1472,12 +1515,16 @@ async function loadRecordOverview() {
                 <p style="margin: 0;"><strong>Devices with Data:</strong> ${devicesWithData}</p>
                 ${devicesWithoutData > 0 ? `<p style="margin: 0; color: #e67e22;"><strong>Devices without Data:</strong> ${devicesWithoutData}</p>` : ''}
                 <p style="margin: 0;"><strong>Total Records:</strong> ${totalRecords.toLocaleString()}</p>
+                <p style="margin: 0;"><strong>Bike Data Records:</strong> ${totalBikeData.toLocaleString()}</p>
+                <p style="margin: 0;"><strong>Source Data Records:</strong> ${totalSourceData.toLocaleString()}</p>
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="background: #f8f9fa;">
                         <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: left;">Device</th>
-                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Records</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Bike Data</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Source Data</th>
+                        <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Total</th>
                         <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">Avg Roughness</th>
                         <th style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: left;">Date Range</th>
                     </tr>
@@ -1497,6 +1544,12 @@ async function loadRecordOverview() {
                         <strong>${device.nickname || device.id}</strong>
                         ${device.nickname ? `<br><small style="color: #666;">${device.id}</small>` : ''}
                         ${device.recordCount > 0 ? `<br><button onclick="viewDeviceData('${device.id}')" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; margin-top: 0.25rem;">View Data</button>` : ''}
+                    </td>
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">
+                        ${device.bikeDataCount.toLocaleString()}
+                    </td>
+                    <td style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">
+                        ${device.sourceDataCount.toLocaleString()}
                     </td>
                     <td style="border: 1px solid #dee2e6; padding: 0.5rem; text-align: right;">
                         ${device.recordCount.toLocaleString()}
@@ -1554,9 +1607,16 @@ async function authFetch(url, options) {
     return res;
 }
 
-// Initialize page
-(async function() {
+// Initialize page after all resources are loaded
+window.addEventListener('load', async function() {
     try {
+        // Ensure Leaflet is loaded before initializing map
+        if (typeof L === 'undefined') {
+            console.error('Leaflet not loaded, waiting...');
+            // Wait a bit and try again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
         // Use centralized map initialization
         const map = await initializeMapWithFallback({
             center: [52.028, 5.168], // Houten, NL
@@ -1564,7 +1624,7 @@ async function authFetch(url, options) {
             enableGeolocation: false, // Database view doesn't need geolocation
             enableBicycleMarker: false,
             enableFullscreen: true
-        }, 'map');
+        }, 'map-container');
         
         if (map) {
             window.map = map;
@@ -1591,7 +1651,7 @@ async function authFetch(url, options) {
         loadDeviceList();
         timeRangeSlider.init();
     }
-})();
+});
 
 // Event listeners
 document.getElementById('deviceId').addEventListener('change', () => {

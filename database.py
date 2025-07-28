@@ -1128,6 +1128,127 @@ class DatabaseManager:
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
 
+    def delete_device_nickname(self, device_id: str) -> None:
+        """Delete a device nickname/registration."""
+        try:
+            with self.get_connection_context() as conn:
+                conn.execute(
+                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
+                    (device_id,)
+                )
+                conn.commit()
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            self.log_debug(f"Failed to delete device nickname: {e}\nTraceback:\n{tb}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            print(f"[ERROR] delete_device_nickname failed: {e}\nTraceback:\n{tb}")
+            raise
+
+    def delete_device_data(self, device_id: str, delete_data: bool = False) -> Dict[str, int]:
+        """Delete device data including bike_data and source_data records if requested."""
+        deleted_counts = {}
+        
+        try:
+            with self.get_connection_context() as conn:
+                # Always delete the device nickname/registration
+                result = conn.execute(
+                    text(f"DELETE FROM {TABLE_DEVICE_NICKNAMES} WHERE device_id = ?"),
+                    (device_id,)
+                )
+                deleted_counts['device_registrations'] = result.rowcount
+                
+                if delete_data:
+                    # Delete from bike_data table
+                    result = conn.execute(
+                        text(f"DELETE FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
+                        (device_id,)
+                    )
+                    deleted_counts['bike_data_records'] = result.rowcount
+                    
+                    # Delete from source_data table if it exists
+                    try:
+                        result = conn.execute(
+                            text(f"DELETE FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = ?"),
+                            (device_id,)
+                        )
+                        deleted_counts['source_data_records'] = result.rowcount
+                    except Exception:
+                        # Table might not exist
+                        deleted_counts['source_data_records'] = 0
+                
+                conn.commit()
+                return deleted_counts
+                
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            self.log_debug(f"Failed to delete device data: {e}\nTraceback:\n{tb}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            print(f"[ERROR] delete_device_data failed: {e}\nTraceback:\n{tb}")
+            raise
+
+    def get_device_statistics(self, device_id: str) -> Dict[str, Any]:
+        """Get detailed statistics for a device including record counts per table."""
+        try:
+            stats = {
+                'device_id': device_id,
+                'nickname': self.get_device_nickname(device_id),
+                'table_counts': {}
+            }
+            
+            with self.get_connection_context() as conn:
+                # Get bike_data count
+                result = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
+                    (device_id,)
+                )
+                stats['table_counts']['bike_data'] = result.scalar() or 0
+                
+                # Get source_data count if table exists
+                try:
+                    result = conn.execute(
+                        text(f"SELECT COUNT(*) FROM {TABLE_BIKE_SOURCE_DATA} WHERE device_id = ?"),
+                        (device_id,)
+                    )
+                    stats['table_counts']['source_data'] = result.scalar() or 0
+                except Exception:
+                    stats['table_counts']['source_data'] = 0
+                
+                # Get date range for bike_data
+                result = conn.execute(
+                    text(f"""
+                    SELECT MIN(timestamp) as min_time, MAX(timestamp) as max_time 
+                    FROM {TABLE_BIKE_DATA} WHERE device_id = ?
+                    """),
+                    (device_id,)
+                )
+                row = result.fetchone()
+                if row and row[0]:
+                    stats['first_record'] = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
+                    stats['last_record'] = row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1])
+                else:
+                    stats['first_record'] = None
+                    stats['last_record'] = None
+                
+                # Get average roughness
+                result = conn.execute(
+                    text(f"SELECT AVG(CAST(roughness AS FLOAT)) FROM {TABLE_BIKE_DATA} WHERE device_id = ?"),
+                    (device_id,)
+                )
+                avg_roughness = result.scalar()
+                stats['average_roughness'] = float(avg_roughness) if avg_roughness else 0.0
+                
+                return stats
+                
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            self.log_debug(f"Failed to get device statistics: {e}\nTraceback:\n{tb}", 
+                          LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            print(f"[ERROR] get_device_statistics failed: {e}\nTraceback:\n{tb}")
+            raise
+
     def get_database_size(self) -> Tuple[float, Optional[float]]:
         """Return current SQL Server database size and max size in GB."""
         try:
