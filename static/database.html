@@ -228,6 +228,104 @@
             background: #f8f9fa;
             font-weight: bold;
         }
+        
+        /* Device Management Section Styles */
+        .device-card {
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .device-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .device-id {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 1.1rem;
+        }
+        .device-nickname {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .device-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+        }
+        .device-stat {
+            background: #f8f9fa;
+            padding: 0.5rem;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .device-stat-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+        }
+        .device-stat-value {
+            font-weight: bold;
+            color: #495057;
+        }
+        .device-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .device-actions button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.9rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-edit {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn-edit:hover {
+            background: #e0a800;
+        }
+        .btn-delete-device {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-delete-device:hover {
+            background: #c82333;
+        }
+        .device-management-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        .device-form {
+            background: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .edit-form {
+            display: none;
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+        }
+        .edit-form.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -237,6 +335,33 @@
     <a href="maintenance.html">Maintenance</a>
 </nav>
 <h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Database Management</h1>
+
+<!-- Device Management Section -->
+<section id="device-management-section" class="device-management-section">
+    <h2>Device Management</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <p>Manage all registered devices, their nicknames, and view record statistics.</p>
+        <button onclick="refreshDeviceList()" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Refresh List</button>
+    </div>
+    
+    <div id="device-list-container">
+        Loading devices...
+    </div>
+    
+    <!-- Add New Device Form -->
+    <div class="device-form">
+        <h4>Add New Device</h4>
+        <div class="form-group">
+            <label for="new-device-id">Device ID:</label>
+            <input type="text" id="new-device-id" placeholder="Enter new device ID (e.g., BIKE001)">
+        </div>
+        <div class="form-group">
+            <label for="new-device-nickname">Device Nickname (Optional):</label>
+            <input type="text" id="new-device-nickname" placeholder="Enter friendly name for the device">
+        </div>
+        <button onclick="addNewDevice()" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Add Device</button>
+    </div>
+</section>
 
 <section id="filter-dev" style="margin-bottom:1rem;">
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
@@ -302,7 +427,6 @@
         <button onclick="showUpdateForm()" class="warning">Update Selected Data</button>
         <button onclick="showDeleteConfirmation()" class="danger">Delete Selected Data</button>
         <button onclick="exportSelectedData()">Export Selected Data</button>
-        <button onclick="showDeviceManagement()">Manage Devices</button>
         <button onclick="showRecordOverview()">Records Overview</button>
     </div>
 </section>
@@ -337,34 +461,6 @@
     <div style="margin-top: 1rem;">
         <button onclick="executeDelete()" class="danger">DELETE RECORDS</button>
         <button onclick="hideDeleteConfirmation()">Cancel</button>
-    </div>
-</div>
-
-<!-- Device Management -->
-<div id="device-management" class="confirmation-box">
-    <h4>Device Management</h4>
-    <div style="margin-bottom: 1rem;">
-        <h5>All Devices</h5>
-        <div id="device-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 1rem;">
-            Loading devices...
-        </div>
-    </div>
-    <div style="margin-bottom: 1rem;">
-        <h5>Edit Device Nickname</h5>
-        <div class="form-group">
-            <label for="edit-device-id">Device ID:</label>
-            <select id="edit-device-id">
-                <option value="">Select device...</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="edit-device-nickname">New Nickname:</label>
-            <input type="text" id="edit-device-nickname" placeholder="Enter new nickname">
-        </div>
-        <button onclick="updateDeviceNickname()" class="warning">Update Nickname</button>
-    </div>
-    <div style="margin-top: 1rem;">
-        <button onclick="hideDeviceManagement()">Close</button>
     </div>
 </div>
 
@@ -782,20 +878,7 @@ function applyQuickTimeRange(rangeType) {
     addLog(`Applied ${rangeType} time range: ${startAmsterdamLog} - ${endAmsterdamLog}`);
 }
 
-function initMap() {
-    const map = initializeStandardMap({
-        center: [52.028, 5.168], // Houten, NL
-        zoom: 12,
-        enableGeolocation: false, // Database view doesn't need geolocation
-        enableBicycleMarker: false,
-        enableFullscreen: true
-    });
-    
-    // Initialize roughness filter
-    initializeRoughnessFilter(() => {
-        loadData();
-    });
-}
+// Map initialization now handled centrally in page initialization
 
 function directionToCompass(deg) {
     if (deg === null || isNaN(deg)) return 'N/A';
@@ -920,7 +1003,6 @@ function updateDataSummary(data) {
 function hideAllForms() {
     document.getElementById('update-form').style.display = 'none';
     document.getElementById('delete-confirmation').style.display = 'none';
-    document.getElementById('device-management').style.display = 'none';
     document.getElementById('records-overview').style.display = 'none';
 }
 
@@ -1065,18 +1147,15 @@ function exportSelectedData() {
     addLog(`Exported ${selectedData.length} records to CSV`);
 }
 
-// Device Management Functions
-function showDeviceManagement() {
-    hideAllForms();
-    document.getElementById('device-management').style.display = 'block';
-    loadDeviceList();
-    loadDeviceSelector();
-}
-
-function hideDeviceManagement() {
-    document.getElementById('device-management').style.display = 'none';
-    document.getElementById('edit-device-id').value = '';
-    document.getElementById('edit-device-nickname').value = '';
+// Enhanced Device Management Functions
+async function refreshDeviceList() {
+    try {
+        document.getElementById('device-list-container').innerHTML = 'Loading devices...';
+        await loadDeviceList();
+        addLog('Device list refreshed');
+    } catch (error) {
+        addDebug('Failed to refresh device list: ' + error.message);
+    }
 }
 
 async function loadDeviceList() {
@@ -1084,63 +1163,137 @@ async function loadDeviceList() {
         const response = await authFetch('/device_ids');
         const data = await response.json();
         
-        const deviceListDiv = document.getElementById('device-list');
+        const deviceListContainer = document.getElementById('device-list-container');
         if (data.ids && data.ids.length > 0) {
-            deviceListDiv.innerHTML = data.ids.map(device => `
-                <div class="device-item">
-                    <div>
-                        <strong>ID:</strong> ${device.id}<br>
-                        <strong>Nickname:</strong> ${device.nickname || '<em style="color: #999;">No nickname</em>'}
-                    </div>
-                    <div>
-                        <button onclick="editDevice('${device.id}', '${device.nickname || ''}')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
-                    </div>
-                </div>
-            `).join('');
+            // Get record counts for each device
+            const deviceCards = [];
+            
+            for (const device of data.ids) {
+                try {
+                    // Get record count and date range for this device
+                    const statsResponse = await authFetch(`/date_range?device_id=${device.id}`);
+                    const statsData = await statsResponse.json();
+                    
+                    // Get total record count
+                    const countResponse = await authFetch(`/filteredlogs?device_id=${device.id}`);
+                    const countData = await countResponse.json();
+                    const recordCount = countData.rows ? countData.rows.length : 0;
+                    
+                    let firstRecord = 'N/A';
+                    let lastRecord = 'N/A';
+                    
+                    if (statsData.start && statsData.end) {
+                        firstRecord = new Date(statsData.start).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+                        lastRecord = new Date(statsData.end).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+                    }
+                    
+                    deviceCards.push(`
+                        <div class="device-card">
+                            <div class="device-card-header">
+                                <div>
+                                    <div class="device-id">${device.id}</div>
+                                    <div class="device-nickname">${device.nickname || 'No nickname set'}</div>
+                                </div>
+                            </div>
+                            <div class="device-stats">
+                                <div class="device-stat">
+                                    <div class="device-stat-label">Total Records</div>
+                                    <div class="device-stat-value">${recordCount.toLocaleString()}</div>
+                                </div>
+                                <div class="device-stat">
+                                    <div class="device-stat-label">First Record</div>
+                                    <div class="device-stat-value">${firstRecord}</div>
+                                </div>
+                                <div class="device-stat">
+                                    <div class="device-stat-label">Last Record</div>
+                                    <div class="device-stat-value">${lastRecord}</div>
+                                </div>
+                            </div>
+                            <div class="device-actions">
+                                <button class="btn-edit" onclick="showEditForm('${device.id}', '${device.nickname || ''}')">Edit Nickname</button>
+                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', ${recordCount})">Delete Device</button>
+                            </div>
+                            <div id="edit-form-${device.id}" class="edit-form">
+                                <div class="form-group">
+                                    <label>New Nickname:</label>
+                                    <input type="text" id="edit-nickname-${device.id}" value="${device.nickname || ''}" placeholder="Enter nickname">
+                                </div>
+                                <div style="margin-top: 0.5rem;">
+                                    <button onclick="updateDeviceNickname('${device.id}')" style="background: #28a745; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">Save</button>
+                                    <button onclick="hideEditForm('${device.id}')" style="background: #6c757d; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                } catch (error) {
+                    console.error(`Error loading stats for device ${device.id}:`, error);
+                    deviceCards.push(`
+                        <div class="device-card">
+                            <div class="device-card-header">
+                                <div>
+                                    <div class="device-id">${device.id}</div>
+                                    <div class="device-nickname">${device.nickname || 'No nickname set'}</div>
+                                </div>
+                            </div>
+                            <div class="device-stats">
+                                <div class="device-stat">
+                                    <div class="device-stat-label">Status</div>
+                                    <div class="device-stat-value">Error loading stats</div>
+                                </div>
+                            </div>
+                            <div class="device-actions">
+                                <button class="btn-edit" onclick="showEditForm('${device.id}', '${device.nickname || ''}')">Edit Nickname</button>
+                                <button class="btn-delete-device" onclick="confirmDeleteDevice('${device.id}', 0)">Delete Device</button>
+                            </div>
+                            <div id="edit-form-${device.id}" class="edit-form">
+                                <div class="form-group">
+                                    <label>New Nickname:</label>
+                                    <input type="text" id="edit-nickname-${device.id}" value="${device.nickname || ''}" placeholder="Enter nickname">
+                                </div>
+                                <div style="margin-top: 0.5rem;">
+                                    <button onclick="updateDeviceNickname('${device.id}')" style="background: #28a745; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">Save</button>
+                                    <button onclick="hideEditForm('${device.id}')" style="background: #6c757d; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                }
+            }
+            
+            deviceListContainer.innerHTML = deviceCards.join('');
         } else {
-            deviceListDiv.innerHTML = '<p>No devices found</p>';
+            deviceListContainer.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 2rem;">No devices found. Add a device below to get started.</p>';
         }
     } catch (error) {
-        document.getElementById('device-list').innerHTML = '<p>Error loading devices</p>';
+        document.getElementById('device-list-container').innerHTML = '<p style="color: #dc3545;">Error loading devices</p>';
         addDebug('Failed to load device list: ' + error.message);
     }
 }
 
-async function loadDeviceSelector() {
-    try {
-        const response = await authFetch('/device_ids');
-        const data = await response.json();
-        
-        const selector = document.getElementById('edit-device-id');
-        selector.innerHTML = '<option value="">Select device...</option>';
-        
-        if (data.ids && data.ids.length > 0) {
-            data.ids.forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.id;
-                option.textContent = device.nickname ? `${device.nickname} (${device.id})` : device.id;
-                selector.appendChild(option);
-            });
-        }
-    } catch (error) {
-        addDebug('Failed to load device selector: ' + error.message);
-    }
-}
-
-function editDevice(deviceId, currentNickname) {
-    document.getElementById('edit-device-id').value = deviceId;
-    document.getElementById('edit-device-nickname').value = currentNickname;
-    document.getElementById('edit-device-nickname').focus();
-}
-
-async function updateDeviceNickname() {
-    const deviceId = document.getElementById('edit-device-id').value;
-    const nickname = document.getElementById('edit-device-nickname').value.trim();
+function showEditForm(deviceId, currentNickname) {
+    // Hide all other edit forms
+    document.querySelectorAll('.edit-form').forEach(form => {
+        form.classList.remove('active');
+    });
     
-    if (!deviceId) {
-        alert('Please select a device');
-        return;
+    // Show the specific edit form
+    const editForm = document.getElementById(`edit-form-${deviceId}`);
+    if (editForm) {
+        editForm.classList.add('active');
+        document.getElementById(`edit-nickname-${deviceId}`).focus();
     }
+}
+
+function hideEditForm(deviceId) {
+    const editForm = document.getElementById(`edit-form-${deviceId}`);
+    if (editForm) {
+        editForm.classList.remove('active');
+    }
+}
+
+async function updateDeviceNickname(deviceId) {
+    const nicknameInput = document.getElementById(`edit-nickname-${deviceId}`);
+    const nickname = nicknameInput.value.trim();
     
     if (!nickname) {
         alert('Please enter a nickname');
@@ -1156,16 +1309,83 @@ async function updateDeviceNickname() {
         
         if (response.ok) {
             addLog(`Updated nickname for device ${deviceId} to "${nickname}"`);
-            loadDeviceList();
-            loadDeviceSelector();
+            hideEditForm(deviceId);
+            await loadDeviceList();
             populateDeviceIds(); // Refresh main device selector
-            document.getElementById('edit-device-nickname').value = '';
         } else {
             throw new Error('Failed to update nickname');
         }
     } catch (error) {
         addDebug('Failed to update device nickname: ' + error.message);
         alert('Failed to update nickname: ' + error.message);
+    }
+}
+
+function confirmDeleteDevice(deviceId, recordCount) {
+    const message = recordCount > 0 
+        ? `Are you sure you want to delete device ${deviceId}?\n\nThis device has ${recordCount} records. Deleting the device will NOT delete the records, but it will remove the device registration and nickname.\n\nThis action cannot be undone.`
+        : `Are you sure you want to delete device ${deviceId}?\n\nThis action cannot be undone.`;
+    
+    if (confirm(message)) {
+        deleteDevice(deviceId);
+    }
+}
+
+async function deleteDevice(deviceId) {
+    try {
+        // Note: You may need to implement a delete device endpoint on the backend
+        // For now, we'll just remove the nickname (effectively "unregistering" the device)
+        const response = await authFetch('/nickname', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
+        });
+        
+        if (response.ok) {
+            addLog(`Deleted device registration for ${deviceId}`);
+            await loadDeviceList();
+            populateDeviceIds(); // Refresh main device selector
+        } else {
+            throw new Error('Failed to delete device');
+        }
+    } catch (error) {
+        addDebug('Failed to delete device: ' + error.message);
+        alert('Failed to delete device: ' + error.message);
+    }
+}
+
+async function addNewDevice() {
+    const deviceIdInput = document.getElementById('new-device-id');
+    const nicknameInput = document.getElementById('new-device-nickname');
+    
+    const deviceId = deviceIdInput.value.trim();
+    const nickname = nicknameInput.value.trim();
+    
+    if (!deviceId) {
+        alert('Please enter a device ID');
+        return;
+    }
+    
+    try {
+        // Add the device by setting its nickname (or empty nickname)
+        const response = await authFetch('/nickname', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId, nickname: nickname || deviceId })
+        });
+        
+        if (response.ok) {
+            addLog(`Added new device: ${deviceId}${nickname ? ` (${nickname})` : ''}`);
+            deviceIdInput.value = '';
+            nicknameInput.value = '';
+            await loadDeviceList();
+            populateDeviceIds(); // Refresh main device selector
+        } else {
+            throw new Error('Failed to add device');
+        }
+    } catch (error) {
+        addDebug('Failed to add device: ' + error.message);
+        alert('Failed to add device: ' + error.message);
     }
 }
 
@@ -1338,14 +1558,29 @@ async function authFetch(url, options) {
 (async function() {
     try {
         // Use centralized map initialization
-        const mapLoaded = await initializeMapWithFallback();
+        const map = await initializeMapWithFallback({
+            center: [52.028, 5.168], // Houten, NL
+            zoom: 12,
+            enableGeolocation: false, // Database view doesn't need geolocation
+            enableBicycleMarker: false,
+            enableFullscreen: true
+        }, 'map');
         
-        if (mapLoaded) {
-            initMap();
+        if (map) {
+            window.map = map;
+            // Initialize roughness filter
+            if (typeof initializeRoughnessFilter === 'function') {
+                initializeRoughnessFilter(() => {
+                    loadData();
+                });
+            }
         }
         
         // Initialize page regardless of map status
         populateDeviceIds();
+        
+        // Load device list for device management section
+        await loadDeviceList();
         
         // Initialize the dual range slider
         timeRangeSlider.init();
@@ -1353,6 +1588,7 @@ async function authFetch(url, options) {
         console.error('Failed to initialize page:', error);
         // Fallback initialization
         populateDeviceIds();
+        loadDeviceList();
         timeRangeSlider.init();
     }
 })();
