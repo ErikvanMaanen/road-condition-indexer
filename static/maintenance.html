@@ -275,12 +275,11 @@
                     <option value="desc" selected>Latest First</option>
                     <option value="asc">Oldest First</option>
                 </select>
-                <button onclick="loadDatabaseLogs()">🔄 Refresh Logs</button>
-                <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
-                <button onclick="exportLogs()">📥 Export CSV</button>
-                <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
-                <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Debug Logs</button>
-                <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
+                <button onclick="loadDatabaseLogs()" title="Refresh Logs">🔄</button>
+                <button onclick="clearLogDisplay()" title="Clear Display">🗑️</button>
+                <button onclick="exportLogs()" title="Export CSV">📥</button>
+                <button onclick="toggleAutoRefresh()" id="auto-refresh-btn" title="Toggle Auto-refresh">⏯️</button>
+                <button onclick="archiveLogs()" style="background: #ffc107; color: #000;" title="Archive Debug Logs">�</button>
             </div>
         </div>
         <div id="log-stats" class="log-stats">
@@ -289,228 +288,6 @@
         <div id="log-display">
             Click "Refresh Logs" to load database logs
         </div>
-    </div>
-</div>
-
-<!-- API Reference (collapsible section) -->
-<div class="section">
-    <div class="section-header" onclick="toggleSection('api-reference')">
-        <span>📖 API Reference</span>
-        <span class="section-toggle" id="api-reference-toggle">▶</span>
-    </div>
-    <div class="section-content" id="api-reference-content">
-        <table border="1" cellpadding="4" style="border-collapse:collapse;">
-            <thead>
-                <tr>
-                    <th>Endpoint</th>
-                    <th>Method</th>
-                    <th>Input</th>
-                    <th>Output</th>
-                    <th>Auth</th>
-                </tr>
-            </thead>
-        <tbody>
-            <tr>
-                <td>/login</td>
-                <td>POST</td>
-                <td>JSON {"password": string}</td>
-                <td>204 No Content (sets auth cookie)</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/auth_check</td>
-                <td>GET</td>
-                <td>Auth cookie</td>
-                <td>204 if valid else 401</td>
-                <td>Auth cookie</td>
-            </tr>
-            <tr>
-                <td>/bike-data</td>
-                <td>POST</td>
-                <td>JSON {latitude, longitude, speed, direction, device_id, z_values[], user_agent?, device_fp?}</td>
-                <td>JSON {status, roughness}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/logs?limit=N</td>
-                <td>GET</td>
-                <td>Query: limit=1-1000 (optional)</td>
-                <td>JSON {rows: [...], average}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/filteredlogs</td>
-                <td>GET</td>
-                <td>Query: device_id=id[,id], start, end</td>
-                <td>JSON {rows: [...], average}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/device_ids</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {ids: [{id, nickname}]}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/date_range</td>
-                <td>GET</td>
-                <td>Query: device_id=id[,id] (optional)</td>
-                <td>JSON {start, end} ISO strings</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/nickname</td>
-                <td>POST</td>
-                <td>JSON {device_id, nickname}</td>
-                <td>JSON {status}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/nickname?device_id=ID</td>
-                <td>GET</td>
-                <td>Query: device_id</td>
-                <td>JSON {nickname}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/gpx?limit=N</td>
-                <td>GET</td>
-                <td>Query: limit=1-1000 (optional)</td>
-                <td>GPX file</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td>/debuglog</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {log: [string]}</td>
-                <td>None</td>
-            </tr>
-            <tr>
-                <td colspan="5" style="text-align:center;font-weight:bold;">Manage Endpoints (require password)</td>
-            </tr>
-            <tr>
-                <td>/manage/tables</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {tables}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/insert_testdata</td>
-                <td>POST</td>
-                <td>JSON {table}</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/delete_all?table=NAME</td>
-                <td>DELETE</td>
-                <td>Query: table</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/backup_table</td>
-                <td>POST</td>
-                <td>JSON {table}</td>
-                <td>JSON {status, new_table}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/rename_table</td>
-                <td>POST</td>
-                <td>JSON {old_name, new_name}</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/record?record_id=ID</td>
-                <td>GET</td>
-                <td>Query: record_id</td>
-                <td>JSON record</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/update_record</td>
-                <td>PUT</td>
-                <td>JSON {id, fields...}</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/delete_record?record_id=ID</td>
-                <td>DELETE</td>
-                <td>Query: record_id</td>
-                <td>JSON {status}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/merge_device_ids</td>
-                <td>POST</td>
-                <td>JSON {old_id, new_id}</td>
-                <td>JSON {status, bike_rows}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/db_size</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {size_mb, max_size_gb}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/app_plan</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {name, sku, capacity}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/archive_logs</td>
-                <td>POST</td>
-                <td>None</td>
-                <td>JSON {status, message, archived_count}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/table_schema?table=NAME</td>
-                <td>GET</td>
-                <td>Query: table</td>
-                <td>JSON {table_name, columns, indexes, constraints}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/verify_tables</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {status, passed, message, details}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/verify_data</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {status, passed, message, details}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/verify_indexes</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {status, passed, message, details}</td>
-                <td>Password</td>
-            </tr>
-            <tr>
-                <td>/manage/verify_constraints</td>
-                <td>GET</td>
-                <td>None</td>
-                <td>JSON {status, passed, message, details}</td>
-                <td>Password</td>
-            </tr>
-        </tbody>
-        </table>
     </div>
 </div>
 <!-- Tables (collapsible section) -->
@@ -723,46 +500,14 @@ function toggleAutoRefresh() {
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
-        btn.textContent = '⏸️ Auto-refresh: OFF';
+        btn.textContent = '⏸️';
+        btn.title = 'Auto-refresh: OFF - Click to enable';
         btn.style.background = '#007cba';
     } else {
         autoRefreshInterval = setInterval(loadDatabaseLogs, 10000); // Refresh every 10 seconds
-        btn.textContent = '⏯️ Auto-refresh: ON';
+        btn.textContent = '⏯️';
+        btn.title = 'Auto-refresh: ON - Click to disable';
         btn.style.background = '#28a745';
-    }
-}
-
-async function repairDatabase() {
-    if (!confirm('This will attempt to repair database corruption issues. Continue?')) {
-        return;
-    }
-    
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.textContent = '🔧 Repairing...';
-    btn.disabled = true;
-    
-    try {
-        const response = await authFetch('/manage/repair_database', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        alert(`Database repair result: ${result.message}`);
-        
-        // Refresh logs after repair
-        loadDatabaseLogs();
-        
-    } catch (error) {
-        alert(`Database repair failed: ${error.message}`);
-    } finally {
-        btn.textContent = originalText;
-        btn.disabled = false;
     }
 }
 
@@ -804,7 +549,7 @@ async function archiveLogs() {
 // Load logs on page load
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize all sections as collapsed by default
-    ['log-viewer', 'api-reference', 'tables', 'fastapi-health'].forEach(sectionId => {
+    ['log-viewer', 'tables', 'fastapi-health'].forEach(sectionId => {
         const content = document.getElementById(sectionId + '-content');
         const toggle = document.getElementById(sectionId + '-toggle');
         if (content && toggle) {
@@ -814,6 +559,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     loadDatabaseLogs();
+    
+    // Enable auto-refresh by default
+    const autoRefreshBtn = document.getElementById('auto-refresh-btn');
+    autoRefreshInterval = setInterval(loadDatabaseLogs, 10000); // Refresh every 10 seconds
+    autoRefreshBtn.textContent = '⏯️';
+    autoRefreshBtn.title = 'Auto-refresh: ON - Click to disable';
+    autoRefreshBtn.style.background = '#28a745';
     
     // Add event listeners for log filters
     document.getElementById('log-level-filter').addEventListener('change', loadDatabaseLogs);
