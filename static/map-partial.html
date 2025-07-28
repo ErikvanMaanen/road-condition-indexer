@@ -10,8 +10,7 @@
 
 <!-- Roughness Filter Component -->
 <div id="roughness-filter-container" style="margin-bottom: 0.5rem;">
-    <label for="roughness-filter" style="font-weight: bold;">Filter by Roughness:</label>
-    <select id="roughness-filter" multiple style="min-width: 200px; margin-left: 0.5rem;">
+    <select id="roughness-filter" multiple style="min-width: 120px;">
         <option value="">[All Roughness]</option>
         <option value="1">1 - Smooth road</option>
         <option value="2">2 - Even surface</option>
@@ -258,6 +257,7 @@ window.initializeRoughnessFilter = initializeRoughnessFilter;
     border: 1px solid #ccc;
     border-radius: 3px;
     background: white;
+    min-width: 120px;
 }
 
 /* Bicycle marker animation */

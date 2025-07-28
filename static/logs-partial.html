@@ -520,30 +520,4 @@ if (document.readyState === 'loading') {
 } else {
     initializeLogs();
 }
-
-// Add a button to toggle logs visibility at the bottom of each page
-const logsToggleButton = document.createElement('button');
-logsToggleButton.id = 'toggle-logs-button';
-logsToggleButton.style.cssText = 'position:fixed; bottom:80px; right:20px; background:#2196F3; color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 5px rgba(0,0,0,0.3); cursor:pointer; z-index:1000;';
-logsToggleButton.innerHTML = '🗂️';
-logsToggleButton.title = 'Hide Logs Display';
-document.body.appendChild(logsToggleButton);
-
-// Add event listener to toggle logs visibility
-logsToggleButton.addEventListener('click', function() {
-    const logsSection = document.getElementById('logs');
-    if (logsSection) {
-        if (logsSection.style.display === 'none') {
-            logsSection.style.display = 'block';
-            logsToggleButton.style.background = '#2196F3';
-            logsToggleButton.innerHTML = '🗂️';
-            logsToggleButton.title = 'Hide Logs Display';
-        } else {
-            logsSection.style.display = 'none';
-            logsToggleButton.style.background = '#555';
-            logsToggleButton.innerHTML = '📋';
-            logsToggleButton.title = 'Show Logs Display';
-        }
-    }
-});
 </script>

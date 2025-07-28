@@ -102,20 +102,6 @@
         .status-red {
             background-color: #f44336;
         }
-        .status-explanation {
-            font-size: 0.7rem;
-            color: #666;
-            margin-left: 16px;
-        }
-        #wake-lock-container {
-            transition: background-color 0.3s ease;
-        }
-        #wake-lock-container:hover {
-            background: #f0f0f0;
-        }
-        #manual-wake-lock:hover {
-            background: #e0e0e0;
-        }
         /* Settings panel styles */
         #settings-panel {
             border: 1px solid #ddd;
@@ -221,22 +207,18 @@
     <div class="status-item">
         <div id="location-indicator" class="status-indicator status-red"></div>
         <span>Location</span>
-        <div id="location-explanation" class="status-explanation">Checking GPS access...</div>
     </div>
     <div class="status-item">
         <div id="acceleration-indicator" class="status-indicator status-red"></div>
         <span>Motion</span>
-        <div id="acceleration-explanation" class="status-explanation">Checking accelerometer...</div>
     </div>
     <div class="status-item">
         <div id="database-indicator" class="status-indicator status-red"></div>
         <span>Database</span>
-        <div id="database-explanation" class="status-explanation">Checking SQL Server connection...</div>
     </div>
     <div class="status-item">
         <div id="wakelock-indicator" class="status-indicator status-red"></div>
         <span>Wake Lock</span>
-        <div id="wakelock-explanation" class="status-explanation">Screen may turn off</div>
     </div>
 </div>
 <nav id="page-links" style="margin-bottom:1rem;">
@@ -259,6 +241,11 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
     </div>
 </section>
 
+<!-- Status Display -->
+<section id="status-section" style="margin-bottom:1rem;">
+    <div id="status" style="font-weight: bold; padding: 0.5rem; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem;"></div>
+</section>
+
 <!-- Include standardized map component -->
 <div id="map-container"></div>
 <div style="margin-bottom:1rem;">
@@ -267,7 +254,7 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
     </label>
     <br>
     <label>
-        <input type="checkbox" id="record-source-data"> Record source data for retrospective analysis
+        <input type="checkbox" id="record-source-data" checked> Record source data for retrospective analysis
     </label>
     <div style="font-size: 0.8rem; color: #666; margin-top: 4px; margin-left: 20px;">
         When enabled, stores raw acceleration data for recalculating roughness values later
@@ -316,16 +303,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </div>
 
 <section id="controls" style="margin-bottom:1rem;">
-    <div id="status"></div>
-    <div id="wake-lock-container" style="border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin: 0.5rem 0; background: #f9f9f9;">
-        <div id="wake-lock-status" style="font-size: 0.9rem; font-weight: bold;">💤 Screen may turn off</div>
-        <div style="font-size: 0.8rem; color: #666; margin-top: 4px;">
-            Wake lock prevents screen from turning off during recording
-        </div>
-        <button id="manual-wake-lock" style="margin-top: 4px; padding: 4px 8px; font-size: 0.8rem; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">
-            Toggle Wake Lock
-        </button>
-    </div>
     <div id="button-bar">
         <button id="update-button" style="display:none;">Update Records</button>
     </div>
@@ -607,6 +584,9 @@ function initializePage() {
     checkDatabaseStatus();
     // Check database status periodically
     setInterval(checkDatabaseStatus, 30000);
+    
+    // Request wake lock by default when page loads
+    requestWakeLock();
 }
 
 let deviceId = localStorage.getItem('deviceId');
@@ -626,7 +606,9 @@ if (!deviceId) {
 window.deviceId = deviceId;
 
 // Initialize source data recording toggle from localStorage
-let recordSourceData = localStorage.getItem('recordSourceData') === 'true';
+let recordSourceData = localStorage.getItem('recordSourceData') !== null 
+    ? localStorage.getItem('recordSourceData') === 'true' 
+    : true; // Default to true when no setting exists
 // Set the initial checkbox state
 document.addEventListener('DOMContentLoaded', () => {
     const recordSourceDataElement = document.getElementById('record-source-data');
@@ -782,7 +764,7 @@ function populateDeviceFilter() {
       .catch(err => {
           console.error(err);
           databaseStatus = false;
-          updateStatusIndicator('database', false, 'Failed to load device list');
+          updateStatusIndicator('database', false);
       });
 }
 let xValues = [];
@@ -810,17 +792,11 @@ let locationStatus = false;
 let accelerationStatus = false;
 let databaseStatus = false;
 
-function updateStatusIndicator(type, status, explanation = '') {
+function updateStatusIndicator(type, status) {
     const indicator = document.getElementById(`${type}-indicator`);
-    const explanationEl = document.getElementById(`${type}-explanation`);
     
     if (indicator) {
         indicator.className = `status-indicator ${status ? 'status-green' : 'status-red'}`;
-    }
-    
-    if (explanationEl) {
-        explanationEl.textContent = explanation;
-        explanationEl.style.display = explanation ? 'block' : 'none';
     }
 }
 
@@ -832,12 +808,12 @@ function checkDatabaseStatus() {
                 updateStatusIndicator('database', true);
             } else {
                 databaseStatus = false;
-                updateStatusIndicator('database', false, 'Database connection failed');
+                updateStatusIndicator('database', false);
             }
         })
         .catch(err => {
             databaseStatus = false;
-            updateStatusIndicator('database', false, 'Database unreachable');
+            updateStatusIndicator('database', false);
         });
 }
 
@@ -860,21 +836,21 @@ function requestMotionPermission() {
                     updateStatusIndicator('acceleration', true);
                 } else {
                     accelerationStatus = false;
-                    updateStatusIndicator('acceleration', false, 'Motion permission denied');
+                    updateStatusIndicator('acceleration', false);
                 }
             })
             .catch(err => {
                 addDebug('Motion permission error: ' + err);
                 accelerationStatus = false;
-                updateStatusIndicator('acceleration', false, 'Motion permission error');
+                updateStatusIndicator('acceleration', false);
             });
     } else {
         // For browsers that don't require permission, check if motion events work
         if (typeof DeviceMotionEvent !== 'undefined') {
-            updateStatusIndicator('acceleration', false, 'Waiting for motion data...');
+            updateStatusIndicator('acceleration', false);
         } else {
             accelerationStatus = false;
-            updateStatusIndicator('acceleration', false, 'Motion sensors not supported');
+            updateStatusIndicator('acceleration', false);
         }
     }
 }
@@ -917,13 +893,13 @@ if (navigator.geolocation) {
         err => {
             addDebug('Geolocation permission denied: ' + err.message);
             locationStatus = false;
-            updateStatusIndicator('location', false, 'GPS permission denied or unavailable');
+            updateStatusIndicator('location', false);
         },
         GEO_OPTIONS
     );
 } else {
     locationStatus = false;
-    updateStatusIndicator('location', false, 'Geolocation not supported by browser');
+    updateStatusIndicator('location', false);
 }
 
 function initMap() {
@@ -939,7 +915,7 @@ function initMap() {
         },
         onLocationError: (error) => {
             locationStatus = false;
-            updateStatusIndicator('location', false, `GPS error: ${error.message}`);
+            updateStatusIndicator('location', false);
         }
     });
     
@@ -953,13 +929,11 @@ function initMap() {
 function updateStatus() {
     const el = document.getElementById('status');
     el.textContent =
-        `Lat: ${lastLat.toFixed(5)}, Lon: ${lastLon.toFixed(5)} | ` +
-        `Speed: ${lastSpeed.toFixed(1)} km/h | ` +
-        `Dir: ${lastDir.toFixed(0)}\u00B0 | ` +
-        `Acc: X: ${lastAcc.x.toFixed(2)} ` +
-        `Y: ${lastAcc.y.toFixed(2)} ` +
-        `Z: ${lastAcc.z.toFixed(2)} | ` +
-        `Roughness: ${lastRoughness.toFixed(2)}`;
+        `${lastLat.toFixed(5)}, ${lastLon.toFixed(5)} | ` +
+        `${lastSpeed.toFixed(1)} km/h | ` +
+        `${lastDir.toFixed(0)}° | ` +
+        `x: ${lastAcc.x.toFixed(2)}, y: ${lastAcc.y.toFixed(2)}, z: ${lastAcc.z.toFixed(2)} | ` +
+        `R: ${lastRoughness.toFixed(2)}`;
 }
 
 function zUp(acc) {
@@ -1055,7 +1029,7 @@ if (window.DeviceMotionEvent) {
     });
 } else {
     accelerationStatus = false;
-    updateStatusIndicator('acceleration', false, 'Device motion not supported');
+    updateStatusIndicator('acceleration', false);
 }
 
 function handlePosition(pos) {
@@ -1067,7 +1041,7 @@ function handlePosition(pos) {
     
     // Update status indicator when GPS data is received
     locationStatus = true;
-    updateStatusIndicator('location', true, 'GPS data received');
+    updateStatusIndicator('location', true);
 
     // Update user location
     userLocation = [latitude, longitude];
@@ -1130,14 +1104,14 @@ function handlePosition(pos) {
 function handleGeoError(err) {
     addDebug('Geolocation error: ' + err.message);
     locationStatus = false;
-    updateStatusIndicator('location', false, `GPS error: ${err.message}`);
+    updateStatusIndicator('location', false);
 }
 
 async function startGeolocation() {
     if (!navigator.geolocation) {
         addDebug('Geolocation not supported');
         locationStatus = false;
-        updateStatusIndicator('location', false, 'Geolocation not supported');
+        updateStatusIndicator('location', false);
         return;
     }
     motionDataReceived = false;
@@ -1156,8 +1130,7 @@ async function startGeolocation() {
     loggingEnabled = true;
     updateToggleButton();
 
-    // Request wake lock when starting recording
-    await requestWakeLock();
+    // Wake lock is already active by default, no need to request again
 }
 
 async function stopGeolocation() {
@@ -1172,8 +1145,7 @@ async function stopGeolocation() {
         geoWatchId = null;
     }
     
-    // Release wake lock when stopping recording
-    await releaseWakeLock();
+    // Wake lock stays active by default, no need to release it when stopping recording
 }
 
 function pollDebug() {
@@ -1244,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recordSourceDataElement.addEventListener('change', (e) => {
             recordSourceData = e.target.checked;
             addLog(`Source data recording ${recordSourceData ? 'enabled' : 'disabled'}`);
-            localStorage.setItem('recordSourceData', recordSourceData);
+            localStorage.setItem('recordSourceData', recordSourceData.toString());
         });
     }
 });
@@ -1264,17 +1236,15 @@ function updateWakeLockStatus() {
     const statusElement = document.getElementById('wake-lock-status');
     const manualButton = document.getElementById('manual-wake-lock');
     const indicator = document.getElementById('wakelock-indicator');
-    const explanation = document.getElementById('wakelock-explanation');
-    
-    if (!statusElement) return;
     
     if (!('wakeLock' in navigator)) {
-        statusElement.innerHTML = '❌ Wake Lock not supported in this browser';
-        statusElement.style.color = 'red';
+        if (statusElement) {
+            statusElement.innerHTML = '❌ Wake Lock not supported in this browser';
+            statusElement.style.color = 'red';
+        }
         if (manualButton) manualButton.disabled = true;
         if (indicator) {
             indicator.className = 'status-indicator status-red';
-            explanation.textContent = 'Not supported';
         }
         return;
     }
@@ -1282,18 +1252,20 @@ function updateWakeLockStatus() {
     const isActive = wakeLock !== null && !wakeLock.released;
     
     if (isActive) {
-        statusElement.innerHTML = '🔆 Screen locked on - won\'t turn off during recording';
-        statusElement.style.color = 'green';
+        if (statusElement) {
+            statusElement.innerHTML = '🔆 Screen locked on - won\'t turn off during recording';
+            statusElement.style.color = 'green';
+        }
         if (indicator) {
             indicator.className = 'status-indicator status-green';
-            explanation.textContent = 'Screen stays on';
         }
     } else {
-        statusElement.innerHTML = '💤 Screen may turn off - tap "Toggle Wake Lock" to prevent';
-        statusElement.style.color = 'orange';
+        if (statusElement) {
+            statusElement.innerHTML = '💤 Screen may turn off - tap "Toggle Wake Lock" to prevent';
+            statusElement.style.color = 'orange';
+        }
         if (indicator) {
             indicator.className = 'status-indicator status-red';
-            explanation.textContent = 'Screen may turn off';
         }
     }
     
@@ -1360,49 +1332,6 @@ async function releaseWakeLock() {
             addDebug('Wake lock release error: ' + err.message);
         }
         updateWakeLockStatus();
-    }
-}
-
-function updateWakeLockStatus() {
-    const statusElement = document.getElementById('wake-lock-status');
-    const manualButton = document.getElementById('manual-wake-lock');
-    const indicator = document.getElementById('wakelock-indicator');
-    const explanation = document.getElementById('wakelock-explanation');
-    
-    if (!statusElement) return;
-    
-    if (!('wakeLock' in navigator)) {
-        statusElement.innerHTML = '❌ Wake Lock not supported in this browser';
-        statusElement.style.color = 'red';
-        if (manualButton) manualButton.disabled = true;
-        if (indicator) {
-            indicator.className = 'status-indicator status-red';
-            explanation.textContent = 'Not supported';
-        }
-        return;
-    }
-    
-    const isActive = wakeLock !== null && !wakeLock.released;
-    
-    if (isActive) {
-        statusElement.innerHTML = '🔆 Screen locked on - won\'t turn off during recording';
-        statusElement.style.color = 'green';
-        if (indicator) {
-            indicator.className = 'status-indicator status-green';
-            explanation.textContent = 'Screen stays on';
-        }
-    } else {
-        statusElement.innerHTML = '💤 Screen may turn off - tap "Toggle Wake Lock" to prevent';
-        statusElement.style.color = 'orange';
-        if (indicator) {
-            indicator.className = 'status-indicator status-red';
-            explanation.textContent = 'Screen may turn off';
-        }
-    }
-    
-    if (manualButton) {
-        manualButton.textContent = isActive ? 'Release Wake Lock' : 'Request Wake Lock';
-        manualButton.disabled = false;
     }
 }
 

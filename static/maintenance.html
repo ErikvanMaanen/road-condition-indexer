@@ -793,11 +793,6 @@ async function loadSummary() {
         showBtn.textContent = 'Show Last 10';
         showBtn.onclick = () => showRecords(info.name);
         btnTd.appendChild(showBtn);
-        const testBtn = document.createElement('button');
-        testBtn.textContent = 'Test';
-        testBtn.style.marginLeft = '0.5rem';
-        testBtn.onclick = () => testTable(info.name);
-        btnTd.appendChild(testBtn);
         tr.appendChild(btnTd);
         tbl.appendChild(tr);
     });
@@ -810,6 +805,33 @@ async function showRecords(name) {
     const pre = document.getElementById('table-records');
     if (!res.ok) { pre.textContent = 'Failed to fetch records'; return; }
     const data = await res.json();
+    
+    // Sort records by timestamp (newest first)
+    if (data.rows && Array.isArray(data.rows)) {
+        data.rows.sort((a, b) => {
+            // Try common timestamp field names
+            const aTime = a.timestamp || a.created_at || a.updated_at || a.date_time || '';
+            const bTime = b.timestamp || b.created_at || b.updated_at || b.date_time || '';
+            
+            // If both have timestamps, sort by timestamp (newest first)
+            if (aTime && bTime) {
+                const aDate = new Date(aTime);
+                const bDate = new Date(bTime);
+                return bDate.getTime() - aDate.getTime();
+            }
+            
+            // If neither has timestamp, fall back to ID sorting (highest first)
+            if (!aTime && !bTime) {
+                const aId = a.id || a.ID || a.record_id || 0;
+                const bId = b.id || b.ID || b.record_id || 0;
+                return bId - aId;
+            }
+            
+            // If only one has timestamp, prioritize the one with timestamp
+            return bTime ? 1 : -1;
+        });
+    }
+    
     pre.textContent = JSON.stringify(data.rows, null, 2);
 }
 
@@ -823,41 +845,6 @@ async function loadDebug(){
             t.scrollTop = t.scrollHeight;
         }
     }
-}
-
-async function testTable(name){
-    if (typeof addLog === 'function') {
-        addLog('Testing ' + name);
-    }
-    const pre = document.getElementById('table-records');
-    pre.textContent = '';
-    try{
-        const res = await authFetch('/manage/test_table', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({table:name})
-        });
-        if(!res.ok){
-            const text = await res.text();
-            pre.textContent = text;
-            if (typeof addLog === 'function') {
-                addLog('Error: ' + text);
-            }
-        }else{
-            const data = await res.json();
-            pre.textContent = JSON.stringify(data.rows, null, 2);
-            if (typeof addLog === 'function') {
-                addLog('Success');
-            }
-        }
-    }catch(e){
-        pre.textContent = e.toString();
-        if (typeof addLog === 'function') {
-            addLog('Exception: ' + e);
-        }
-    }
-    loadDebug();
-    loadSummary();
 }
 
 function refreshAll() {
