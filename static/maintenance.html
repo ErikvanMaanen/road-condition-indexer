@@ -454,8 +454,15 @@
     </div>
 </section>
 <section style="margin-top:1rem;">
-    <h2>Tables <button id="refresh-btn">Refresh</button></h2>
+    <h2>Tables 
+        <button id="refresh-btn">Refresh</button>
+        <button id="verify-schema-btn" style="margin-left: 0.5rem; background: #28a745;">Verify Schema & Data</button>
+    </h2>
     <div id="table-list">Loading...</div>
+    <div id="schema-verification-result" style="margin-top:1rem; padding:10px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; display:none;">
+        <h3>Schema & Data Verification Results</h3>
+        <div id="verification-content"></div>
+    </div>
     <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
 </section>
 
@@ -780,23 +787,76 @@ async function loadSummary() {
     const container = document.getElementById('table-list');
     if (!res.ok) { container.textContent = 'Unavailable'; return; }
     const data = await res.json();
+    
+    // Create a styled table
     const tbl = document.createElement('table');
-    tbl.border = '1';
-    tbl.cellPadding = '4';
+    tbl.style.cssText = 'border-collapse: collapse; width: 100%; margin-top: 1rem;';
+    
     const head = document.createElement('tr');
-    ['Name','Rows','Last Update','Actions'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.appendChild(th);});
+    head.style.background = '#f0f0f0';
+    ['Name','Rows','Last Update','Actions'].forEach(t => {
+        const th = document.createElement('th');
+        th.textContent = t;
+        th.style.cssText = 'border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold;';
+        head.appendChild(th);
+    });
     tbl.appendChild(head);
+    
     data.tables.forEach(info => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${info.name}</td><td>${info.count}</td><td>${info.last_update || ''}</td>`;
+        tr.style.cssText = 'border: 1px solid #ccc;';
+        tr.onmouseover = () => tr.style.background = '#f0f8ff';
+        tr.onmouseout = () => tr.style.background = '';
+        
+        // Name cell
+        const nameCell = document.createElement('td');
+        nameCell.textContent = info.name;
+        nameCell.style.cssText = 'border: 1px solid #ccc; padding: 8px; font-weight: bold;';
+        tr.appendChild(nameCell);
+        
+        // Rows cell
+        const rowsCell = document.createElement('td');
+        rowsCell.textContent = info.count.toLocaleString();
+        rowsCell.style.cssText = 'border: 1px solid #ccc; padding: 8px; text-align: right;';
+        tr.appendChild(rowsCell);
+        
+        // Last Update cell with proper formatting
+        const updateCell = document.createElement('td');
+        updateCell.style.cssText = 'border: 1px solid #ccc; padding: 8px;';
+        if (info.last_update) {
+            try {
+                const date = new Date(info.last_update);
+                updateCell.textContent = formatDutchTime(info.last_update);
+                updateCell.title = `Full timestamp: ${info.last_update}`;
+            } catch (e) {
+                updateCell.textContent = info.last_update;
+            }
+        } else {
+            updateCell.textContent = 'No data';
+            updateCell.style.color = '#999';
+        }
+        tr.appendChild(updateCell);
+        
+        // Actions cell
         const btnTd = document.createElement('td');
+        btnTd.style.cssText = 'border: 1px solid #ccc; padding: 8px;';
+        
         const showBtn = document.createElement('button');
         showBtn.textContent = 'Show Last 10';
+        showBtn.style.cssText = 'padding: 4px 8px; margin-right: 4px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer;';
         showBtn.onclick = () => showRecords(info.name);
         btnTd.appendChild(showBtn);
+        
+        const schemaBtn = document.createElement('button');
+        schemaBtn.textContent = 'Schema';
+        schemaBtn.style.cssText = 'padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;';
+        schemaBtn.onclick = () => showTableSchema(info.name);
+        btnTd.appendChild(schemaBtn);
+        
         tr.appendChild(btnTd);
         tbl.appendChild(tr);
     });
+    
     container.innerHTML = '';
     container.appendChild(tbl);
 }
@@ -836,6 +896,146 @@ async function showRecords(name) {
     pre.textContent = JSON.stringify(data.rows, null, 2);
 }
 
+async function showTableSchema(tableName) {
+    try {
+        const res = await authFetch(`/manage/table_schema?table=${encodeURIComponent(tableName)}`);
+        const pre = document.getElementById('table-records');
+        
+        if (!res.ok) {
+            pre.textContent = `Failed to fetch schema for table '${tableName}': ${res.status} ${res.statusText}`;
+            return;
+        }
+        
+        const data = await res.json();
+        
+        // Format the schema information nicely
+        let schemaText = `Schema for table: ${tableName}\n`;
+        schemaText += '='.repeat(50) + '\n\n';
+        
+        if (data.columns && Array.isArray(data.columns)) {
+            schemaText += 'Columns:\n';
+            data.columns.forEach((col, index) => {
+                schemaText += `  ${index + 1}. ${col.name || col.COLUMN_NAME || 'Unknown'} `;
+                schemaText += `(${col.type || col.DATA_TYPE || 'Unknown type'})`;
+                if (col.nullable !== undefined || col.IS_NULLABLE !== undefined) {
+                    const nullable = col.nullable || col.IS_NULLABLE;
+                    schemaText += ` - ${nullable === 'YES' || nullable === true ? 'Nullable' : 'Not Null'}`;
+                }
+                if (col.default_value || col.COLUMN_DEFAULT) {
+                    schemaText += ` - Default: ${col.default_value || col.COLUMN_DEFAULT}`;
+                }
+                schemaText += '\n';
+            });
+        }
+        
+        if (data.indexes && Array.isArray(data.indexes)) {
+            schemaText += '\nIndexes:\n';
+            data.indexes.forEach((idx, index) => {
+                schemaText += `  ${index + 1}. ${idx.name || 'Unknown'} `;
+                schemaText += `on (${idx.columns || idx.column_names || 'Unknown columns'})`;
+                if (idx.unique) schemaText += ' - UNIQUE';
+                if (idx.primary) schemaText += ' - PRIMARY KEY';
+                schemaText += '\n';
+            });
+        }
+        
+        if (data.constraints && Array.isArray(data.constraints)) {
+            schemaText += '\nConstraints:\n';
+            data.constraints.forEach((constraint, index) => {
+                schemaText += `  ${index + 1}. ${constraint.name || 'Unknown'} `;
+                schemaText += `(${constraint.type || 'Unknown type'})\n`;
+            });
+        }
+        
+        pre.textContent = schemaText;
+        
+    } catch (error) {
+        document.getElementById('table-records').textContent = `Error fetching schema: ${error.message}`;
+    }
+}
+
+async function verifySchemaAndData() {
+    const btn = document.getElementById('verify-schema-btn');
+    const resultDiv = document.getElementById('schema-verification-result');
+    const contentDiv = document.getElementById('verification-content');
+    
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML = '<p>Running schema and data verification...</p>';
+    
+    try {
+        // Perform multiple verification checks
+        const checks = [
+            { name: 'Table Integrity', endpoint: '/manage/verify_tables' },
+            { name: 'Data Consistency', endpoint: '/manage/verify_data' },
+            { name: 'Index Health', endpoint: '/manage/verify_indexes' },
+            { name: 'Foreign Key Constraints', endpoint: '/manage/verify_constraints' }
+        ];
+        
+        let resultsHtml = '<div style="font-family: monospace;">';
+        let allPassed = true;
+        
+        for (const check of checks) {
+            resultsHtml += `<h4>${check.name}</h4>`;
+            
+            try {
+                const response = await authFetch(check.endpoint);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    if (result.status === 'ok' || result.passed === true) {
+                        resultsHtml += '<p style="color: #28a745;">✅ PASSED</p>';
+                        if (result.message) {
+                            resultsHtml += `<p style="margin-left: 20px; color: #666;">${result.message}</p>`;
+                        }
+                    } else {
+                        allPassed = false;
+                        resultsHtml += '<p style="color: #dc3545;">❌ FAILED</p>';
+                        if (result.message) {
+                            resultsHtml += `<p style="margin-left: 20px; color: #dc3545;">${result.message}</p>`;
+                        }
+                        if (result.errors && Array.isArray(result.errors)) {
+                            result.errors.forEach(error => {
+                                resultsHtml += `<p style="margin-left: 40px; color: #dc3545;">• ${error}</p>`;
+                            });
+                        }
+                    }
+                } else if (response.status === 404) {
+                    resultsHtml += '<p style="color: #ffc107;">⚠️ ENDPOINT NOT AVAILABLE</p>';
+                    resultsHtml += '<p style="margin-left: 20px; color: #666;">This verification check is not implemented on the server.</p>';
+                } else {
+                    allPassed = false;
+                    resultsHtml += `<p style="color: #dc3545;">❌ ERROR: HTTP ${response.status}</p>`;
+                }
+            } catch (error) {
+                allPassed = false;
+                resultsHtml += `<p style="color: #dc3545;">❌ ERROR: ${error.message}</p>`;
+            }
+            
+            resultsHtml += '<hr style="margin: 10px 0;">';
+        }
+        
+        // Summary
+        resultsHtml += '<h4>Summary</h4>';
+        if (allPassed) {
+            resultsHtml += '<p style="color: #28a745; font-weight: bold;">🎉 All available verification checks passed!</p>';
+        } else {
+            resultsHtml += '<p style="color: #dc3545; font-weight: bold;">⚠️ Some verification checks failed. Please review the results above.</p>';
+        }
+        
+        resultsHtml += '</div>';
+        contentDiv.innerHTML = resultsHtml;
+        
+    } catch (error) {
+        contentDiv.innerHTML = `<p style="color: #dc3545;">Error during verification: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify Schema & Data';
+    }
+}
+
 async function loadDebug(){
     const res = await authFetch('/debuglog');
     if(res.ok){
@@ -857,6 +1057,7 @@ loadSummary();
 loadDebug();
 
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+document.getElementById('verify-schema-btn').addEventListener('click', verifySchemaAndData);
 
 // FastAPI health/test button logic
 document.getElementById('fastapi-test-btn').addEventListener('click', async function() {
