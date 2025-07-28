@@ -210,18 +210,10 @@ def login(req: LoginRequest, request: Request):
     client_ip = get_client_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
     
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log login attempt
-    log_info(f"LOGIN_ATTEMPT: User attempted to log in from {client_ip} - {user_agent}", LogCategory.USER_ACTION)
-    
     if verify_password(req.password):
         # Successful login
         resp = Response(status_code=204)
         resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
-        
-        # Log successful login
-        log_info(f"LOGIN_SUCCESS: User successfully logged in from {client_ip} - {user_agent}", LogCategory.USER_ACTION)
         
         log_info(f"Successful login from IP: {client_ip}", LogCategory.USER_ACTION)
         return resp
@@ -233,16 +225,11 @@ def login(req: LoginRequest, request: Request):
 @app.get("/auth_check")
 def auth_check(request: Request):
     """Return 204 if auth cookie valid else 401."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if is_authenticated(request):
-        # Log successful auth check (for session validation)
-        log_info(f"User session validation successful from IP: {client_ip}", LogCategory.USER_ACTION)
         return Response(status_code=204)
     else:
-        # Log failed auth check
-        log_warning(f"Authentication check failed from IP: {client_ip} - no valid auth cookie", LogCategory.USER_ACTION)
+        client_ip = get_client_ip(request)
+        log_warning(f"Authentication check failed from IP: {client_ip}", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.get("/health")
@@ -276,23 +263,8 @@ def health_check():
 @app.get("/")
 def read_index(request: Request):
     """Serve the main application page and ensure DB is ready."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        # Log unauthorized access attempt
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to main page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/")
-    
-    # Log successful page access
-    log_info(f"User accessed main application page from IP: {client_ip}", LogCategory.USER_ACTION)
     
     db_manager.init_tables()
     return FileResponse(BASE_DIR / "static" / "index.html")
@@ -343,155 +315,46 @@ def get_map_partial():
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to welcome page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/welcome.html")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed welcome page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "welcome", "url": "/welcome.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "welcome.html")
 
 
 @app.get("/device.html")
 def read_device(request: Request):
     """Serve the device filter page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to device filter page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/device.html")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed device filter page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "device", "url": "/device.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "device.html")
-
-
-
-
 
 
 @app.get("/maintenance.html")
 def read_maintenance(request: Request):
     """Serve the maintenance page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to maintenance page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/maintenance.html")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed maintenance page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "maintenance", "url": "/maintenance.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "maintenance.html")
 
 
 @app.get("/database.html")
 def read_database(request: Request):
     """Serve the database management page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to database management page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/database.html")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed database management page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "database", "url": "/database.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "database.html")
 
 
 @app.get("/logs-partial.html")
 def read_logs_partial(request: Request):
     """Serve the logs partial file."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed logs partial page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "logs-partial", "url": "/logs-partial.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "logs-partial.html")
 
 
 @app.get("/comprehensive-logs.html")
 def read_comprehensive_logs(request: Request):
     """Serve the comprehensive logs page."""
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
     if not is_authenticated(request):
-        db_manager.log_user_action(
-            action_type="UNAUTHORIZED_ACCESS",
-            action_description="Unauthorized access attempt to comprehensive logs page",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message="Not authenticated"
-        )
         return RedirectResponse(url="/static/login.html?next=/comprehensive-logs.html")
-    
-    db_manager.log_user_action(
-        action_type="PAGE_ACCESS",
-        action_description="User accessed comprehensive logs page",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"page": "comprehensive-logs", "url": "/comprehensive-logs.html"}
-    )
     return FileResponse(BASE_DIR / "static" / "comprehensive-logs.html")
 
 # Track last received location for each device
@@ -506,12 +369,10 @@ def get_elevation(latitude: float, longitude: float) -> Optional[float]:
         f"?locations={latitude},{longitude}"
     )
     try:
-        log_info(f"Fetching elevation for coordinates: {latitude}, {longitude}")
         response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
         elevation = data["results"][0]["elevation"]
-        log_info(f"Elevation retrieved: {elevation}m")
         return elevation
     except requests.exceptions.RequestException as exc:
         log_warning(f"Network error fetching elevation: {exc}")
@@ -614,71 +475,48 @@ def startup_init():
     import time
     startup_start_time = time.time()
     
-    # Single startup initiation log
     log_info("🚀 Application startup initiated", LogCategory.STARTUP)
     
     try:
-        # Step 1: Comprehensive SQL Connectivity Tests
-        log_info("🔍 Running comprehensive SQL connectivity tests...", LogCategory.STARTUP)
+        # SQL Connectivity Tests
         try:
             connectivity_report = run_startup_connectivity_tests(timeout_seconds=30, retry_attempts=3)
             
             if connectivity_report.overall_status == ConnectivityTestResult.SUCCESS:
-                log_info("✅ SQL connectivity tests passed - database is ready", LogCategory.STARTUP)
+                log_info("✅ SQL connectivity tests passed", LogCategory.STARTUP)
             elif connectivity_report.overall_status == ConnectivityTestResult.WARNING:
-                log_warning("⚠️ SQL connectivity tests passed with warnings - monitoring recommended", LogCategory.STARTUP)
+                log_warning("⚠️ SQL connectivity tests passed with warnings", LogCategory.STARTUP)
             else:
-                log_error("❌ SQL connectivity tests failed - application may not function properly", LogCategory.STARTUP)
-                # Continue anyway for now, but this indicates serious issues
+                log_error("❌ SQL connectivity tests failed", LogCategory.STARTUP)
                 
         except Exception as e:
             log_error(f"❌ SQL connectivity testing failed: {str(e)}", LogCategory.STARTUP)
-            log_warning("⚠️ Continuing with basic database initialization...", LogCategory.STARTUP)
         
-        # Step 2: Database Table Initialization
-        log_info("🔧 Initializing database tables...", LogCategory.STARTUP)
+        # Database Initialization
         db_manager.init_tables()
-        log_info("✅ Database tables initialized successfully", LogCategory.STARTUP)
         
-        # Step 3: Basic connectivity verification (fallback test)
-        log_info("🔍 Verifying basic database connectivity...", LogCategory.STARTUP)
+        # Basic connectivity verification
         test_result = db_manager.execute_scalar("SELECT 1")
         if test_result != 1:
             raise Exception("Basic database connectivity test failed")
         
-        # Step 4: Table verification (SQL Server only)
+        # Table verification
         tables_result = db_manager.execute_query("SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'")
-        
         tables = [row['name'] for row in tables_result]
         expected_tables = [TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS]
         
         missing_tables = [table for table in expected_tables if table not in tables]
         if missing_tables:
             log_error(f"❌ Missing required tables: {missing_tables}", LogCategory.STARTUP)
-        else:
-            log_info(f"✅ All required tables verified: {len(tables)} tables", LogCategory.STARTUP)
         
-        # Step 5: Quick data summary
+        # Data count
         try:
             bike_data_count = db_manager.execute_scalar(f"SELECT COUNT(*) FROM {TABLE_BIKE_DATA}")
-            log_info(f"📊 Database contains {bike_data_count} bike data records", LogCategory.STARTUP)
         except Exception as e:
-            log_warning(f"⚠️ Could not get data count: {e}", LogCategory.STARTUP)
             bike_data_count = 0
         
-        # Step 6: Quick integrity check (non-blocking)
-        try:
-            integrity_ok = db_manager.check_database_integrity()
-            if integrity_ok:
-                log_info("✅ Database integrity check passed", LogCategory.STARTUP)
-            else:
-                log_warning("⚠️ Database integrity issues detected (non-critical)", LogCategory.STARTUP)
-        except Exception as e:
-            log_warning(f"⚠️ Database integrity check failed (non-critical): {e}", LogCategory.STARTUP)
-        
-        # Final startup summary
         total_time = (time.time() - startup_start_time) * 1000
-        log_info(f"🎉 Application startup completed successfully in {total_time:.2f}ms", LogCategory.STARTUP)
+        log_info(f"🎉 Startup completed in {total_time:.0f}ms - {bike_data_count} records", LogCategory.STARTUP)
         
         # Log successful startup event
         db_manager.log_startup_event(
@@ -694,10 +532,9 @@ def startup_init():
         
     except Exception as e:
         total_time = (time.time() - startup_start_time) * 1000
-        error_msg = f"Application startup failed after {total_time:.2f}ms: {e}"
-        log_error(error_msg, LogCategory.STARTUP)
+        log_error(f"Startup failed after {total_time:.0f}ms: {e}", LogCategory.STARTUP)
         
-        # Log failure event - but don't let this crash the startup
+        # Log failure event
         try:
             db_manager.log_startup_event(
                 "STARTUP_FAILED", 
@@ -707,10 +544,8 @@ def startup_init():
                 additional_data={"duration_ms": total_time}
             )
         except Exception:
-            # If even logging fails, just continue
             pass
         
-        # Don't re-raise the exception - let the app start even if startup checks fail
         log_warning("⚠️ Continuing startup despite initialization errors", LogCategory.STARTUP)
 
 
@@ -750,15 +585,9 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
         }
     )
     
-    log_info(f"Received log entry from device {entry.device_id}", LogCategory.GENERAL, device_id=entry.device_id)
-    log_debug(f"Log entry details: lat={entry.latitude}, lon={entry.longitude}, speed={entry.speed}, z_values count={len(entry.z_values)}, device_id={entry.device_id}", device_id=entry.device_id)
-
-    # Log request details for debugging
-    log_debug(f"Request headers: {dict(request.headers)}", device_id=entry.device_id)
-    log_debug(f"Request client: {request.client}", device_id=entry.device_id)
+    log_info(f"Processing data from device {entry.device_id}: lat={entry.latitude:.4f}, lon={entry.longitude:.4f}, speed={entry.speed:.1f} km/h", device_id=entry.device_id)
 
     now = datetime.utcnow()
-    log_debug(f"Processing timestamp: {now.isoformat()}", device_id=entry.device_id)
     
     avg_speed = entry.speed
     dist_km = 0.0
@@ -767,20 +596,16 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
     roughness = 0.0  # Initialize roughness variable
     bike_data_id = None  # Initialize bike_data_id variable
     prev_info = LAST_POINT.get(entry.device_id)
-    log_debug(f"Previous info from memory cache: {prev_info}", device_id=entry.device_id)
     
     if not prev_info:
         try:
-            log_debug(f"Fetching previous data point from database for device {entry.device_id}", device_id=entry.device_id)
             prev_info = db_manager.get_last_bike_data_point(entry.device_id)
-            log_debug(f"Previous info from database: {prev_info}", device_id=entry.device_id)
         except Exception as exc:
             log_error(f"Failed to fetch previous data point for device {entry.device_id}: {exc}", device_id=entry.device_id)
 
     if prev_info:
         prev_ts, prev_lat, prev_lon = prev_info
         dt_sec = (now - prev_ts).total_seconds()
-        log_debug(f"Time difference from previous point: {dt_sec:.1f} seconds", device_id=entry.device_id)
         
         if dt_sec <= 0:
             log_warning(f"Invalid time difference: {dt_sec:.1f}s, setting to default 2.0s", device_id=entry.device_id)
@@ -788,50 +613,35 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
             
         dist_km = haversine_distance(prev_lat, prev_lon, entry.latitude, entry.longitude)
         computed_speed = dist_km / (dt_sec / 3600) if dt_sec > 0 else 0.0
-        log_debug(
-            f"Distance calculations: {dist_km * 1000.0:.1f}m over {dt_sec:.1f}s = {computed_speed:.2f} km/h",
-            device_id=entry.device_id,
-        )
         
-        # Use calculated speed if GPS speed is insufficient or unavailable        # Use calculated speed if GPS speed is insufficient or unavailable
+        # Use calculated speed if GPS speed is insufficient or unavailable
         if entry.speed <= 0 or entry.speed < current_thresholds["min_speed_kmh"]:
             if computed_speed >= current_thresholds["min_speed_kmh"]:
                 log_info(f"Using computed speed {computed_speed:.2f} km/h instead of GPS speed {entry.speed:.2f} km/h", device_id=entry.device_id)
                 avg_speed = computed_speed
-            else:
-                log_debug(f"Both GPS speed ({entry.speed:.2f}) and computed speed ({computed_speed:.2f}) are below minimum {current_thresholds['min_speed_kmh']} km/h", device_id=entry.device_id)
-        else:
-            log_debug(f"Using GPS speed {entry.speed:.2f} km/h (computed: {computed_speed:.2f} km/h)", device_id=entry.device_id)
     else:
-        log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)    # Log threshold checks
-    log_debug(f"Checking thresholds - MAX_INTERVAL_SEC: {current_thresholds['max_interval_sec']}, MAX_DISTANCE_M: {current_thresholds['max_distance_m']}, MIN_SPEED_KMH: {current_thresholds['min_speed_kmh']}", device_id=entry.device_id)
+        log_debug(f"No previous point found for device {entry.device_id}, using defaults", device_id=entry.device_id)
     
+    # Check filtering thresholds
     if dt_sec > current_thresholds["max_interval_sec"] or dist_km * 1000.0 > current_thresholds["max_distance_m"]:
         log_warning(
-            f"Ignoring log entry - interval too long: {dt_sec:.1f}s (max: {current_thresholds['max_interval_sec']}), distance: {dist_km * 1000.0:.1f}m (max: {current_thresholds['max_distance_m']})",
+            f"Ignoring entry - interval: {dt_sec:.1f}s (max: {current_thresholds['max_interval_sec']}), distance: {dist_km * 1000.0:.1f}m (max: {current_thresholds['max_distance_m']})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-        log_debug(f"Updated LAST_POINT cache for ignored entry: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
         return {"status": "ignored", "reason": "interval too long"}
 
     if avg_speed < current_thresholds["min_speed_kmh"]:
         log_warning(
-            f"Ignoring log entry - low avg speed: {avg_speed:.2f} km/h (min: {current_thresholds['min_speed_kmh']})",
+            f"Ignoring entry - low speed: {avg_speed:.2f} km/h (min: {current_thresholds['min_speed_kmh']})",
             device_id=entry.device_id,
         )
         LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-        log_debug(f"Updated LAST_POINT cache for low speed entry: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
         return {"status": "ignored", "reason": "low speed"}
 
-    log_debug(f"Fetching elevation for coordinates: {entry.latitude}, {entry.longitude}", device_id=entry.device_id)
+    # Get elevation and compute roughness
     elevation = get_elevation(entry.latitude, entry.longitude)
-    if elevation is not None:
-        log_debug(f"Elevation retrieved: {elevation} m", device_id=entry.device_id)
-    else:
-        log_debug("Elevation not available", device_id=entry.device_id)
         
-    log_debug(f"Computing roughness with parameters: z_values={len(entry.z_values)} samples, speed={avg_speed} km/h, dt={dt_sec}s", device_id=entry.device_id)
     roughness = compute_roughness(
         entry.z_values,
         avg_speed,
@@ -843,17 +653,10 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
     log_info(f"Calculated roughness: {roughness:.3f} for device {entry.device_id}", device_id=entry.device_id)
     
     ip_address = get_client_ip(request)
-    log_debug(f"Client IP address: {ip_address}", device_id=entry.device_id)
     
-    # Pre-database operation logging
-    log_info(f"About to store data in database - lat: {entry.latitude}, lon: {entry.longitude}, speed: {avg_speed}, direction: {entry.direction}, roughness: {roughness:.3f}, distance: {distance_m:.1f}m", device_id=entry.device_id)
-    
+    # Store data in database
     try:
-        log_debug(f"Starting database transaction for device {entry.device_id}", device_id=entry.device_id)
-        
         # Insert bike data
-        log_debug(f"Calling db_manager.insert_bike_data with parameters: lat={entry.latitude}, lon={entry.longitude}, speed={avg_speed}, direction={entry.direction}, roughness={roughness}, distance_m={distance_m}, device_id={entry.device_id}, ip_address={ip_address}", device_id=entry.device_id)
-        
         bike_data_id = db_manager.insert_bike_data(
             entry.latitude,
             entry.longitude,
@@ -864,11 +667,10 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
             entry.device_id,
             ip_address
         )
-        log_info(f"✅ Bike data successfully inserted with ID {bike_data_id} for device {entry.device_id}", device_id=entry.device_id)
+        log_info(f"✅ Bike data stored with ID {bike_data_id} for device {entry.device_id}", device_id=entry.device_id)
         
         # Insert source data if requested
         if entry.record_source_data:
-            log_debug(f"Source data recording requested for device {entry.device_id}", device_id=entry.device_id)
             try:
                 db_manager.insert_bike_source_data(
                     bike_data_id,
@@ -878,37 +680,15 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
                     entry.freq_min if entry.freq_min is not None else 0.5,
                     entry.freq_max if entry.freq_max is not None else 50.0
                 )
-                log_info(f"✅ Source data recorded for device {entry.device_id} (bike_data_id: {bike_data_id})", device_id=entry.device_id)
+                log_info(f"✅ Source data recorded for device {entry.device_id}", device_id=entry.device_id)
             except Exception as source_exc:
                 log_error(f"❌ Failed to insert source data for device {entry.device_id}: {source_exc}", device_id=entry.device_id)
-                # Don't fail the whole operation if source data fails
-        else:
-            log_debug(f"Source data recording not requested for device {entry.device_id}", device_id=entry.device_id)
         
         # Update device info
-        log_debug(f"Calling db_manager.upsert_device_info for device {entry.device_id}", device_id=entry.device_id)
         try:
             db_manager.upsert_device_info(entry.device_id, entry.user_agent, entry.device_fp)
-            log_debug(f"✅ Device info updated for device {entry.device_id}", device_id=entry.device_id)
         except Exception as device_exc:
             log_error(f"❌ Failed to update device info for device {entry.device_id}: {device_exc}", device_id=entry.device_id)
-            # Don't fail the whole operation if device info update fails
-        
-        log_info(f"🎉 Successfully completed all database operations for device {entry.device_id}", device_id=entry.device_id)
-        
-        # Verify the data was actually stored by attempting to read it back
-        try:
-            log_debug(f"Verifying stored data by reading back record ID {bike_data_id}", device_id=entry.device_id)
-            verification_query = f"SELECT * FROM {TABLE_BIKE_DATA} WHERE id = ?"
-            verify_result = db_manager.execute_query(verification_query, (bike_data_id,))
-            if verify_result and len(verify_result) > 0:
-                log_info(f"✅ Data verification successful - record {bike_data_id} exists in database", device_id=entry.device_id)
-                stored_record = verify_result[0]
-                log_debug(f"Stored record details: {stored_record}", device_id=entry.device_id)
-            else:
-                log_error(f"❌ Data verification failed - record {bike_data_id} NOT found in database!", device_id=entry.device_id)
-        except Exception as verify_exc:
-            log_error(f"❌ Data verification error: {verify_exc}", device_id=entry.device_id)
         
     except Exception as exc:
         # Log failed data submission
@@ -929,18 +709,10 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
         )
         
         log_error(f"❌ Database error while storing data for device {entry.device_id}: {exc}", device_id=entry.device_id)
-        log_error(f"Exception type: {type(exc).__name__}", device_id=entry.device_id)
-        log_error(f"Exception args: {exc.args}", device_id=entry.device_id)
-        
-        # Log additional context for debugging
-        log_error(f"Database manager type: {type(db_manager).__name__}", device_id=entry.device_id)
-        log_error(f"Database manager initialized (SQL Server only)", device_id=entry.device_id)
-        
         raise HTTPException(status_code=500, detail="Database error") from exc
         
     # Update memory cache
     LAST_POINT[entry.device_id] = (now, entry.latitude, entry.longitude)
-    log_debug(f"Updated LAST_POINT cache: {LAST_POINT[entry.device_id]}", device_id=entry.device_id)
     
     # Log successful data submission
     db_manager.log_user_action(
@@ -957,8 +729,6 @@ def post_bike_data(entry: BikeDataEntry, request: Request):
         }
     )
     
-    # Final success logging
-    log_info(f"🚀 POST /bike-data completed successfully for device {entry.device_id} - returning roughness: {roughness:.3f}", device_id=entry.device_id)
     return {"status": "ok", "roughness": roughness}
 
 
@@ -1000,75 +770,15 @@ def get_logs(request: Request, limit: Optional[int] = None, dep: None = Depends(
     If ``limit`` is not provided, all rows are returned. When supplied it must be
     between 1 and 1000.
     """
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    # Log API access
-    db_manager.log_user_action(
-        action_type="API_CALL",
-        action_description=f"GET /logs API called with limit={limit}",
-        user_ip=client_ip,
-        user_agent=user_agent,
-        additional_data={"endpoint": "/logs", "method": "GET", "limit": limit}
-    )
-    
-    log_debug(f"GET /logs called with limit={limit}")
-    
     if limit is not None and (limit < 1 or limit > 1000):
-        error_msg = f"Invalid limit parameter: {limit}, must be between 1 and 1000"
-        log_warning(error_msg)
-        
-        # Log API error
-        db_manager.log_user_action(
-            action_type="API_ERROR",
-            action_description="GET /logs failed due to invalid limit parameter",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            success=False,
-            error_message=error_msg,
-            additional_data={"endpoint": "/logs", "invalid_limit": limit}
-        )
-        
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     
     try:
-        log_debug(f"About to call db_manager.get_logs(limit={limit})")
-        
-        # Log database connection status
-        log_debug(f"Database manager details: SQL Server only")
-        
         rows, rough_avg = db_manager.get_logs(limit)
-        
-        # Log successful API response
-        db_manager.log_user_action(
-            action_type="API_SUCCESS",
-            action_description=f"GET /logs returned {len(rows)} records successfully",
-            user_ip=client_ip,
-            user_agent=user_agent,
-            additional_data={"endpoint": "/logs", "records_returned": len(rows), "average_roughness": rough_avg}
-        )
-        
-        log_info(f"✅ Successfully fetched {len(rows)} log entries from database")
-        log_debug(f"Average roughness: {rough_avg}")
-        
-        # Log some details about the retrieved data
-        if rows:
-            log_debug(f"First row details: {rows[0]}")
-            log_debug(f"Last row details: {rows[-1]}")
-            
-            # Check for recent entries
-            if len(rows) > 0:
-                latest_timestamp = rows[0].get('timestamp', 'unknown')
-                log_debug(f"Most recent entry timestamp: {latest_timestamp}")
-        else:
-            log_warning("⚠️ No rows returned from database query!")
-            
         return {"rows": rows, "average": rough_avg}
         
     except Exception as exc:
-        log_error(f"❌ Failed to fetch logs from database: {exc}")
-        log_error(f"Exception type: {type(exc).__name__}")
-        log_error(f"Exception args: {exc.args}")
+        log_error(f"Failed to fetch logs: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1105,13 +815,12 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                 raise HTTPException(status_code=400, detail=f"Invalid end datetime format: {end}")
         
         rows, rough_avg = db_manager.get_filtered_logs(device_id, start_dt, end_dt)
-        log_debug("Fetched filtered logs from database")
         return {"rows": rows, "average": rough_avg}
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as exc:
-        log_debug(f"Database error on filtered fetch: {exc}")
+        log_error(f"Database error on filtered fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1122,10 +831,9 @@ def get_device_ids(dep: None = Depends(password_dependency)):
     """Return list of unique device IDs with optional nicknames."""
     try:
         ids = db_manager.get_device_ids_with_nicknames()
-        log_debug(f"Fetched unique device ids. Count: {len(ids)}")
         return {"ids": ids}
     except Exception as exc:
-        log_debug(f"Database error on id fetch: {exc}")
+        log_error(f"Database error on id fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1134,10 +842,9 @@ def get_date_range(device_id: Optional[List[str]] = Query(None), dep: None = Dep
     """Return the oldest and newest timestamps, optionally filtered by device."""
     try:
         start_str, end_str = db_manager.get_date_range(device_id)
-        log_debug("Fetched date range")
         return {"start": start_str, "end": end_str}
     except Exception as exc:
-        log_debug(f"Database error on range fetch: {exc}")
+        log_error(f"Database error on range fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1151,10 +858,9 @@ def set_nickname(entry: NicknameEntry, dep: None = Depends(password_dependency))
     """Set or update a nickname for a device."""
     try:
         db_manager.set_device_nickname(entry.device_id, entry.nickname)
-        log_debug("Nickname stored")
         return {"status": "ok"}
     except Exception as exc:
-        log_debug(f"Nickname store error: {exc}")
+        log_error(f"Nickname store error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1163,10 +869,9 @@ def get_nickname(device_id: str = Query(...), dep: None = Depends(password_depen
     """Get nickname for a device id."""
     try:
         nickname = db_manager.get_device_nickname(device_id)
-        log_debug("Fetched nickname")
         return {"nickname": nickname}
     except Exception as exc:
-        log_debug(f"Nickname fetch error: {exc}")
+        log_error(f"Nickname fetch error: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 
@@ -1178,9 +883,8 @@ def get_gpx(limit: Optional[int] = None):
     
     try:
         rows, _ = db_manager.get_logs(limit)
-        log_debug("Fetched logs for GPX generation")
     except Exception as exc:
-        log_debug(f"Database error on GPX fetch: {exc}")
+        log_error(f"Database error on GPX fetch: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
     gpx_lines = [
