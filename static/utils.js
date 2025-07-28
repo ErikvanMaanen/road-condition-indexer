@@ -557,6 +557,44 @@ function debounce(func, wait) {
 }
 
 // ============================================================================
+// UI UTILITIES
+// ============================================================================
+
+/**
+ * Toggle collapsible panel visibility (used for settings, logs, etc.)
+ * @param {string} contentId - ID of the content element to toggle
+ * @param {string} toggleId - ID of the toggle arrow element
+ */
+function togglePanel(contentId, toggleId) {
+    const content = document.getElementById(contentId);
+    const toggle = document.getElementById(toggleId);
+    
+    if (content && toggle) {
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            toggle.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            toggle.textContent = '▶';
+        }
+    }
+}
+
+/**
+ * Toggle logs panel visibility (wrapper for togglePanel)
+ */
+function toggleLogsPanel() {
+    togglePanel('logs-content', 'logs-toggle');
+}
+
+/**
+ * Toggle settings panel visibility (wrapper for togglePanel)
+ */
+function toggleSettings() {
+    togglePanel('settings-content', 'settings-toggle');
+}
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -592,3 +630,6 @@ window.initializeDeviceId = initializeDeviceId;
 window.setCookie = setCookie;
 window.escapeHtml = escapeHtml;
 window.debounce = debounce;
+window.togglePanel = togglePanel;
+window.toggleLogsPanel = toggleLogsPanel;
+window.toggleSettings = toggleSettings;

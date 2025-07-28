@@ -265,7 +265,7 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 <div id="settings-panel">
     <div id="settings-header" onclick="toggleSettings()">
         <span>⚙️ Recording Thresholds</span>
-        <span id="settings-toggle">▼</span>
+        <span id="settings-toggle">▶</span>
     </div>
     <div id="settings-content">
         <div class="settings-grid">
@@ -1378,18 +1378,7 @@ if ('wakeLock' in navigator) {
     });
 }
 
-function toggleSettings() {
-    const content = document.getElementById('settings-content');
-    const toggle = document.getElementById('settings-toggle');
-    
-    if (content.style.display === 'none' || !content.style.display) {
-        content.style.display = 'block';
-        toggle.textContent = '▲';
-    } else {
-        content.style.display = 'none';
-        toggle.textContent = '▼';
-    }
-}
+// Note: toggleSettings() is now available from utils.js
 
 function loadSettings() {
     fetch('/api/thresholds')
