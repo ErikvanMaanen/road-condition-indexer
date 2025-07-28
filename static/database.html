@@ -16,10 +16,131 @@
         button.warning { background: #ffc107; color: black; }
         button.warning:hover { background: #e0a800; }
         #controls input { margin-right: 0.5rem; }
-        #range-container { position:relative; height:30px; }
-        #range-container input { position:absolute; left:0; right:0; width:100%; }
-        #startRange { z-index:2; }
-        #endRange { z-index:1; }
+        
+        /* Dual Range Slider Styles */
+        .time-range-container {
+            position: relative;
+            margin: 1rem 0;
+        }
+        .time-range-slider {
+            position: relative;
+            height: 60px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .time-range-track {
+            position: absolute;
+            top: 50%;
+            left: 10px;
+            right: 10px;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            transform: translateY(-50%);
+        }
+        .time-range-fill {
+            position: absolute;
+            height: 100%;
+            background: linear-gradient(to right, #28a745, #20c997);
+            border-radius: 3px;
+            transition: all 0.2s ease;
+        }
+        .time-range-handle {
+            position: absolute;
+            top: 50%;
+            width: 20px;
+            height: 20px;
+            background: #007bff;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s ease;
+            z-index: 2;
+        }
+        .time-range-handle:hover {
+            background: #0056b3;
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+        }
+        .time-range-handle.active {
+            background: #dc3545;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+        .time-range-handle.start {
+            background: #28a745;
+        }
+        .time-range-handle.end {
+            background: #ffc107;
+        }
+        .time-range-labels {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .time-range-info {
+            text-align: center;
+            background: #e3f2fd;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #1976d2;
+            margin: 0 10px;
+        }
+        .time-range-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1rem;
+            align-items: end;
+            margin-bottom: 0.5rem;
+        }
+        .time-input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .time-input-group label {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+        .time-input-group input {
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .quick-time-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .quick-time-btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .quick-time-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        .quick-time-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
         #log {
             width: 100%;
             height: 150px;
@@ -127,12 +248,43 @@
 <div id="map-container"></div>
 
 <section id="filter-time" style="margin-bottom:1rem;">
-    <label>Time Range:</label>
-    <input id="startDate" type="datetime-local">
-    <input id="endDate" type="datetime-local">
-    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
-        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
-        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
+    <div class="time-range-controls">
+        <div class="time-input-group">
+            <label for="startDate">Start Date & Time:</label>
+            <input id="startDate" type="datetime-local">
+        </div>
+        <div class="time-input-group">
+            <label for="endDate">End Date & Time:</label>
+            <input id="endDate" type="datetime-local">
+        </div>
+        <div>
+            <button id="applyTimeRange" style="background: #28a745; color: white; border: none; padding: 0.75rem 1rem; border-radius: 4px; cursor: pointer; white-space: nowrap;">Apply Range</button>
+        </div>
+    </div>
+    
+    <div class="time-range-container">
+        <div class="time-range-slider" id="timeRangeSlider">
+            <div class="time-range-track">
+                <div class="time-range-fill" id="timeRangeFill"></div>
+            </div>
+            <div class="time-range-handle start" id="startHandle" data-handle="start"></div>
+            <div class="time-range-handle end" id="endHandle" data-handle="end"></div>
+        </div>
+        <div class="time-range-labels">
+            <span id="minTimeLabel">No data</span>
+            <div class="time-range-info" id="rangeInfo">Select time range</div>
+            <span id="maxTimeLabel">available</span>
+        </div>
+    </div>
+    
+    <div class="quick-time-buttons">
+        <button class="quick-time-btn" data-range="today">Today</button>
+        <button class="quick-time-btn" data-range="yesterday">Yesterday</button>
+        <button class="quick-time-btn" data-range="last7days">Last 7 Days</button>
+        <button class="quick-time-btn" data-range="last30days">Last 30 Days</button>
+        <button class="quick-time-btn" data-range="thisweek">This Week</button>
+        <button class="quick-time-btn" data-range="thismonth">This Month</button>
+        <button class="quick-time-btn" data-range="all">All Data</button>
     </div>
 </section>
 
@@ -278,25 +430,308 @@ function setDateRange() {
         ids.forEach(id => params.append('device_id', id));
         url = '/date_range?' + params.toString();
     }
+    
     return fetch(url).then(r => r.json()).then(data => {
-        if (data.start) document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
-        if (data.end) document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
-        sliderMin = Date.parse(data.start);
-        sliderMax = Date.parse(data.end);
-        syncRanges();
-    }).catch(console.error);
+        if (data.start && data.end) {
+            // Update the complete time range limits for sliders
+            sliderMin = Date.parse(data.start);
+            sliderMax = Date.parse(data.end);
+            
+            // Set date inputs to the full range for the selected devices
+            document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
+            document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
+            
+            // Update the time range slider
+            timeRangeSlider.setRange(sliderMin, sliderMax, sliderMin, sliderMax);
+            
+            // Log the updated range for user feedback
+            const deviceText = ids.length === 0 ? 'all devices' : 
+                ids.length === 1 ? `device ${deviceNicknames[ids[0]] || ids[0]}` : 
+                `${ids.length} selected devices`;
+            addLog(`Updated time range for ${deviceText}: ${new Date(data.start).toLocaleDateString('nl-NL')} - ${new Date(data.end).toLocaleDateString('nl-NL')}`);
+        } else {
+            addLog('No data available for selected devices');
+        }
+    }).catch(error => {
+        console.error('Error fetching date range:', error);
+        addDebug('Error fetching date range: ' + error.message);
+    });
 }
 
 function syncRanges() {
+    updateTimeRangeSlider();
+}
+
+// Dual Range Slider Implementation
+let timeRangeSlider = {
+    minTime: 0,
+    maxTime: 0,
+    startTime: 0,
+    endTime: 0,
+    isDragging: false,
+    activeHandle: null,
+    
+    init() {
+        const slider = document.getElementById('timeRangeSlider');
+        const startHandle = document.getElementById('startHandle');
+        const endHandle = document.getElementById('endHandle');
+        
+        // Mouse events
+        startHandle.addEventListener('mousedown', (e) => this.startDrag(e, 'start'));
+        endHandle.addEventListener('mousedown', (e) => this.startDrag(e, 'end'));
+        slider.addEventListener('click', (e) => this.handleTrackClick(e));
+        
+        // Touch events for mobile
+        startHandle.addEventListener('touchstart', (e) => this.startDrag(e, 'start'));
+        endHandle.addEventListener('touchstart', (e) => this.startDrag(e, 'end'));
+        
+        document.addEventListener('mousemove', (e) => this.drag(e));
+        document.addEventListener('mouseup', () => this.stopDrag());
+        document.addEventListener('touchmove', (e) => this.drag(e));
+        document.addEventListener('touchend', () => this.stopDrag());
+        
+        // Prevent text selection while dragging
+        slider.addEventListener('selectstart', (e) => e.preventDefault());
+    },
+    
+    setRange(minTime, maxTime, startTime, endTime) {
+        this.minTime = minTime;
+        this.maxTime = maxTime;
+        this.startTime = startTime || minTime;
+        this.endTime = endTime || maxTime;
+        this.updateDisplay();
+    },
+    
+    startDrag(e, handle) {
+        e.preventDefault();
+        this.isDragging = true;
+        this.activeHandle = handle;
+        
+        const handleEl = document.getElementById(handle + 'Handle');
+        handleEl.classList.add('active');
+        
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+    },
+    
+    drag(e) {
+        if (!this.isDragging || !this.activeHandle) return;
+        
+        e.preventDefault();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        this.updatePosition(clientX);
+    },
+    
+    stopDrag() {
+        if (!this.isDragging) return;
+        
+        this.isDragging = false;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        
+        if (this.activeHandle) {
+            const handleEl = document.getElementById(this.activeHandle + 'Handle');
+            handleEl.classList.remove('active');
+            this.activeHandle = null;
+            
+            // Update date inputs and load data
+            this.updateDateInputs();
+            setTimeout(() => loadData(), 100);
+        }
+    },
+    
+    handleTrackClick(e) {
+        if (this.isDragging) return;
+        
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left - 10; // Account for padding
+        const trackWidth = rect.width - 20; // Account for padding
+        const percentage = Math.max(0, Math.min(1, clickX / trackWidth));
+        const clickTime = this.minTime + (this.maxTime - this.minTime) * percentage;
+        
+        // Move the closest handle to the click position
+        const startDistance = Math.abs(clickTime - this.startTime);
+        const endDistance = Math.abs(clickTime - this.endTime);
+        
+        if (startDistance < endDistance) {
+            this.startTime = Math.max(this.minTime, Math.min(clickTime, this.endTime - 3600000)); // Min 1 hour apart
+        } else {
+            this.endTime = Math.min(this.maxTime, Math.max(clickTime, this.startTime + 3600000)); // Min 1 hour apart
+        }
+        
+        this.updateDisplay();
+        this.updateDateInputs();
+        setTimeout(() => loadData(), 100);
+    },
+    
+    updatePosition(clientX) {
+        const slider = document.getElementById('timeRangeSlider');
+        const rect = slider.getBoundingClientRect();
+        const trackWidth = rect.width - 20; // Account for padding
+        const relativeX = clientX - rect.left - 10; // Account for padding
+        const percentage = Math.max(0, Math.min(1, relativeX / trackWidth));
+        const newTime = this.minTime + (this.maxTime - this.minTime) * percentage;
+        
+        if (this.activeHandle === 'start') {
+            this.startTime = Math.max(this.minTime, Math.min(newTime, this.endTime - 3600000)); // Min 1 hour apart
+        } else if (this.activeHandle === 'end') {
+            this.endTime = Math.min(this.maxTime, Math.max(newTime, this.startTime + 3600000)); // Min 1 hour apart
+        }
+        
+        this.updateDisplay();
+    },
+    
+    updateDisplay() {
+        if (this.maxTime <= this.minTime) return;
+        
+        const totalRange = this.maxTime - this.minTime;
+        const startPercent = ((this.startTime - this.minTime) / totalRange) * 100;
+        const endPercent = ((this.endTime - this.minTime) / totalRange) * 100;
+        
+        // Update handles
+        const startHandle = document.getElementById('startHandle');
+        const endHandle = document.getElementById('endHandle');
+        const fill = document.getElementById('timeRangeFill');
+        
+        startHandle.style.left = `calc(${startPercent}% + 10px)`;
+        endHandle.style.left = `calc(${endPercent}% + 10px)`;
+        
+        // Update fill
+        fill.style.left = `${startPercent}%`;
+        fill.style.width = `${endPercent - startPercent}%`;
+        
+        // Update info
+        this.updateRangeInfo();
+    },
+    
+    updateRangeInfo() {
+        const duration = this.endTime - this.startTime;
+        const days = Math.ceil(duration / (1000 * 60 * 60 * 24));
+        const hours = Math.ceil(duration / (1000 * 60 * 60));
+        
+        let durationText;
+        if (days > 1) {
+            durationText = `${days} days`;
+        } else if (hours > 1) {
+            durationText = `${hours} hours`;
+        } else {
+            durationText = `${Math.ceil(duration / (1000 * 60))} minutes`;
+        }
+        
+        document.getElementById('rangeInfo').textContent = durationText;
+        
+        // Update min/max labels
+        document.getElementById('minTimeLabel').textContent = 
+            this.minTime ? new Date(this.minTime).toLocaleDateString('nl-NL') : 'No data';
+        document.getElementById('maxTimeLabel').textContent = 
+            this.maxTime ? new Date(this.maxTime).toLocaleDateString('nl-NL') : 'available';
+    },
+    
+    updateDateInputs() {
+        document.getElementById('startDate').value = toCESTDateTimeLocal(new Date(this.startTime).toISOString());
+        document.getElementById('endDate').value = toCESTDateTimeLocal(new Date(this.endTime).toISOString());
+    },
+    
+    setFromDateInputs() {
+        const startValue = document.getElementById('startDate').value;
+        const endValue = document.getElementById('endDate').value;
+        
+        if (startValue && endValue) {
+            this.startTime = Date.parse(startValue);
+            this.endTime = Date.parse(endValue);
+            
+            // Clamp to available range
+            this.startTime = Math.max(this.minTime, Math.min(this.startTime, this.maxTime));
+            this.endTime = Math.max(this.minTime, Math.min(this.endTime, this.maxTime));
+            
+            // Ensure proper order
+            if (this.startTime >= this.endTime) {
+                this.endTime = Math.min(this.maxTime, this.startTime + 3600000);
+            }
+            
+            this.updateDisplay();
+        }
+    }
+};
+
+function updateTimeRangeSlider() {
     const startVal = Date.parse(document.getElementById('startDate').value);
     const endVal = Date.parse(document.getElementById('endDate').value);
-    if (!isNaN(startVal) && !isNaN(endVal)) {
-        const startR = document.getElementById('startRange');
-        const endR = document.getElementById('endRange');
-        startR.min = sliderMin; startR.max = sliderMax;
-        endR.min = sliderMin; endR.max = sliderMax;
-        startR.value = startVal; endR.value = endVal;
+    
+    if (!isNaN(startVal) && !isNaN(endVal) && !isNaN(sliderMin) && !isNaN(sliderMax)) {
+        timeRangeSlider.setRange(sliderMin, sliderMax, startVal, endVal);
     }
+}
+
+function applyQuickTimeRange(rangeType) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let startDate, endDate;
+    
+    // Clear active state from all buttons
+    document.querySelectorAll('.quick-time-btn').forEach(btn => btn.classList.remove('active'));
+    
+    switch (rangeType) {
+        case 'today':
+            startDate = new Date(today);
+            endDate = new Date(now);
+            break;
+        case 'yesterday':
+            startDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+            endDate = new Date(today.getTime() - 1);
+            break;
+        case 'last7days':
+            startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            endDate = new Date(now);
+            break;
+        case 'last30days':
+            startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+            endDate = new Date(now);
+            break;
+        case 'thisweek':
+            const dayOfWeek = today.getDay();
+            const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startDate = new Date(today.getTime() - mondayOffset * 24 * 60 * 60 * 1000);
+            endDate = new Date(now);
+            break;
+        case 'thismonth':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now);
+            break;
+        case 'all':
+            if (sliderMin && sliderMax) {
+                startDate = new Date(sliderMin);
+                endDate = new Date(sliderMax);
+            } else {
+                return;
+            }
+            break;
+        default:
+            return;
+    }
+    
+    // Clamp to available range
+    if (sliderMin && startDate.getTime() < sliderMin) {
+        startDate = new Date(sliderMin);
+    }
+    if (sliderMax && endDate.getTime() > sliderMax) {
+        endDate = new Date(sliderMax);
+    }
+    
+    // Set active state on clicked button
+    document.querySelector(`[data-range="${rangeType}"]`).classList.add('active');
+    
+    // Update inputs and slider
+    document.getElementById('startDate').value = toCESTDateTimeLocal(startDate.toISOString());
+    document.getElementById('endDate').value = toCESTDateTimeLocal(endDate.toISOString());
+    
+    timeRangeSlider.startTime = startDate.getTime();
+    timeRangeSlider.endTime = endDate.getTime();
+    timeRangeSlider.updateDisplay();
+    
+    // Load data
+    loadData();
+    addLog(`Applied ${rangeType} time range: ${startDate.toLocaleDateString('nl-NL')} - ${endDate.toLocaleDateString('nl-NL')}`);
 }
 
 function initMap() {
@@ -957,41 +1392,60 @@ function createFallbackMap() {
         
         // Initialize page regardless of map status
         populateDeviceIds();
-        syncRanges();
+        
+        // Initialize the dual range slider
+        timeRangeSlider.init();
     } catch (error) {
         console.error('Failed to initialize page:', error);
         // Fallback initialization
         createFallbackMap();
         populateDeviceIds();
-        syncRanges();
+        timeRangeSlider.init();
     }
 })();
 
 // Event listeners
 document.getElementById('deviceId').addEventListener('change', () => {
+    const previousIds = selectedIds.slice(); // Keep track of previous selection
     selectedIds = Array.from(document.getElementById('deviceId').selectedOptions)
         .map(o => o.value).filter(v => v);
-    setDateRange().then(loadData);
+    
+    // Show loading indicator
+    document.getElementById('loading').style.display = 'block';
+    
+    // Update time range first, then load data
+    setDateRange().then(() => {
+        return loadData();
+    }).then(() => {
+        document.getElementById('loading').style.display = 'none';
+    }).catch(error => {
+        document.getElementById('loading').style.display = 'none';
+        console.error('Error updating device selection:', error);
+        addDebug('Error updating device selection: ' + error.message);
+    });
 });
+
 document.getElementById('startDate').addEventListener('change', () => {
-    syncRanges();
-    loadData();
+    timeRangeSlider.setFromDateInputs();
 });
+
 document.getElementById('endDate').addEventListener('change', () => {
-    syncRanges();
-    loadData();
+    timeRangeSlider.setFromDateInputs();
 });
-document.getElementById('startRange').addEventListener('input', () => {
-    const v = parseInt(document.getElementById('startRange').value, 10);
-    document.getElementById('startDate').value = toCESTDateTimeLocal(v);
-    syncRanges();
+
+document.getElementById('applyTimeRange').addEventListener('click', () => {
+    timeRangeSlider.setFromDateInputs();
     loadData();
+    // Clear active state from quick buttons
+    document.querySelectorAll('.quick-time-btn').forEach(btn => btn.classList.remove('active'));
 });
-document.getElementById('endRange').addEventListener('input', () => {
-    const v = parseInt(document.getElementById('endRange').value, 10);
-    document.getElementById('endDate').value = toCESTDateTimeLocal(v);
-    syncRanges();
-    loadData();
+
+// Quick time range buttons
+document.querySelectorAll('.quick-time-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const rangeType = e.target.getAttribute('data-range');
+        applyQuickTimeRange(rangeType);
+    });
 });
 
 // Load logs partial when DOM is ready
