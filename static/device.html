@@ -174,14 +174,21 @@ function setDateRange() {
 }
 
 function syncRanges() {
-    const startVal = Date.parse(document.getElementById('startDate').value);
-    const endVal = Date.parse(document.getElementById('endDate').value);
-    if (!isNaN(startVal) && !isNaN(endVal)) {
-        const startR = document.getElementById('startRange');
-        const endR = document.getElementById('endRange');
-        startR.min = sliderMin; startR.max = sliderMax;
-        endR.min = sliderMin; endR.max = sliderMax;
-        startR.value = startVal; endR.value = endVal;
+    const startVal = document.getElementById('startDate').value;
+    const endVal = document.getElementById('endDate').value;
+    
+    if (startVal && endVal) {
+        // Convert Amsterdam time inputs to UTC timestamps for slider
+        const startUtc = Date.parse(fromCESTDateTimeLocal(startVal));
+        const endUtc = Date.parse(fromCESTDateTimeLocal(endVal));
+        
+        if (!isNaN(startUtc) && !isNaN(endUtc)) {
+            const startR = document.getElementById('startRange');
+            const endR = document.getElementById('endRange');
+            startR.min = sliderMin; startR.max = sliderMax;
+            endR.min = sliderMin; endR.max = sliderMax;
+            startR.value = startUtc; endR.value = endUtc;
+        }
     }
 }
 
@@ -459,8 +466,12 @@ async function updateMarkers(showProgress = false) {
         return; // Don't try to update markers if we don't have data
     }
 
-    const startVal = Date.parse(document.getElementById('startDate').value);
-    const endVal = Date.parse(document.getElementById('endDate').value);
+    // Convert Amsterdam time inputs to UTC for comparison
+    const startInput = document.getElementById('startDate').value;
+    const endInput = document.getElementById('endDate').value;
+    const startVal = startInput ? Date.parse(fromCESTDateTimeLocal(startInput)) : NaN;
+    const endVal = endInput ? Date.parse(fromCESTDateTimeLocal(endInput)) : NaN;
+    
     const loadBox = document.getElementById('loading');
     const prog = document.getElementById('load-progress');
     const label = document.getElementById('load-label');
@@ -860,7 +871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const nickname = document.getElementById('nickname-input').value.trim();
         
-        fetch('/nickname', {
+        authFetch('/nickname', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device_id: deviceId, nickname: nickname })
@@ -916,6 +927,23 @@ document.addEventListener('fullscreenchange', () => {
 window.addEventListener('beforeunload', () => {
     stopAutoRefresh();
 });
+
+// Authentication wrapper function
+async function authFetch(url, options) {
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+        const pw = prompt('Password:');
+        if (!pw) throw new Error('Password required');
+        const loginRes = await fetch('/login', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({password: pw})
+        });
+        if (!loginRes.ok) throw new Error('Login failed');
+        res = await fetch(url, options);
+    }
+    return res;
+}
 </script>
 
 <!-- Include Activity Log and Debug Messages Partial -->

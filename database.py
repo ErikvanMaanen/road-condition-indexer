@@ -124,7 +124,13 @@ class DatabaseManager:
         if utc_time is None:
             utc_time = datetime.utcnow()
         
-        # SQL Server format without timezone info
+        # Ensure we have a UTC datetime
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=pytz.UTC)
+        elif utc_time.tzinfo != pytz.UTC:
+            utc_time = utc_time.astimezone(pytz.UTC)
+        
+        # SQL Server format without timezone info (always UTC)
         return utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
     
     def _parse_dutch_time_display(self, iso_time_str: str) -> str:
@@ -981,6 +987,18 @@ class DatabaseManager:
                 columns = list(result.keys())
                 rows = [dict(zip(columns, row)) for row in result.fetchall()]
                 
+                # Ensure timestamp fields are properly formatted as UTC ISO strings
+                for row in rows:
+                    if 'timestamp' in row and row['timestamp'] is not None:
+                        if hasattr(row['timestamp'], 'isoformat'):
+                            ts = row['timestamp']
+                            if ts.tzinfo is None:
+                                # Assume database timestamp is UTC
+                                ts = ts.replace(tzinfo=pytz.UTC)
+                            row['timestamp'] = ts.isoformat()
+                        else:
+                            row['timestamp'] = str(row['timestamp'])
+                
                 # Calculate average for filtered data
                 avg_query = f"SELECT AVG(roughness) FROM {TABLE_BIKE_DATA} WHERE 1=1"
                 avg_params = {}
@@ -1044,11 +1062,25 @@ class DatabaseManager:
                 start, end = row if row else (None, None)
                 
                 if start is not None:
-                    start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
+                    # Ensure we return UTC ISO format
+                    if hasattr(start, "isoformat"):
+                        if start.tzinfo is None:
+                            # Assume database timestamp is UTC
+                            start = start.replace(tzinfo=pytz.UTC)
+                        start_str = start.isoformat()
+                    else:
+                        start_str = str(start)
                 else:
                     start_str = None
                 if end is not None:
-                    end_str = end.isoformat() if hasattr(end, "isoformat") else str(end)
+                    # Ensure we return UTC ISO format
+                    if hasattr(end, "isoformat"):
+                        if end.tzinfo is None:
+                            # Assume database timestamp is UTC
+                            end = end.replace(tzinfo=pytz.UTC)
+                        end_str = end.isoformat()
+                    else:
+                        end_str = str(end)
                 else:
                     end_str = None
                 return start_str, end_str

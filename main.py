@@ -34,7 +34,7 @@ from database import (
 )
 
 # Import SQL connectivity testing
-from sql_connectivity_tests import run_startup_connectivity_tests, ConnectivityTestResult
+from tests.sql_connectivity_tests import run_startup_connectivity_tests, ConnectivityTestResult
 
 # Import logging utilities
 from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
@@ -799,6 +799,11 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                 # Handle various datetime formats more robustly
                 start_clean = start.replace('Z', '+00:00')
                 start_dt = datetime.fromisoformat(start_clean)
+                # Ensure we have UTC timezone info
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=pytz.UTC)
+                elif start_dt.tzinfo != pytz.UTC:
+                    start_dt = start_dt.astimezone(pytz.UTC)
                 log_debug(f"Parsed start datetime: {start} -> {start_dt}")
             except ValueError as e:
                 log_debug(f"Failed to parse start datetime '{start}': {e}")
@@ -809,6 +814,11 @@ def get_filtered_logs(device_id: Optional[List[str]] = Query(None),
                 # Handle various datetime formats more robustly
                 end_clean = end.replace('Z', '+00:00')
                 end_dt = datetime.fromisoformat(end_clean)
+                # Ensure we have UTC timezone info
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=pytz.UTC)
+                elif end_dt.tzinfo != pytz.UTC:
+                    end_dt = end_dt.astimezone(pytz.UTC)
                 log_debug(f"Parsed end datetime: {end} -> {end_dt}")
             except ValueError as e:
                 log_debug(f"Failed to parse end datetime '{end}': {e}")

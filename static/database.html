@@ -438,6 +438,7 @@ function setDateRange() {
             sliderMax = Date.parse(data.end);
             
             // Set date inputs to the full range for the selected devices
+            // Convert UTC timestamps to local time for display
             document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
             document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
             
@@ -448,7 +449,7 @@ function setDateRange() {
             const deviceText = ids.length === 0 ? 'all devices' : 
                 ids.length === 1 ? `device ${deviceNicknames[ids[0]] || ids[0]}` : 
                 `${ids.length} selected devices`;
-            addLog(`Updated time range for ${deviceText}: ${new Date(data.start).toLocaleDateString('nl-NL')} - ${new Date(data.end).toLocaleDateString('nl-NL')}`);
+            addLog(`Updated time range for ${deviceText}: ${new Date(data.start).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'})} - ${new Date(data.end).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'})}`);
         } else {
             addLog('No data available for selected devices');
         }
@@ -470,6 +471,7 @@ let timeRangeSlider = {
     endTime: 0,
     isDragging: false,
     activeHandle: null,
+    isUpdatingInputs: false, // Flag to prevent update loops
     
     init() {
         const slider = document.getElementById('timeRangeSlider');
@@ -620,25 +622,38 @@ let timeRangeSlider = {
         
         document.getElementById('rangeInfo').textContent = durationText;
         
-        // Update min/max labels
+        // Update min/max labels - display in Amsterdam time
         document.getElementById('minTimeLabel').textContent = 
-            this.minTime ? new Date(this.minTime).toLocaleDateString('nl-NL') : 'No data';
+            this.minTime ? new Date(this.minTime).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'}) : 'No data';
         document.getElementById('maxTimeLabel').textContent = 
-            this.maxTime ? new Date(this.maxTime).toLocaleDateString('nl-NL') : 'available';
+            this.maxTime ? new Date(this.maxTime).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'}) : 'available';
     },
     
     updateDateInputs() {
+        this.isUpdatingInputs = true;
         document.getElementById('startDate').value = toCESTDateTimeLocal(new Date(this.startTime).toISOString());
         document.getElementById('endDate').value = toCESTDateTimeLocal(new Date(this.endTime).toISOString());
+        setTimeout(() => {
+            this.isUpdatingInputs = false;
+        }, 10);
     },
     
     setFromDateInputs() {
+        // Prevent update loops when slider is updating inputs
+        if (this.isUpdatingInputs) {
+            return;
+        }
+        
         const startValue = document.getElementById('startDate').value;
         const endValue = document.getElementById('endDate').value;
         
         if (startValue && endValue) {
-            this.startTime = Date.parse(startValue);
-            this.endTime = Date.parse(endValue);
+            // Convert Amsterdam time input to UTC timestamps
+            const startUtc = fromCESTDateTimeLocal(startValue);
+            const endUtc = fromCESTDateTimeLocal(endValue);
+            
+            this.startTime = Date.parse(startUtc);
+            this.endTime = Date.parse(endUtc);
             
             // Clamp to available range
             this.startTime = Math.max(this.minTime, Math.min(this.startTime, this.maxTime));
@@ -655,17 +670,32 @@ let timeRangeSlider = {
 };
 
 function updateTimeRangeSlider() {
-    const startVal = Date.parse(document.getElementById('startDate').value);
-    const endVal = Date.parse(document.getElementById('endDate').value);
+    // Prevent update loops when slider is updating inputs
+    if (timeRangeSlider.isUpdatingInputs) {
+        return;
+    }
     
-    if (!isNaN(startVal) && !isNaN(endVal) && !isNaN(sliderMin) && !isNaN(sliderMax)) {
-        timeRangeSlider.setRange(sliderMin, sliderMax, startVal, endVal);
+    const startVal = document.getElementById('startDate').value;
+    const endVal = document.getElementById('endDate').value;
+    
+    if (startVal && endVal && !isNaN(sliderMin) && !isNaN(sliderMax)) {
+        // Convert Amsterdam time inputs to UTC timestamps
+        const startUtc = Date.parse(fromCESTDateTimeLocal(startVal));
+        const endUtc = Date.parse(fromCESTDateTimeLocal(endVal));
+        
+        if (!isNaN(startUtc) && !isNaN(endUtc)) {
+            timeRangeSlider.setRange(sliderMin, sliderMax, startUtc, endUtc);
+        }
     }
 }
 
 function applyQuickTimeRange(rangeType) {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Get current time in Amsterdam timezone
+    const nowUtc = new Date();
+    const nowAmsterdam = new Date(nowUtc.toLocaleString("sv-SE", {timeZone: "Europe/Amsterdam"}));
+    
+    // Work with Amsterdam timezone dates
+    const todayAmsterdam = new Date(nowAmsterdam.getFullYear(), nowAmsterdam.getMonth(), nowAmsterdam.getDate());
     let startDate, endDate;
     
     // Clear active state from all buttons
@@ -673,30 +703,30 @@ function applyQuickTimeRange(rangeType) {
     
     switch (rangeType) {
         case 'today':
-            startDate = new Date(today);
-            endDate = new Date(now);
+            startDate = new Date(todayAmsterdam);
+            endDate = new Date(nowAmsterdam);
             break;
         case 'yesterday':
-            startDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-            endDate = new Date(today.getTime() - 1);
+            startDate = new Date(todayAmsterdam.getTime() - 24 * 60 * 60 * 1000);
+            endDate = new Date(todayAmsterdam.getTime() - 1);
             break;
         case 'last7days':
-            startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-            endDate = new Date(now);
+            startDate = new Date(todayAmsterdam.getTime() - 7 * 24 * 60 * 60 * 1000);
+            endDate = new Date(nowAmsterdam);
             break;
         case 'last30days':
-            startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-            endDate = new Date(now);
+            startDate = new Date(todayAmsterdam.getTime() - 30 * 24 * 60 * 60 * 1000);
+            endDate = new Date(nowAmsterdam);
             break;
         case 'thisweek':
-            const dayOfWeek = today.getDay();
+            const dayOfWeek = todayAmsterdam.getDay();
             const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startDate = new Date(today.getTime() - mondayOffset * 24 * 60 * 60 * 1000);
-            endDate = new Date(now);
+            startDate = new Date(todayAmsterdam.getTime() - mondayOffset * 24 * 60 * 60 * 1000);
+            endDate = new Date(nowAmsterdam);
             break;
         case 'thismonth':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now);
+            startDate = new Date(nowAmsterdam.getFullYear(), nowAmsterdam.getMonth(), 1);
+            endDate = new Date(nowAmsterdam);
             break;
         case 'all':
             if (sliderMin && sliderMax) {
@@ -710,28 +740,45 @@ function applyQuickTimeRange(rangeType) {
             return;
     }
     
-    // Clamp to available range
-    if (sliderMin && startDate.getTime() < sliderMin) {
-        startDate = new Date(sliderMin);
+    // Convert Amsterdam time to UTC for internal processing, except for 'all' case
+    let startUtc, endUtc;
+    if (rangeType === 'all') {
+        // For 'all', dates are already UTC timestamps
+        startUtc = startDate.getTime();
+        endUtc = endDate.getTime();
+    } else {
+        // Convert Amsterdam time to UTC
+        const startAmsterdamStr = startDate.toISOString().slice(0, 19);
+        const endAmsterdamStr = endDate.toISOString().slice(0, 19);
+        startUtc = Date.parse(fromCESTDateTimeLocal(startAmsterdamStr));
+        endUtc = Date.parse(fromCESTDateTimeLocal(endAmsterdamStr));
     }
-    if (sliderMax && endDate.getTime() > sliderMax) {
-        endDate = new Date(sliderMax);
+    
+    // Clamp to available range (which is in UTC)
+    if (sliderMin && startUtc < sliderMin) {
+        startUtc = sliderMin;
+    }
+    if (sliderMax && endUtc > sliderMax) {
+        endUtc = sliderMax;
     }
     
     // Set active state on clicked button
     document.querySelector(`[data-range="${rangeType}"]`).classList.add('active');
     
-    // Update inputs and slider
-    document.getElementById('startDate').value = toCESTDateTimeLocal(startDate.toISOString());
-    document.getElementById('endDate').value = toCESTDateTimeLocal(endDate.toISOString());
+    // Update inputs with Amsterdam time for display
+    document.getElementById('startDate').value = toCESTDateTimeLocal(new Date(startUtc).toISOString());
+    document.getElementById('endDate').value = toCESTDateTimeLocal(new Date(endUtc).toISOString());
     
-    timeRangeSlider.startTime = startDate.getTime();
-    timeRangeSlider.endTime = endDate.getTime();
+    timeRangeSlider.startTime = startUtc;
+    timeRangeSlider.endTime = endUtc;
     timeRangeSlider.updateDisplay();
     
     // Load data
     loadData();
-    addLog(`Applied ${rangeType} time range: ${startDate.toLocaleDateString('nl-NL')} - ${endDate.toLocaleDateString('nl-NL')}`);
+    // Display times in Amsterdam timezone for log message
+    const startAmsterdamLog = new Date(startUtc).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+    const endAmsterdamLog = new Date(endUtc).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'});
+    addLog(`Applied ${rangeType} time range: ${startAmsterdamLog} - ${endAmsterdamLog}`);
 }
 
 function initMap() {
@@ -845,6 +892,7 @@ function updateDataSummary(data) {
     
     data.forEach(record => {
         deviceCounts[record.device_id] = (deviceCounts[record.device_id] || 0) + 1;
+        // Parse UTC timestamp and convert to local time for display
         const recordTime = new Date(record.timestamp);
         if (!minTime || recordTime < minTime) minTime = recordTime;
         if (!maxTime || recordTime > maxTime) maxTime = recordTime;
@@ -854,6 +902,7 @@ function updateDataSummary(data) {
         .map(([id, count]) => `${deviceNicknames[id] || id}: ${count} records`)
         .join(', ');
     
+    // Display times in local timezone
     const timeRange = minTime && maxTime ? 
         `${minTime.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} - ${maxTime.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}` : 
         'Unknown';
@@ -1098,7 +1147,7 @@ async function updateDeviceNickname() {
     }
     
     try {
-        const response = await authFetch('/set_nickname', {
+        const response = await authFetch('/nickname', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device_id: deviceId, nickname: nickname })
@@ -1218,7 +1267,7 @@ async function loadRecordOverview() {
         deviceStats.forEach(device => {
             const percentage = totalRecords > 0 ? ((device.recordCount / totalRecords) * 100).toFixed(1) : '0.0';
             const dateRange = device.firstRecord && device.lastRecord ? 
-                `${new Date(device.firstRecord).toLocaleDateString('nl-NL')} - ${new Date(device.lastRecord).toLocaleDateString('nl-NL')}` : 
+                `${new Date(device.firstRecord).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'})} - ${new Date(device.lastRecord).toLocaleDateString('nl-NL', {timeZone: 'Europe/Amsterdam'})}` : 
                 'No data';
             
             html += `

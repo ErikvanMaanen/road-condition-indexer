@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timezone Conversion Test</title>
+    <script src="utils.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .test-result { 
+            margin: 1rem 0; 
+            padding: 1rem; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        input { margin: 0.5rem; padding: 0.5rem; }
+        button { margin: 0.5rem; padding: 0.5rem 1rem; }
+    </style>
+</head>
+<body>
+    <h1>Timezone Conversion Test</h1>
+    
+    <h2>Test Timezone Conversion Functions</h2>
+    <div id="test-results"></div>
+    
+    <h2>Interactive Test</h2>
+    <div>
+        <label>UTC Time: <input type="text" id="utc-input" placeholder="2024-07-28T12:00:00.000Z"></label>
+        <button onclick="testUtcToAmsterdam()">Convert to Amsterdam</button>
+        <div>Amsterdam Time: <span id="amsterdam-result"></span></div>
+    </div>
+    
+    <div>
+        <label>Amsterdam Time: <input type="datetime-local" id="amsterdam-input"></label>
+        <button onclick="testAmsterdamToUtc()">Convert to UTC</button>
+        <div>UTC Time: <span id="utc-result"></span></div>
+    </div>
+
+    <script>
+        function runTests() {
+            const results = document.getElementById('test-results');
+            const tests = [
+                {
+                    name: "Winter time (CET): UTC 12:00 should be Amsterdam 13:00",
+                    utc: "2024-01-15T12:00:00.000Z",
+                    expectedAmsterdam: "2024-01-15T13:00"
+                },
+                {
+                    name: "Summer time (CEST): UTC 12:00 should be Amsterdam 14:00", 
+                    utc: "2024-07-15T12:00:00.000Z",
+                    expectedAmsterdam: "2024-07-15T14:00"
+                },
+                {
+                    name: "DST transition: UTC 01:00 on March 31 should be Amsterdam 03:00",
+                    utc: "2024-03-31T01:00:00.000Z",
+                    expectedAmsterdam: "2024-03-31T03:00"
+                }
+            ];
+            
+            tests.forEach(test => {
+                const amsterdamResult = toCESTDateTimeLocal(test.utc);
+                const utcBackResult = fromCESTDateTimeLocal(amsterdamResult);
+                const utcBack = new Date(utcBackResult).toISOString();
+                
+                const success = amsterdamResult === test.expectedAmsterdam && utcBack === test.utc;
+                
+                const div = document.createElement('div');
+                div.className = `test-result ${success ? 'success' : 'error'}`;
+                div.innerHTML = `
+                    <strong>${test.name}</strong><br>
+                    Input UTC: ${test.utc}<br>
+                    Expected Amsterdam: ${test.expectedAmsterdam}<br>
+                    Actual Amsterdam: ${amsterdamResult}<br>
+                    Back to UTC: ${utcBack}<br>
+                    Result: ${success ? 'PASS' : 'FAIL'}
+                `;
+                results.appendChild(div);
+            });
+        }
+        
+        function testUtcToAmsterdam() {
+            const utcInput = document.getElementById('utc-input').value;
+            const result = toCESTDateTimeLocal(utcInput);
+            document.getElementById('amsterdam-result').textContent = result;
+        }
+        
+        function testAmsterdamToUtc() {
+            const amsterdamInput = document.getElementById('amsterdam-input').value;
+            const result = fromCESTDateTimeLocal(amsterdamInput);
+            document.getElementById('utc-result').textContent = result;
+        }
+        
+        // Set default values
+        document.getElementById('utc-input').value = "2024-07-28T12:00:00.000Z";
+        document.getElementById('amsterdam-input').value = "2024-07-28T14:00";
+        
+        // Run tests on page load
+        runTests();
+    </script>
+</body>
+</html>

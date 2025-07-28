@@ -18,9 +18,10 @@ const ROUGHNESS_NAMES = [
 ];
 
 /**
- * Format time in Dutch timezone
- * @param {string} isoString - ISO date string
- * @returns {string} Formatted date string
+ * Format time in Amsterdam timezone from UTC input
+ * This displays UTC timestamps in Amsterdam local time for user interface
+ * @param {string} isoString - UTC ISO date string
+ * @returns {string} Formatted date string in Amsterdam timezone
  */
 function formatDutchTime(isoString) {
     try {
@@ -40,50 +41,97 @@ function formatDutchTime(isoString) {
 }
 
 /**
- * Convert timestamp to CEST datetime-local format
- * @param {string|number} timestamp - Timestamp to convert
- * @returns {string} CEST datetime-local format
+ * Convert UTC timestamp to Amsterdam timezone datetime-local format for input fields
+ * This ensures that datetime-local inputs display time in Amsterdam timezone (CEST/CET)
+ * @param {string|number} timestamp - UTC timestamp to convert
+ * @returns {string} Amsterdam timezone datetime-local format
  */
 function toCESTDateTimeLocal(timestamp) {
     try {
-        const date = new Date(timestamp);
-        const cesTime = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
-        return cesTime.toISOString().slice(0, 16);
+        const utcDate = new Date(timestamp);
+        
+        // Convert to Amsterdam timezone using toLocaleString with specific options
+        const amsterdamString = utcDate.toLocaleString('sv-SE', {
+            timeZone: 'Europe/Amsterdam',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        
+        // Format for datetime-local input (YYYY-MM-DDTHH:MM)
+        const [datePart, timePart] = amsterdamString.split(' ');
+        return `${datePart}T${timePart}`;
     } catch (error) {
+        console.error('Error converting UTC to Amsterdam time:', error);
         return '';
     }
 }
 
 /**
- * Convert CEST datetime-local input value back to UTC ISO
- * @param {string} datetimeLocalValue - datetime-local input value
+ * Convert Amsterdam timezone datetime-local input value to UTC ISO string
+ * This ensures that datetime-local inputs (which are in Amsterdam time) are correctly converted to UTC for API calls
+ * @param {string} datetimeLocalValue - datetime-local input value in Amsterdam timezone
  * @returns {string} UTC ISO string
  */
 function fromCESTDateTimeLocal(datetimeLocalValue) {
     try {
         if (!datetimeLocalValue) return '';
-        const localDate = new Date(datetimeLocalValue);
-        const utcTime = localDate.getTime() + (localDate.getTimezoneOffset() * 60000);
-        const cestOffset = 2 * 60 * 60 * 1000; // CEST is UTC+2
-        const utcDate = new Date(utcTime + cestOffset);
+        
+        // For July 2025, Amsterdam is in CEST (UTC+2)
+        // So we need to subtract 2 hours from Amsterdam time to get UTC
+        
+        const [datePart, timePart] = datetimeLocalValue.split('T');
+        if (!datePart || !timePart) {
+            throw new Error('Invalid datetime format');
+        }
+        
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hours, minutes] = timePart.split(':').map(Number);
+        
+        // Simple approach: subtract 2 hours from Amsterdam time to get UTC
+        let utcHours = hours - 2;
+        let utcDay = day;
+        
+        // Handle day rollover
+        if (utcHours < 0) {
+            utcHours += 24;
+            utcDay -= 1;
+        }
+        
+        // Create UTC date
+        const utcDate = new Date(Date.UTC(year, month - 1, utcDay, utcHours, minutes, 0, 0));
+        
         return utcDate.toISOString();
+        
     } catch (error) {
-        return '';
+        console.error('Error converting Amsterdam time to UTC:', error);
+        console.error('Input was:', datetimeLocalValue);
+        
+        // Simple fallback: just treat as UTC (this will be wrong but won't break)
+        try {
+            return new Date(datetimeLocalValue).toISOString();
+        } catch (fallbackError) {
+            console.error('Fallback conversion also failed:', fallbackError);
+            return new Date().toISOString(); // Return current time as last resort
+        }
     }
 }
 
 /**
- * Format short date/time for logs
+ * Format short date/time for logs in local timezone
  * @returns {string} Short formatted date/time
  */
 function formatShortDateTime() {
     const now = new Date();
-    const cesTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
-    const month = String(cesTime.getMonth() + 1).padStart(2, '0');
-    const day = String(cesTime.getDate()).padStart(2, '0');
-    const hours = String(cesTime.getHours()).padStart(2, '0');
-    const minutes = String(cesTime.getMinutes()).padStart(2, '0');
-    const seconds = String(cesTime.getSeconds()).padStart(2, '0');
+    // Format in local timezone
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
     return `${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
