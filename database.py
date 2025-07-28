@@ -1096,18 +1096,21 @@ class DatabaseManager:
                 conn.execute(
                     text(f"""
                     MERGE {TABLE_DEVICE_NICKNAMES} AS target
-                    USING (SELECT ? AS device_id, ? AS nickname) AS src
+                    USING (SELECT :device_id AS device_id, :nickname AS nickname) AS src
                     ON target.device_id = src.device_id
                     WHEN MATCHED THEN UPDATE SET nickname = src.nickname
-                    WHEN NOT MATCHED THEN INSERT (device_id, nickname)
-                    VALUES (src.device_id, src.nickname);
+                    WHEN NOT MATCHED THEN INSERT (device_id, nickname, user_agent, device_fp)
+                    VALUES (src.device_id, src.nickname, NULL, NULL);
                     """),
-                    (device_id, nickname)
+                    {"device_id": device_id, "nickname": nickname}
                 )
                 conn.commit()
         except Exception as e:
-            self.log_debug(f"Failed to set device nickname: {e}", 
+            import traceback
+            tb = traceback.format_exc()
+            self.log_debug(f"Failed to set device nickname: {e}\nTraceback:\n{tb}", 
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
+            print(f"[ERROR] set_device_nickname failed: {e}\nTraceback:\n{tb}")
             raise
 
     def get_device_nickname(self, device_id: str) -> Optional[str]:

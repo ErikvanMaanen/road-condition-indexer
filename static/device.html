@@ -871,33 +871,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const nickname = document.getElementById('nickname-input').value.trim();
         
+        // Show saving indicator
+        if (typeof addLog === 'function') {
+            addLog(`Saving nickname for device ${deviceId}...`, 'System', 'INFO');
+        }
+        
         authFetch('/nickname', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device_id: deviceId, nickname: nickname })
         })
         .then(response => response.json())
-        .then(() => {
-            document.getElementById('rename-section').style.display = 'none';
-            
-            // Update local nickname without reloading all devices
-            deviceNicknames[deviceId] = nickname;
-            
-            // Update the device option in the select dropdown
-            const select = document.getElementById('deviceId');
-            for (let i = 0; i < select.options.length; i++) {
-                if (select.options[i].value === deviceId) {
-                    select.options[i].textContent = nickname ? `${nickname} (${deviceId})` : deviceId;
-                    break;
+        .then(data => {
+            if (data && data.status === 'ok') {
+                document.getElementById('rename-section').style.display = 'none';
+                
+                // Update local nickname without reloading all devices
+                deviceNicknames[deviceId] = nickname;
+                
+                // Update the device option in the select dropdown
+                const select = document.getElementById('deviceId');
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === deviceId) {
+                        select.options[i].textContent = nickname ? `${nickname} (${deviceId})` : deviceId;
+                        break;
+                    }
                 }
+                
+                // Update markers on the map with the new nickname
+                updateMarkers();
+                
+                // Log successful nickname update
+                if (typeof addLog === 'function') {
+                    addLog(`Device nickname updated for ${deviceId}`, 'System', 'INFO');
+                }
+            } else {
+                throw new Error('Invalid response from server');
             }
-            
-            // Update markers on the map with the new nickname
-            updateMarkers();
         })
         .catch(error => {
             console.error('Error saving nickname:', error);
-            alert('Failed to save nickname. Please try again.');
+            
+            // More specific error message for database errors
+            let errorMsg = error.message;
+            if (error.message.includes('Database error')) {
+                errorMsg = 'Database connection error. Please check server logs and try again later.';
+            }
+            
+            alert(`Failed to save nickname: ${errorMsg}`);
+            
+            // Log error
+            if (typeof addLog === 'function') {
+                addLog(`Error saving nickname: ${error.message}`, 'System', 'ERROR');
+            }
         });
     });
 
@@ -942,6 +968,13 @@ async function authFetch(url, options) {
         if (!loginRes.ok) throw new Error('Login failed');
         res = await fetch(url, options);
     }
+    
+    // Check for server errors
+    if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Unknown error');
+        throw new Error(`Server error (${res.status}): ${errorText}`);
+    }
+    
     return res;
 }
 </script>
