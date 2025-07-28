@@ -449,6 +449,41 @@
                 <td>JSON {status, message, archived_count}</td>
                 <td>Password</td>
             </tr>
+            <tr>
+                <td>/manage/table_schema?table=NAME</td>
+                <td>GET</td>
+                <td>Query: table</td>
+                <td>JSON {table_name, columns, indexes, constraints}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/verify_tables</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {status, passed, message, details}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/verify_data</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {status, passed, message, details}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/verify_indexes</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {status, passed, message, details}</td>
+                <td>Password</td>
+            </tr>
+            <tr>
+                <td>/manage/verify_constraints</td>
+                <td>GET</td>
+                <td>None</td>
+                <td>JSON {status, passed, message, details}</td>
+                <td>Password</td>
+            </tr>
         </tbody>
         </table>
     </div>

@@ -2154,6 +2154,69 @@ def archive_logs(dep: None = Depends(password_dependency)):
         raise HTTPException(status_code=500, detail="Failed to archive logs") from exc
 
 
+@app.get("/manage/table_schema")
+def get_table_schema(table: str, dep: None = Depends(password_dependency)):
+    """Get detailed schema information for a table."""
+    try:
+        schema = db_manager.get_table_schema(table)
+        log_info(f"Retrieved schema for table: {table}")
+        return schema
+    except ValueError as exc:
+        log_warning(f"Invalid table name for schema request: {table}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        log_error(f"Failed to get table schema for {table}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to get table schema") from exc
+
+
+@app.get("/manage/verify_tables")
+def verify_tables(dep: None = Depends(password_dependency)):
+    """Verify table integrity and structure."""
+    try:
+        result = db_manager.verify_tables()
+        log_info(f"Table verification completed: {result['status']}")
+        return result
+    except Exception as exc:
+        log_error(f"Failed to verify tables: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to verify tables") from exc
+
+
+@app.get("/manage/verify_data")
+def verify_data(dep: None = Depends(password_dependency)):
+    """Verify data consistency and integrity."""
+    try:
+        result = db_manager.verify_data()
+        log_info(f"Data verification completed: {result['status']}")
+        return result
+    except Exception as exc:
+        log_error(f"Failed to verify data: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to verify data") from exc
+
+
+@app.get("/manage/verify_indexes")
+def verify_indexes(dep: None = Depends(password_dependency)):
+    """Verify database indexes and performance."""
+    try:
+        result = db_manager.verify_indexes()
+        log_info(f"Index verification completed: {result['status']}")
+        return result
+    except Exception as exc:
+        log_error(f"Failed to verify indexes: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to verify indexes") from exc
+
+
+@app.get("/manage/verify_constraints")
+def verify_constraints(dep: None = Depends(password_dependency)):
+    """Verify foreign key constraints and referential integrity."""
+    try:
+        result = db_manager.verify_constraints()
+        log_info(f"Constraint verification completed: {result['status']}")
+        return result
+    except Exception as exc:
+        log_error(f"Failed to verify constraints: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to verify constraints") from exc
+
+
 class ThresholdSettings(BaseModel):
     max_interval_sec: float = Field(..., ge=1, le=300, description="Maximum time interval between points (seconds)")
     max_distance_m: float = Field(..., ge=10, le=10000, description="Maximum distance between points (meters)")
