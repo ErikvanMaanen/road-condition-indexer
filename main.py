@@ -30,7 +30,7 @@ import numpy as np
 
 # Import database constants and manager
 from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS
+    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_BIKE_SOURCE_DATA
 )
 
 # Import SQL connectivity testing
@@ -857,6 +857,17 @@ def get_date_range(device_id: Optional[List[str]] = Query(None), dep: None = Dep
         return {"start": start_str, "end": end_str}
     except Exception as exc:
         log_error(f"Database error on range fetch: {exc}")
+        raise HTTPException(status_code=500, detail="Database error") from exc
+
+
+@app.get("/device_stats")
+def get_device_stats(device_id: str, dep: None = Depends(password_dependency)):
+    """Return detailed statistics for a specific device."""
+    try:
+        stats = db_manager.get_device_statistics(device_id)
+        return stats
+    except Exception as exc:
+        log_error(f"Database error on device stats fetch for {device_id}: {exc}")
         raise HTTPException(status_code=500, detail="Database error") from exc
 
 

@@ -7,8 +7,50 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="utils.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 600px; }
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1200px; }
         #page-links { margin-bottom: 1rem; }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        /* Collapsible section styles - matching logs-partial.html */
+        .section {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 20px 0;
+            background: #f9f9f9;
+        }
+        
+        .section-header {
+            padding: 8px 12px;
+            background: #e9e9e9;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1em;
+            color: #007cba;
+        }
+        
+        .section-header:hover {
+            background: #ddd;
+        }
+        
+        .section-content {
+            padding: 12px;
+            display: none;
+        }
+        
+        .section-toggle {
+            font-family: monospace;
+            font-size: 1.2em;
+        }
+        
         label { display:block; margin-top:0.5rem; }
         #log {
             width: 100%;
@@ -177,26 +219,6 @@
             border-radius: 3px;
             font-size: 0.9rem;
         }
-        .api-reference {
-            margin-top: 1rem;
-        }
-        .api-toggle {
-            background: #f0f0f0;
-            border: 1px solid #ccc;
-            padding: 10px;
-            cursor: pointer;
-            border-radius: 4px;
-            margin-bottom: 10px;
-        }
-        .api-toggle:hover {
-            background: #e8e8e8;
-        }
-        .api-content {
-            display: none;
-        }
-        .api-content.show {
-            display: block;
-        }
     </style>
 </head>
 <body>
@@ -207,59 +229,60 @@
 </nav>
 <h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Maintenance</h1>
 
-<!-- Database Log Viewer (styled like Debug Log Viewer) -->
-<section class="log-viewer">
-    <div class="log-viewer-header">
-        📋 Database Log Viewer
+<!-- Database Log Viewer (collapsible section) -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('log-viewer')">
+        <span>📋 Database Log Viewer</span>
+        <span class="section-toggle" id="log-viewer-toggle">▶</span>
     </div>
-    <div class="log-viewer-controls">
-        <div class="control-group">
-            <label>Level:</label>
-            <select id="log-level-filter">
-                <option value="">All Levels</option>
-                <option value="DEBUG">Debug</option>
-                <option value="INFO">Info</option>
-                <option value="WARNING">Warning</option>
-                <option value="ERROR">Error</option>
-                <option value="CRITICAL">Critical</option>
-            </select>
-            <label>Category:</label>
-            <select id="log-category-filter">
-                <option value="">All Categories</option>
-                <option value="DATABASE">Database</option>
-                <option value="CONNECTION">Connection</option>
-                <option value="QUERY">Query</option>
-                <option value="MANAGEMENT">Management</option>
-                <option value="MIGRATION">Migration</option>
-                <option value="BACKUP">Backup</option>
-                <option value="GENERAL">General</option>
-            </select>
-            <label>Device ID:</label>
-            <input type="text" id="log-device-filter" placeholder="Filter by device ID" style="width: 120px;">
-            <label>Limit:</label>
-            <select id="log-limit">
-                <option value="50">50 entries</option>
-                <option value="100" selected>100 entries</option>
-                <option value="200">200 entries</option>
-                <option value="500">500 entries</option>
-                <option value="1000">1000 entries</option>
-            </select>
+    <div class="section-content" id="log-viewer-content">
+        <div class="log-viewer-controls">
+            <div class="control-group">
+                <label>Level:</label>
+                <select id="log-level-filter">
+                    <option value="">All Levels</option>
+                    <option value="DEBUG">Debug</option>
+                    <option value="INFO">Info</option>
+                    <option value="WARNING">Warning</option>
+                    <option value="ERROR">Error</option>
+                    <option value="CRITICAL">Critical</option>
+                </select>
+                <label>Category:</label>
+                <select id="log-category-filter">
+                    <option value="">All Categories</option>
+                    <option value="DATABASE">Database</option>
+                    <option value="CONNECTION">Connection</option>
+                    <option value="QUERY">Query</option>
+                    <option value="MANAGEMENT">Management</option>
+                    <option value="MIGRATION">Migration</option>
+                    <option value="BACKUP">Backup</option>
+                    <option value="GENERAL">General</option>
+                </select>
+                <label>Device ID:</label>
+                <input type="text" id="log-device-filter" placeholder="Filter by device ID" style="width: 120px;">
+                <label>Limit:</label>
+                <select id="log-limit">
+                    <option value="50">50 entries</option>
+                    <option value="100" selected>100 entries</option>
+                    <option value="200">200 entries</option>
+                    <option value="500">500 entries</option>
+                    <option value="1000">1000 entries</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Sort:</label>
+                <select id="log-sort-order" onchange="loadDatabaseLogs()">
+                    <option value="desc" selected>Latest First</option>
+                    <option value="asc">Oldest First</option>
+                </select>
+                <button onclick="loadDatabaseLogs()">🔄 Refresh Logs</button>
+                <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
+                <button onclick="exportLogs()">📥 Export CSV</button>
+                <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
+                <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Debug Logs</button>
+                <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
+            </div>
         </div>
-        <div class="control-group">
-            <label>Sort:</label>
-            <select id="log-sort-order" onchange="loadDatabaseLogs()">
-                <option value="desc" selected>Latest First</option>
-                <option value="asc">Oldest First</option>
-            </select>
-            <button onclick="loadDatabaseLogs()">🔄 Refresh Logs</button>
-            <button onclick="clearLogDisplay()">🗑️ Clear Display</button>
-            <button onclick="exportLogs()">📥 Export CSV</button>
-            <button onclick="toggleAutoRefresh()" id="auto-refresh-btn">⏸️ Auto-refresh: OFF</button>
-            <button onclick="archiveLogs()" style="background: #ffc107; color: #000;">📦 Archive Debug Logs</button>
-            <button onclick="repairDatabase()" style="background: #dc3545;">🔧 Repair Database</button>
-        </div>
-    </div>
-    <div class="log-viewer-content">
         <div id="log-stats" class="log-stats">
             Ready to load logs...
         </div>
@@ -267,13 +290,15 @@
             Click "Refresh Logs" to load database logs
         </div>
     </div>
-</section>
+</div>
 
-<section class="api-reference">
-    <div class="api-toggle" onclick="toggleApiReference()">
-        <strong>📖 API Reference</strong> (click to expand)
+<!-- API Reference (collapsible section) -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('api-reference')">
+        <span>📖 API Reference</span>
+        <span class="section-toggle" id="api-reference-toggle">▶</span>
     </div>
-    <div id="api-content" class="api-content">
+    <div class="section-content" id="api-reference-content">
         <table border="1" cellpadding="4" style="border-collapse:collapse;">
             <thead>
                 <tr>
@@ -487,26 +512,38 @@
         </tbody>
         </table>
     </div>
-</section>
-<section style="margin-top:1rem;">
-    <h2>Tables 
-        <button id="refresh-btn">Refresh</button>
-        <button id="verify-schema-btn" style="margin-left: 0.5rem; background: #28a745;">Verify Schema & Data</button>
-    </h2>
-    <div id="table-list">Loading...</div>
-    <div id="schema-verification-result" style="margin-top:1rem; padding:10px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; display:none;">
-        <h3>Schema & Data Verification Results</h3>
-        <div id="verification-content"></div>
+</div>
+<!-- Tables (collapsible section) -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('tables')">
+        <span>🗄️ Tables</span>
+        <span class="section-toggle" id="tables-toggle">▶</span>
     </div>
-    <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
-</section>
+    <div class="section-content" id="tables-content">
+        <div style="margin-bottom: 1rem;">
+            <button id="refresh-btn">Refresh</button>
+            <button id="verify-schema-btn" style="margin-left: 0.5rem; background: #28a745;">Verify Schema & Data</button>
+        </div>
+        <div id="table-list">Loading...</div>
+        <div id="schema-verification-result" style="margin-top:1rem; padding:10px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; display:none;">
+            <h3>Schema & Data Verification Results</h3>
+            <div id="verification-content"></div>
+        </div>
+        <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
+    </div>
+</div>
 
-<!-- FastAPI Health/Test Section -->
-<section style="margin-top:2rem;">
-    <h2>FastAPI Health/Test</h2>
-    <button id="fastapi-test-btn">Test FastAPI Server</button>
-    <div id="fastapi-test-result" style="margin-top:1rem; font-family:monospace; background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:10px; min-height:32px;"></div>
-</section>
+<!-- FastAPI Health/Test (collapsible section) -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('fastapi-health')">
+        <span>🏥 FastAPI Health/Test</span>
+        <span class="section-toggle" id="fastapi-health-toggle">▶</span>
+    </div>
+    <div class="section-content" id="fastapi-health-content">
+        <button id="fastapi-test-btn">Test FastAPI Server</button>
+        <div id="fastapi-test-result" style="margin-top:1rem; font-family:monospace; background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:10px; min-height:32px;"></div>
+    </div>
+</div>
 <script>
 // Log viewer variables
 let autoRefreshInterval = null;
@@ -766,6 +803,16 @@ async function archiveLogs() {
 
 // Load logs on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize all sections as collapsed by default
+    ['log-viewer', 'api-reference', 'tables', 'fastapi-health'].forEach(sectionId => {
+        const content = document.getElementById(sectionId + '-content');
+        const toggle = document.getElementById(sectionId + '-toggle');
+        if (content && toggle) {
+            content.style.display = 'none';
+            toggle.textContent = '▶';
+        }
+    });
+    
     loadDatabaseLogs();
     
     // Add event listeners for log filters
@@ -786,19 +833,6 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
-}
-
-function toggleApiReference() {
-    const content = document.getElementById('api-content');
-    const toggle = document.querySelector('.api-toggle');
-    
-    if (content.classList.contains('show')) {
-        content.classList.remove('show');
-        toggle.innerHTML = '<strong>📖 API Reference</strong> (click to expand)';
-    } else {
-        content.classList.add('show');
-        toggle.innerHTML = '<strong>📖 API Reference</strong> (click to collapse)';
-    }
 }
 
 async function authFetch(url, options) {
@@ -1122,6 +1156,20 @@ document.getElementById('fastapi-test-btn').addEventListener('click', async func
         btn.textContent = 'Test FastAPI Server';
     }
 });
+
+// Collapsible section toggle function
+function toggleSection(sectionId) {
+    const content = document.getElementById(sectionId + '-content');
+    const toggle = document.getElementById(sectionId + '-toggle');
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+    }
+}
 
 // Fallback toggleLogs function in case logs partial doesn't load
 if (typeof toggleLogs === 'undefined') {
