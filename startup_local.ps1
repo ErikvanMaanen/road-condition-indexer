@@ -17,7 +17,7 @@ if (-not (Test-Path "main.py")) {
 # Show Python version
 python --version
 
-(Get-NetTCPConnection -LocalPort 8000 -ea 0| Select-Object -ExpandProperty OwningProcess)|?{$_ -ne 0}|select-object -unique|%{Stop-Process -Id $_ -Force}
+(Get-NetTCPConnection -LocalPort 8000 -ea 0| Select-Object -ExpandProperty OwningProcess)|Where-Object{$_ -ne 0}|select-object -unique|ForEach-Object{Stop-Process -Id $_ -Force}
 
 # Start FastAPI app
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 65 --access-log --log-level debug

@@ -376,6 +376,12 @@ function directionToCompass(deg) {
 }
 
 function roughnessLabel(r) {
+    // Validate input
+    if (typeof r !== 'number' || isNaN(r)) {
+        console.warn('Invalid roughness value for labeling:', r);
+        return '1'; // Default to first label
+    }
+    
     let min = roughMin;
     let max = roughMax;
     if (max === min) {
@@ -387,12 +393,18 @@ function roughnessLabel(r) {
         }
     }
     const offset = 1;
-    let logMin = Math.log(min + offset);
-    let logMax = Math.log(max + offset);
-    if (logMax === logMin) logMax = logMin + 1;
-    const ratio = (Math.log(r + offset) - logMin) / (logMax - logMin);
-    const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor(ratio * LABEL_COUNT)));
-    return String(idx + 1);
+    
+    try {
+        let logMin = Math.log(min + offset);
+        let logMax = Math.log(max + offset);
+        if (logMax === logMin) logMax = logMin + 1;
+        const ratio = (Math.log(r + offset) - logMin) / (logMax - logMin);
+        const idx = Math.max(0, Math.min(LABEL_COUNT - 1, Math.floor(ratio * LABEL_COUNT)));
+        return String(idx + 1);
+    } catch (error) {
+        console.warn('Error calculating roughness label:', error);
+        return '1'; // Default to first label on error
+    }
 }
 
 function roughnessRange(idx) {
@@ -428,35 +440,77 @@ function updateRoughnessLabels() {
 }
 
 function filterRoughness(r) {
+    // Validate roughness value
+    if (typeof r !== 'number' || isNaN(r)) {
+        console.warn('Invalid roughness value for filtering:', r);
+        return false; // Exclude invalid values
+    }
+    
     const sel = document.getElementById('roughness-filter');
     if (!sel) return true;
     const values = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
     if (values.length === 0) return true;
-    return values.includes(roughnessLabel(r));
+    
+    try {
+        return values.includes(roughnessLabel(r));
+    } catch (error) {
+        console.warn('Error in roughness filtering:', error);
+        return true; // Include on error to avoid losing data
+    }
 }
 
 function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, max = null) {
-    if (!window.map || (lat === 0 && lon === 0)) return;
-    const opts = {
-        color: colorForRoughness(roughness, min, max),
-        radius: 4,
-        weight: 1,
-        opacity: 0.9,
-        fillOpacity: 0.9
-    };
-    const marker = L.circleMarker([lat, lon], opts).addTo(window.map);
-    let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
-    if (nickname) popup = `Device: ${nickname}<br>` + popup;
-    if (info) {
-        const timeStr = formatDutchTime(info.timestamp);
-        popup = `Time: ${timeStr}<br>` +
-                `Speed: ${info.speed.toFixed(1)} km/h<br>` +
-                `Dir: ${directionToCompass(info.direction)}<br>` +
-                `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
-        if (nickname) popup = `Device: ${nickname}<br>` + popup;
+    // Validate inputs
+    if (!window.map) {
+        console.warn('Map not available for addPoint');
+        return null;
     }
-    marker.bindPopup(popup);
-    return marker;
+    
+    if (typeof lat !== 'number' || typeof lon !== 'number' || typeof roughness !== 'number') {
+        console.warn('Invalid coordinates or roughness values:', { lat, lon, roughness });
+        return null;
+    }
+    
+    if (isNaN(lat) || isNaN(lon) || isNaN(roughness)) {
+        console.warn('NaN values detected:', { lat, lon, roughness });
+        return null;
+    }
+    
+    if ((lat === 0 && lon === 0)) {
+        console.warn('Skipping point at origin (0,0)');
+        return null;
+    }
+    
+    try {
+        const opts = {
+            color: colorForRoughness(roughness, min, max),
+            radius: 4,
+            weight: 1,
+            opacity: 0.9,
+            fillOpacity: 0.9
+        };
+        const marker = L.circleMarker([lat, lon], opts).addTo(window.map);
+        let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
+        if (nickname) popup = `Device: ${nickname}<br>` + popup;
+        if (info && info.timestamp) {
+            try {
+                const timeStr = formatDutchTime(info.timestamp);
+                popup = `Time: ${timeStr}<br>` +
+                        `Speed: ${(info.speed || 0).toFixed(1)} km/h<br>` +
+                        `Dir: ${directionToCompass(info.direction)}<br>` +
+                        `Roughness: ${roughnessLabel(info.roughness)} (${info.roughness.toFixed(2)})`;
+                if (nickname) popup = `Device: ${nickname}<br>` + popup;
+            } catch (timeError) {
+                console.warn('Error formatting time for popup:', timeError);
+                // Fall back to basic popup without timestamp
+            }
+        }
+        marker.bindPopup(popup);
+        return marker;
+    } catch (error) {
+        console.error('Error creating map marker:', error);
+        return null;
+    }
 }
 
 async function updateMarkers(showProgress = false) {
@@ -485,7 +539,27 @@ async function updateMarkers(showProgress = false) {
     }
     for (let i = loadedRows.length - 1; i >= 0; i--) {
         const row = loadedRows[i];
+        
+        // Skip invalid rows
+        if (!row || typeof row !== 'object') {
+            console.warn(`Skipping invalid row at index ${i}:`, row);
+            continue;
+        }
+        
+        // Skip rows without required properties
+        if (!row.timestamp || row.latitude === undefined || row.longitude === undefined || row.roughness === undefined) {
+            console.warn(`Skipping incomplete row at index ${i}:`, row);
+            continue;
+        }
+        
         const ts = Date.parse(row.timestamp);
+        
+        // Skip rows with invalid timestamps
+        if (isNaN(ts)) {
+            console.warn(`Skipping row with invalid timestamp at index ${i}:`, row.timestamp);
+            continue;
+        }
+        
         const within = (!isNaN(startVal) ? ts >= startVal : true) &&
                        (!isNaN(endVal) ? ts <= endVal : true) &&
                        filterRoughness(row.roughness);
@@ -493,7 +567,11 @@ async function updateMarkers(showProgress = false) {
             if (!markers[i]) {
                 const name = deviceNicknames[row.device_id] || '';
                 const scale = roughScales[row.device_id] || {min:0,max:1};
-                markers[i] = addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+                const marker = addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+                // Only assign if addPoint successfully created a marker
+                if (marker) {
+                    markers[i] = marker;
+                }
             }
         } else if (markers[i]) {
             window.map.removeLayer(markers[i]);
@@ -525,18 +603,56 @@ function loadData() {
     fetch('/filteredlogs?' + params.toString())
         .then(r => r.json())
         .then(async data => {
+            // Debug logging for data structure
+            console.log('Received data structure:', data);
+            if (data.rows) {
+                console.log('Number of rows received:', data.rows.length);
+                if (data.rows.length > 0) {
+                    console.log('Sample row structure:', data.rows[0]);
+                }
+            }
+            
             markers.forEach(m => { if (m) window.map.removeLayer(m); });
             markers = [];
-            loadedRows = data.rows || [];
+            
+            // Validate and filter the loaded data
+            const rawRows = data.rows || [];
+            loadedRows = rawRows.filter(row => {
+                if (!row || typeof row !== 'object') {
+                    console.warn('Filtering out invalid row:', row);
+                    return false;
+                }
+                if (!row.timestamp || row.latitude === undefined || row.longitude === undefined || row.roughness === undefined) {
+                    console.warn('Filtering out incomplete row:', row);
+                    return false;
+                }
+                if (isNaN(Date.parse(row.timestamp))) {
+                    console.warn('Filtering out row with invalid timestamp:', row.timestamp);
+                    return false;
+                }
+                return true;
+            });
+            
+            // Log if we filtered out any rows
+            if (loadedRows.length !== rawRows.length) {
+                console.warn(`Filtered out ${rawRows.length - loadedRows.length} invalid rows out of ${rawRows.length} total`);
+                if (typeof addLog === 'function') {
+                    addLog(`Filtered out ${rawRows.length - loadedRows.length} invalid rows`, 'Data', 'WARNING');
+                }
+            }
+            
             roughAvg = data.average || 0;
             roughMin = 0;
             roughMax = roughAvg > 0 ? roughAvg * 2 : 1;
             roughScales = {};
             loadedRows.forEach(row => {
-                const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
-                s.min = Math.min(s.min, row.roughness);
-                s.max = Math.max(s.max, row.roughness);
-                roughScales[row.device_id] = s;
+                // Additional safety check for roughScales calculation
+                if (row && row.device_id && typeof row.roughness === 'number') {
+                    const s = roughScales[row.device_id] || {min: row.roughness, max: row.roughness};
+                    s.min = Math.min(s.min, row.roughness);
+                    s.max = Math.max(s.max, row.roughness);
+                    roughScales[row.device_id] = s;
+                }
             });
             updateRoughnessLabels();
             await updateMarkers(true);
@@ -548,9 +664,24 @@ function loadData() {
         })
         .catch(error => {
             console.error('Error loading data:', error);
-            if (typeof addLog === 'function') {
-                addLog(`Error loading data: ${error.message}`, 'Data', 'ERROR');
+            
+            // Reset to safe state on error
+            loadedRows = [];
+            markers.forEach(m => { if (m) window.map.removeLayer(m); });
+            markers = [];
+            
+            // More detailed error logging
+            let errorMessage = error.message || 'Unknown error';
+            if (error.name) {
+                errorMessage = `${error.name}: ${errorMessage}`;
             }
+            
+            if (typeof addLog === 'function') {
+                addLog(`Error loading data: ${errorMessage}`, 'Data', 'ERROR');
+            }
+            
+            // Show user-friendly error message
+            alert(`Failed to load data: ${errorMessage}`);
         })
         .finally(() => {
             // Hide loading indicator
