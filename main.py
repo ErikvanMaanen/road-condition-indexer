@@ -312,6 +312,12 @@ def get_map_partial():
     return FileResponse(BASE_DIR / "static" / "map-partial.html")
 
 
+@app.get("/map-components.js")
+def get_map_components_js():
+    """Serve the map components JavaScript file."""
+    return FileResponse(BASE_DIR / "static" / "map-components.js", media_type="application/javascript")
+
+
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
