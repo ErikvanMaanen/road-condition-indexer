@@ -7,48 +7,176 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="utils.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        #login-box { max-width: 300px; margin: auto; }
-        #log {
-            width: 100%;
-            height: 150px;
-            overflow: auto;
-            border: 1px solid #ccc;
-            margin-bottom: 1rem;
-            white-space: pre;
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        #debug {
+        
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .logo-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+        
+        .logo-title img {
+            height: 3em;
+            margin-right: 0.5em;
+        }
+        
+        .logo-title h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 300;
+        }
+        
+        .login-form {
+            margin-top: 1.5rem;
+        }
+        
+        .login-form h2 {
+            color: #555;
+            margin-bottom: 1.5rem;
+            font-weight: 400;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input {
             width: 100%;
-            height: 150px;
+            padding: 0.75rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 5px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .login-button {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .login-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .login-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .error-message {
+            color: #e74c3c;
             margin-top: 1rem;
+            padding: 0.75rem;
+            background: #ffeaea;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .success-message {
+            color: #27ae60;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #eafaf1;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            display: none;
         }
     </style>
 </head>
 <body>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Login</h1>
-<section id="controls" style="margin-bottom:1rem;">
-<form id="login-form" onsubmit="event.preventDefault(); doLogin();">
-    <div id="login-box">
-        <h2>Please enter password</h2>
-        <input type="password" id="pw" />
-        <button type="submit">Login</button>
+<div class="login-container">
+    <div class="logo-title">
+        <img src="/static/logo.png" alt="Road Condition Indexer Logo">
+        <h1>Road Condition Indexer</h1>
     </div>
-</form>
-</section>
-<section id="logs" style="margin-bottom:1rem;">
-    <h3>Activity Log</h3>
-    <div id="log"></div>
-    <h3>Debug Messages</h3>
-    <textarea id="debug" readonly></textarea>
-</section>
+    
+    <form id="login-form" class="login-form" onsubmit="event.preventDefault(); doLogin();">
+        <h2>Sign In</h2>
+        <div class="form-group">
+            <label for="pw">Password</label>
+            <input type="password" id="pw" required />
+        </div>
+        <button type="submit" class="login-button">Sign In</button>
+        <div id="error-message" class="error-message"></div>
+        <div id="success-message" class="success-message"></div>
+    </form>
+</div>
 <script>
+function showMessage(message, isError = false) {
+    const errorDiv = document.getElementById('error-message');
+    const successDiv = document.getElementById('success-message');
+    
+    // Hide both messages first
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    
+    if (isError) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    } else {
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+    }
+}
+
 async function doLogin() {
     const pw = document.getElementById('pw').value;
     const submitButton = document.querySelector('button[type="submit"]');
     
+    // Hide any previous messages
+    document.getElementById('error-message').style.display = 'none';
+    document.getElementById('success-message').style.display = 'none';
+    
     // Disable button and show loading state
     submitButton.disabled = true;
-    submitButton.textContent = 'Logging in...';
+    submitButton.textContent = 'Signing in...';
     
     try {
         const res = await fetch('/login', {
@@ -60,36 +188,34 @@ async function doLogin() {
         if (res.ok) {
             const params = new URLSearchParams(location.search);
             const next = params.get('next') || '/';
-            addLog('Login successful - redirecting...');
+            showMessage('Login successful! Redirecting...', false);
             
             // Small delay to show success message
             setTimeout(() => {
                 location.href = next;
-            }, 500);
+            }, 1000);
         } else {
             // Handle different error types
             let errorMessage = 'Login failed';
             if (res.status === 401) {
-                errorMessage = 'Wrong password';
+                errorMessage = 'Invalid password. Please try again.';
             } else if (res.status >= 500) {
-                errorMessage = 'Server error. Please try again.';
+                errorMessage = 'Server error. Please try again later.';
             }
             
-            alert(errorMessage);
-            addLog(errorMessage);
+            showMessage(errorMessage, true);
             document.getElementById('pw').value = '';
             document.getElementById('pw').focus();
         }
     } catch (error) {
         // Handle network errors
         console.error('Login error:', error);
-        alert('Network error. Please check your connection and try again.');
-        addLog('Network error during login');
+        showMessage('Network error. Please check your connection and try again.', true);
         document.getElementById('pw').focus();
     } finally {
         // Re-enable button
         submitButton.disabled = false;
-        submitButton.textContent = 'Login';
+        submitButton.textContent = 'Sign In';
     }
 }
 
