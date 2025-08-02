@@ -219,6 +219,20 @@
             border-radius: 3px;
             font-size: 0.9rem;
         }
+        /* Highlight selected values in all selection options */
+        select[multiple] option:checked, select option:checked {
+            background-color: #007cba !important;
+            color: #fff !important;
+        }
+        select:focus option:checked {
+            outline: 2px solid #007cba;
+        }
+        /* Highlight default option (selected on load) */
+        option.selected-default {
+            background-color: #005a8b !important;
+            color: #fff !important;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>

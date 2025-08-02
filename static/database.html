@@ -400,53 +400,6 @@
     <div id="map-container"></div>
 </section>
 
-<section id="filter-time-section" class="collapsible-section">
-    <div class="collapsible-header" onclick="toggleSection('filter-time')">
-        <h3>Time Filter</h3>
-        <span class="collapsible-toggle">▼</span>
-    </div>
-    <div id="filter-time" class="collapsible-content">
-        <div class="time-range-controls">
-            <div class="time-input-group">
-                <label for="startDate">Start Date & Time:</label>
-                <input id="startDate" type="datetime-local">
-            </div>
-            <div class="time-input-group">
-                <label for="endDate">End Date & Time:</label>
-                <input id="endDate" type="datetime-local">
-            </div>
-            <div>
-                <button id="applyTimeRange" style="background: #28a745; color: white; border: none; padding: 0.75rem 1rem; border-radius: 4px; cursor: pointer; white-space: nowrap;">Apply Range</button>
-            </div>
-        </div>
-        
-        <div class="time-range-container">
-            <div class="time-range-slider" id="timeRangeSlider">
-                <div class="time-range-track">
-                    <div class="time-range-fill" id="timeRangeFill"></div>
-                </div>
-                <div class="time-range-handle start" id="startHandle" data-handle="start"></div>
-                <div class="time-range-handle end" id="endHandle" data-handle="end"></div>
-            </div>
-            <div class="time-range-labels">
-                <span id="minTimeLabel">No data</span>
-                <div class="time-range-info" id="rangeInfo">Select time range</div>
-                <span id="maxTimeLabel">available</span>
-            </div>
-        </div>
-        
-        <div class="quick-time-buttons">
-            <button class="quick-time-btn" data-range="today">Today</button>
-            <button class="quick-time-btn" data-range="yesterday">Yesterday</button>
-            <button class="quick-time-btn" data-range="last7days">Last 7 Days</button>
-            <button class="quick-time-btn" data-range="last30days">Last 30 Days</button>
-            <button class="quick-time-btn" data-range="thisweek">This Week</button>
-            <button class="quick-time-btn" data-range="thismonth">This Month</button>
-            <button class="quick-time-btn" data-range="all">All Data</button>
-        </div>
-    </div>
-</section>
-
 <div id="loading">Loading data...</div>
 
 <section id="data-summary-section" class="collapsible-section">
@@ -611,13 +564,15 @@ function setDateRange() {
             sliderMin = Date.parse(data.start);
             sliderMax = Date.parse(data.end);
             
-            // Set date inputs to the full range for the selected devices
-            // Convert UTC timestamps to local time for display
-            document.getElementById('startDate').value = toCESTDateTimeLocal(data.start);
-            document.getElementById('endDate').value = toCESTDateTimeLocal(data.end);
+            // Update the time range slider from map-partial if available
+            if (window.timeRangeSlider && typeof window.timeRangeSlider.setRange === 'function') {
+                window.timeRangeSlider.setRange(sliderMin, sliderMax, sliderMin, sliderMax);
+            }
             
-            // Update the time range slider
-            timeRangeSlider.setRange(sliderMin, sliderMax, sliderMin, sliderMax);
+            // Dispatch data range update event
+            window.dispatchEvent(new CustomEvent('dataRangeUpdated', {
+                detail: { startTime: sliderMin, endTime: sliderMax }
+            }));
             
             // Log the updated range for user feedback
             const deviceText = ids.length === 0 ? 'all devices' : 
@@ -634,20 +589,16 @@ function setDateRange() {
 }
 
 function syncRanges() {
-    updateTimeRangeSlider();
+    // This function is now handled by the map-partial time slider
+    // No need to manually sync ranges as the time slider handles this automatically
+    console.log('syncRanges called - now handled by map-partial time slider');
 }
 
-// Dual Range Slider Implementation
-let timeRangeSlider = {
-    minTime: 0,
-    maxTime: 0,
-    startTime: 0,
-    endTime: 0,
-    isDragging: false,
-    activeHandle: null,
-    isUpdatingInputs: false, // Flag to prevent update loops
-    
-    init() {
+function updateTimeRangeSlider() {
+    // This function is now handled by the map-partial time slider
+    // Time range updates are handled via events from the time slider
+    console.log('updateTimeRangeSlider called - now handled by map-partial time slider');
+}
         const slider = document.getElementById('timeRangeSlider');
         const startHandle = document.getElementById('startHandle');
         const endHandle = document.getElementById('endHandle');
@@ -856,11 +807,16 @@ function updateTimeRangeSlider() {
         // Convert Amsterdam time inputs to UTC timestamps
         const startUtc = Date.parse(fromCESTDateTimeLocal(startVal));
         const endUtc = Date.parse(fromCESTDateTimeLocal(endVal));
-        
-        if (!isNaN(startUtc) && !isNaN(endUtc)) {
-            timeRangeSlider.setRange(sliderMin, sliderMax, startUtc, endUtc);
-        }
-    }
+function syncRanges() {
+    // This function is now handled by the map-partial time slider
+    // No need to manually sync ranges as the time slider handles this automatically
+    console.log('syncRanges called - now handled by map-partial time slider');
+}
+
+function updateTimeRangeSlider() {
+    // This function is now handled by the map-partial time slider
+    // Time range updates are handled via events from the time slider
+    console.log('updateTimeRangeSlider called - now handled by map-partial time slider');
 }
 
 function applyQuickTimeRange(rangeType) {
@@ -939,13 +895,15 @@ function applyQuickTimeRange(rangeType) {
     // Set active state on clicked button
     document.querySelector(`[data-range="${rangeType}"]`).classList.add('active');
     
-    // Update inputs with Amsterdam time for display
-    document.getElementById('startDate').value = toCESTDateTimeLocal(new Date(startUtc).toISOString());
-    document.getElementById('endDate').value = toCESTDateTimeLocal(new Date(endUtc).toISOString());
+    // Update the time range slider from map-partial if available
+    if (window.timeRangeSlider && typeof window.timeRangeSlider.setTimeRange === 'function') {
+        window.timeRangeSlider.setTimeRange(sliderMin, sliderMax, startUtc, endUtc);
+    }
     
-    timeRangeSlider.startTime = startUtc;
-    timeRangeSlider.endTime = endUtc;
-    timeRangeSlider.updateDisplay();
+    // Dispatch time range change event
+    window.dispatchEvent(new CustomEvent('timeRangeChanged', {
+        detail: { startTime: startUtc, endTime: endUtc, rangeType: rangeType }
+    }));
     
     // Load data
     loadData();
@@ -992,12 +950,29 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
 function loadData() {
     const sel = document.getElementById('deviceId');
     const ids = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
-    const start = document.getElementById('startDate').value;
-    const end = document.getElementById('endDate').value;
+    
+    // Get time range from time slider if available, otherwise use fallback
+    let start, end;
+    if (window.timeRangeSlider && window.timeRangeSlider.currentStart && window.timeRangeSlider.currentEnd) {
+        // Convert from timestamp to ISO string for the API
+        start = new Date(window.timeRangeSlider.currentStart).toISOString();
+        end = new Date(window.timeRangeSlider.currentEnd).toISOString();
+    } else {
+        // Fallback to input fields if they exist
+        const startField = document.getElementById('startDate');
+        const endField = document.getElementById('endDate');
+        if (startField && startField.value) {
+            start = fromCESTDateTimeLocal(startField.value);
+        }
+        if (endField && endField.value) {
+            end = fromCESTDateTimeLocal(endField.value);
+        }
+    }
+    
     const params = new URLSearchParams();
     ids.forEach(id => params.append('device_id', id));
-    if (start) params.append('start', fromCESTDateTimeLocal(start));
-    if (end) params.append('end', fromCESTDateTimeLocal(end));
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
     
     document.getElementById('loading').style.display = 'block';
     
@@ -1661,7 +1636,7 @@ window.addEventListener('load', async function() {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
-        // Use centralized map initialization
+        // Use centralized map initialization with map-partial
         const map = await initializeMapWithFallback({
             center: [52.028, 5.168], // Houten, NL
             zoom: 12,
@@ -1678,6 +1653,28 @@ window.addEventListener('load', async function() {
                     loadData();
                 });
             }
+            
+            // Initialize time range slider from map-partial
+            if (typeof initializeTimeRangeSlider === 'function') {
+                initializeTimeRangeSlider();
+            }
+            
+            // Listen for time range changes from the map-partial time slider
+            window.addEventListener('timeRangeChanged', (event) => {
+                console.log('Time range changed in database.html:', event.detail);
+                // Reload data when time range changes from slider
+                loadData();
+            });
+            
+            // Listen for general data range updates
+            window.addEventListener('dataRangeUpdated', (event) => {
+                console.log('Data range updated in database.html:', event.detail);
+                // Update any local state if needed
+                if (event.detail && event.detail.startTime !== undefined && event.detail.endTime !== undefined) {
+                    window.sliderMin = event.detail.startTime;
+                    window.sliderMax = event.detail.endTime;
+                }
+            });
         }
         
         // Initialize page regardless of map status
@@ -1685,15 +1682,11 @@ window.addEventListener('load', async function() {
         
         // Load device list for device management section
         await loadDeviceList();
-        
-        // Initialize the dual range slider
-        timeRangeSlider.init();
     } catch (error) {
         console.error('Failed to initialize page:', error);
         // Fallback initialization
         populateDeviceIds();
         loadDeviceList();
-        timeRangeSlider.init();
     }
 });
 
@@ -1718,22 +1711,7 @@ document.getElementById('deviceId').addEventListener('change', () => {
     });
 });
 
-document.getElementById('startDate').addEventListener('change', () => {
-    timeRangeSlider.setFromDateInputs();
-});
-
-document.getElementById('endDate').addEventListener('change', () => {
-    timeRangeSlider.setFromDateInputs();
-});
-
-document.getElementById('applyTimeRange').addEventListener('click', () => {
-    timeRangeSlider.setFromDateInputs();
-    loadData();
-    // Clear active state from quick buttons
-    document.querySelectorAll('.quick-time-btn').forEach(btn => btn.classList.remove('active'));
-});
-
-// Quick time range buttons
+// Quick time range buttons - these work with the new time slider from map-partial
 document.querySelectorAll('.quick-time-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         const rangeType = e.target.getAttribute('data-range');

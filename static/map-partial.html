@@ -10,19 +10,58 @@
 
 <!-- Roughness Filter Component -->
 <div id="roughness-filter-container" style="margin-bottom: 0.5rem;">
-    <select id="roughness-filter" multiple style="min-width: 120px;">
-        <option value="">[All Roughness]</option>
-        <option value="1">1 - Smooth road</option>
-        <option value="2">2 - Even surface</option>
-        <option value="3">3 - Light texture</option>
-        <option value="4">4 - Coarse texture</option>
-        <option value="5">5 - Moderate roughness</option>
-        <option value="6">6 - Bumpy cobbles</option>
-        <option value="7">7 - Fine gravel</option>
-        <option value="8">8 - Coarse gravel</option>
-        <option value="9">9 - Severely uneven</option>
-        <option value="10">10 - Extremely rough</option>
-    </select>
+    <label for="roughness-range" style="font-size: 0.9rem; margin-right: 0.5rem;">Roughness:</label>
+    <div class="range-filter">
+        <input type="range" id="roughness-min" min="1" max="10" value="1" style="width: 80px;">
+        <span style="margin: 0 0.3rem;">to</span>
+        <input type="range" id="roughness-max" min="1" max="10" value="10" style="width: 80px;">
+        <button id="roughness-reset" type="button" style="margin-left: 0.5rem; padding: 0.2rem 0.4rem; font-size: 0.8rem;">All</button>
+    </div>
+    <div class="range-display">
+        <span id="roughness-display">1-10 (All)</span>
+    </div>
+</div>
+
+<!-- Time Filter Component -->
+<div id="time-filter-container" style="margin-bottom: 1rem;">
+    <div class="time-range-controls">
+        <div class="time-input-group">
+            <label for="startDate">Start Date & Time:</label>
+            <input id="startDate" type="datetime-local">
+        </div>
+        <div class="time-input-group">
+            <label for="endDate">End Date & Time:</label>
+            <input id="endDate" type="datetime-local">
+        </div>
+        <div>
+            <button id="applyTimeRange" class="apply-time-btn">Apply Range</button>
+        </div>
+    </div>
+    
+    <div class="time-range-container">
+        <div class="time-range-slider" id="timeRangeSlider">
+            <div class="time-range-track">
+                <div class="time-range-fill" id="timeRangeFill"></div>
+            </div>
+            <div class="time-range-handle start" id="startHandle" data-handle="start"></div>
+            <div class="time-range-handle end" id="endHandle" data-handle="end"></div>
+        </div>
+        <div class="time-range-labels">
+            <span id="minTimeLabel">No data</span>
+            <div class="time-range-info" id="rangeInfo">Select time range</div>
+            <span id="maxTimeLabel">available</span>
+        </div>
+    </div>
+    
+    <div class="quick-time-buttons">
+        <button class="quick-time-btn" data-range="today">Today</button>
+        <button class="quick-time-btn" data-range="yesterday">Yesterday</button>
+        <button class="quick-time-btn" data-range="last7days">Last 7 Days</button>
+        <button class="quick-time-btn" data-range="last30days">Last 30 Days</button>
+        <button class="quick-time-btn" data-range="thisweek">This Week</button>
+        <button class="quick-time-btn" data-range="thismonth">This Month</button>
+        <button class="quick-time-btn" data-range="all">All Data</button>
+    </div>
 </div>
 
 <script>
@@ -208,14 +247,265 @@ function clearMapData() {
 }
 
 /**
+ * Filter visible markers on the map based on roughness
+ * @param {number} minRoughness - Minimum roughness to show
+ * @param {number} maxRoughness - Maximum roughness to show
+ */
+function filterMapMarkers(minRoughness, maxRoughness) {
+    if (!window.map) {
+        console.log('filterMapMarkers: No map available');
+        return;
+    }
+    
+    console.log('filterMapMarkers called with:', { minRoughness, maxRoughness });
+    
+    let hiddenCount = 0;
+    let visibleCount = 0;
+    
+    // Handle device.html style markers array (indexed array with loadedRows)
+    if (window.markers && Array.isArray(window.markers) && window.loadedRows && Array.isArray(window.loadedRows)) {
+        console.log('Using device.html style filtering with', window.loadedRows.length, 'rows and', window.markers.length, 'markers');
+        
+        for (let i = 0; i < window.loadedRows.length; i++) {
+            const row = window.loadedRows[i];
+            const marker = window.markers[i];
+            
+            if (row && typeof row.roughness === 'number') {
+                const roughness = row.roughness;
+                const shouldShow = roughness >= minRoughness && roughness <= maxRoughness;
+                
+                if (shouldShow) {
+                    if (!marker && row.latitude && row.longitude) {
+                        // Create marker if it doesn't exist and should be shown
+                        const name = window.deviceNicknames?.[row.device_id] || '';
+                        const scale = window.roughScales?.[row.device_id] || {min:0,max:1};
+                        const newMarker = addPoint(row.latitude, row.longitude, row.roughness, row, name, scale.min, scale.max);
+                        if (newMarker) {
+                            window.markers[i] = newMarker;
+                            visibleCount++;
+                        }
+                    } else if (marker && !window.map.hasLayer(marker)) {
+                        // Show existing marker
+                        window.map.addLayer(marker);
+                        visibleCount++;
+                    } else if (marker) {
+                        visibleCount++;
+                    }
+                } else {
+                    if (marker && window.map.hasLayer(marker)) {
+                        // Hide marker
+                        window.map.removeLayer(marker);
+                        hiddenCount++;
+                    } else if (marker) {
+                        hiddenCount++;
+                    }
+                }
+            }
+        }
+    } else {
+        // Handle other pages - filter markers directly on the map
+        window.map.eachLayer(layer => {
+            if (layer instanceof L.CircleMarker && layer.roughnessValue !== undefined) {
+                const roughness = layer.roughnessValue;
+                if (roughness >= minRoughness && roughness <= maxRoughness) {
+                    if (!window.map.hasLayer(layer)) {
+                        window.map.addLayer(layer);
+                    }
+                    layer._isFiltered = false;
+                    visibleCount++;
+                } else {
+                    if (window.map.hasLayer(layer)) {
+                        window.map.removeLayer(layer);
+                    }
+                    layer._isFiltered = true;
+                    hiddenCount++;
+                }
+            }
+        });
+        
+        // Also check stored markers array for other pages
+        if (window.markers && Array.isArray(window.markers)) {
+            window.markers.forEach(marker => {
+                if (marker && marker.roughnessValue !== undefined) {
+                    const roughness = marker.roughnessValue;
+                    if (roughness >= minRoughness && roughness <= maxRoughness) {
+                        if (!window.map.hasLayer(marker)) {
+                            window.map.addLayer(marker);
+                        }
+                        marker._isFiltered = false;
+                        visibleCount++;
+                    } else {
+                        if (window.map.hasLayer(marker)) {
+                            window.map.removeLayer(marker);
+                        }
+                        marker._isFiltered = true;
+                        hiddenCount++;
+                    }
+                }
+            });
+        }
+    }
+    
+    // Log filtering results if logging is available
+    console.log('Filter results:', { visibleCount, hiddenCount });
+    if (typeof addLog === 'function') {
+        addLog(`Filter applied: ${visibleCount} markers visible, ${hiddenCount} hidden`);
+    }
+}
+
+/**
+ * Enhanced clear function that also clears stored markers
+ */
+function clearAllMapData() {
+    if (window.map) {
+        // Clear all markers from map
+        const layersToRemove = [];
+        window.map.eachLayer(layer => {
+            if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+                layersToRemove.push(layer);
+            }
+        });
+        layersToRemove.forEach(layer => window.map.removeLayer(layer));
+        
+        // Clear any stored marker arrays
+        if (window.markers && Array.isArray(window.markers)) {
+            window.markers.length = 0;
+        }
+        if (window.mapMarkers && Array.isArray(window.mapMarkers)) {
+            window.mapMarkers.length = 0;
+        }
+    }
+}
+
+/**
  * Initialize roughness filter functionality
  * @param {Function} onFilterChange - Callback when filter changes
  */
 function initializeRoughnessFilter(onFilterChange) {
-    const filterSelect = document.getElementById('roughness-filter');
-    if (filterSelect && onFilterChange) {
-        filterSelect.addEventListener('change', onFilterChange);
+    const minSlider = document.getElementById('roughness-min');
+    const maxSlider = document.getElementById('roughness-max');
+    const resetBtn = document.getElementById('roughness-reset');
+    const display = document.getElementById('roughness-display');
+    
+    if (minSlider && maxSlider) {
+        const updateFilter = () => {
+            let min = parseInt(minSlider.value);
+            let max = parseInt(maxSlider.value);
+            
+            // Debug logging
+            console.log('Filter update triggered:', { min, max });
+            
+            // Ensure min <= max
+            if (min > max) {
+                if (event.target === minSlider) {
+                    maxSlider.value = min;
+                    max = min;
+                } else {
+                    minSlider.value = max;
+                    min = max;
+                }
+            }
+            
+            // Update display
+            if (min === 1 && max === 10) {
+                display.textContent = '1-10 (All)';
+            } else if (min === max) {
+                display.textContent = `${min}`;
+            } else {
+                display.textContent = `${min}-${max}`;
+            }
+            
+            // Store current filter values globally
+            window.currentRoughnessFilter = { min, max };
+            
+            // Apply filter to existing markers immediately
+            filterMapMarkers(min, max);
+            
+            // Call the filter callback with range
+            if (onFilterChange) {
+                onFilterChange({ min, max });
+            }
+            
+            // Only call heavy update functions if we have no data loaded yet or if specifically requested
+            // This prevents unnecessary full reloads when we can just filter existing markers
+            const hasLoadedData = (window.loadedRows && window.loadedRows.length > 0) || 
+                                  (window.markers && window.markers.length > 0);
+            
+            if (!hasLoadedData) {
+                // Try common map update functions used across different pages
+                if (typeof updateMarkers === 'function') {
+                    updateMarkers();
+                } else if (typeof loadData === 'function') {
+                    loadData();
+                } else if (typeof loadLogs === 'function') {
+                    loadLogs();
+                } else if (typeof loadMapData === 'function') {
+                    loadMapData();
+                } else if (typeof refreshMapData === 'function') {
+                    refreshMapData();
+                }
+            }
+        };
+        
+        const resetFilter = () => {
+            minSlider.value = 1;
+            maxSlider.value = 10;
+            updateFilter();
+        };
+        
+        minSlider.addEventListener('input', updateFilter);
+        maxSlider.addEventListener('input', updateFilter);
+        if (resetBtn) {
+            resetBtn.addEventListener('click', resetFilter);
+        }
+        
+        // Initial update
+        updateFilter();
     }
+}
+
+/**
+ * Get current roughness filter values
+ * @returns {Object} Current filter range {min, max}
+ */
+function getCurrentRoughnessFilter() {
+    return window.currentRoughnessFilter || { min: 1, max: 10 };
+}
+
+/**
+ * Check if a roughness value passes the current filter
+ * @param {number} roughness - Roughness value to check
+ * @returns {boolean} True if value passes filter
+ */
+function passesRoughnessFilter(roughness) {
+    const filter = getCurrentRoughnessFilter();
+    const value = parseInt(roughness);
+    return value >= filter.min && value <= filter.max;
+}
+
+/**
+ * Enhanced marker creation that stores roughness for filtering
+ * @param {L.CircleMarker} marker - The marker to enhance
+ * @param {number} roughness - Roughness value to store
+ * @returns {L.CircleMarker} The enhanced marker
+ */
+function enhanceMarkerForFiltering(marker, roughness) {
+    if (marker && typeof roughness === 'number') {
+        marker.roughnessValue = roughness;
+    }
+    return marker;
+}
+
+/**
+ * Create a map marker with roughness filtering support
+ * @param {Array} coords - [lat, lng] coordinates 
+ * @param {Object} options - Marker options
+ * @param {number} roughness - Roughness value for filtering
+ * @returns {L.CircleMarker} Enhanced marker
+ */
+function createFilterableMarker(coords, options, roughness) {
+    const marker = L.circleMarker(coords, options);
+    return enhanceMarkerForFiltering(marker, roughness);
 }
 
 // Export functions to global scope
@@ -223,7 +513,420 @@ window.initializeStandardMap = initializeStandardMap;
 window.createBicycleMarker = createBicycleMarker;
 window.updateBicycleMarker = updateBicycleMarker;
 window.clearMapData = clearMapData;
+window.clearAllMapData = clearAllMapData;
+window.filterMapMarkers = filterMapMarkers;
 window.initializeRoughnessFilter = initializeRoughnessFilter;
+window.getCurrentRoughnessFilter = getCurrentRoughnessFilter;
+window.passesRoughnessFilter = passesRoughnessFilter;
+window.enhanceMarkerForFiltering = enhanceMarkerForFiltering;
+window.createFilterableMarker = createFilterableMarker;
+
+// Time Range Slider Implementation
+const timeRangeSlider = {
+    slider: null,
+    startHandle: null,
+    endHandle: null,
+    fill: null,
+    minTimeLabel: null,
+    maxTimeLabel: null,
+    rangeInfo: null,
+    startDate: null,
+    endDate: null,
+    applyBtn: null,
+    
+    minTime: null,
+    maxTime: null,
+    currentStart: null,
+    currentEnd: null,
+    
+    isDragging: false,
+    activeHandle: null,
+    
+    init() {
+        console.log('Initializing time range slider...');
+        
+        this.slider = document.getElementById('timeRangeSlider');
+        this.startHandle = document.getElementById('startHandle');
+        this.endHandle = document.getElementById('endHandle');
+        this.fill = document.getElementById('timeRangeFill');
+        this.minTimeLabel = document.getElementById('minTimeLabel');
+        this.maxTimeLabel = document.getElementById('maxTimeLabel');
+        this.rangeInfo = document.getElementById('rangeInfo');
+        this.startDate = document.getElementById('startDate');
+        this.endDate = document.getElementById('endDate');
+        this.applyBtn = document.getElementById('applyTimeRange');
+        
+        if (!this.slider) {
+            console.log('Time range slider elements not found');
+            return;
+        }
+        
+        this.setupEventListeners();
+        this.updateTimeRange();
+    },
+    
+    setupEventListeners() {
+        // Handle dragging
+        this.startHandle.addEventListener('mousedown', (e) => this.startDrag(e, 'start'));
+        this.endHandle.addEventListener('mousedown', (e) => this.startDrag(e, 'end'));
+        
+        // Touch events for mobile
+        this.startHandle.addEventListener('touchstart', (e) => this.startDrag(e, 'start'));
+        this.endHandle.addEventListener('touchstart', (e) => this.startDrag(e, 'end'));
+        
+        // Global mouse/touch events
+        document.addEventListener('mousemove', (e) => this.drag(e));
+        document.addEventListener('mouseup', () => this.endDrag());
+        document.addEventListener('touchmove', (e) => this.drag(e));
+        document.addEventListener('touchend', () => this.endDrag());
+        
+        // Click on slider track
+        this.slider.addEventListener('click', (e) => this.handleTrackClick(e));
+        
+        // Date input changes
+        this.startDate.addEventListener('change', () => this.handleDateInputChange());
+        this.endDate.addEventListener('change', () => this.handleDateInputChange());
+        
+        // Apply button
+        this.applyBtn.addEventListener('click', () => this.applyTimeRange());
+        
+        // Quick time buttons
+        document.querySelectorAll('.quick-time-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.handleQuickTime(e.target.dataset.range));
+        });
+    },
+    
+    startDrag(e, handle) {
+        e.preventDefault();
+        this.isDragging = true;
+        this.activeHandle = handle;
+        
+        const handleElement = handle === 'start' ? this.startHandle : this.endHandle;
+        handleElement.classList.add('active');
+        
+        document.body.style.userSelect = 'none';
+    },
+    
+    drag(e) {
+        if (!this.isDragging || !this.minTime || !this.maxTime) return;
+        
+        e.preventDefault();
+        
+        const rect = this.slider.getBoundingClientRect();
+        const x = (e.clientX || e.touches[0].clientX) - rect.left;
+        const percentage = Math.max(0, Math.min(1, (x - 10) / (rect.width - 20)));
+        
+        const timeRange = this.maxTime - this.minTime;
+        const selectedTime = this.minTime + (percentage * timeRange);
+        
+        if (this.activeHandle === 'start') {
+            this.currentStart = Math.min(selectedTime, this.currentEnd);
+        } else {
+            this.currentEnd = Math.max(selectedTime, this.currentStart);
+        }
+        
+        this.updateVisuals();
+        this.updateDateInputs();
+    },
+    
+    endDrag() {
+        if (!this.isDragging) return;
+        
+        this.isDragging = false;
+        
+        const handleElement = this.activeHandle === 'start' ? this.startHandle : this.endHandle;
+        handleElement.classList.remove('active');
+        
+        this.activeHandle = null;
+        document.body.style.userSelect = '';
+        
+        // Trigger filtering
+        this.applyTimeFilter();
+    },
+    
+    handleTrackClick(e) {
+        if (this.isDragging || !this.minTime || !this.maxTime) return;
+        
+        const rect = this.slider.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(1, (x - 10) / (rect.width - 20)));
+        
+        const timeRange = this.maxTime - this.minTime;
+        const selectedTime = this.minTime + (percentage * timeRange);
+        
+        // Move the closest handle
+        const startDistance = Math.abs(selectedTime - this.currentStart);
+        const endDistance = Math.abs(selectedTime - this.currentEnd);
+        
+        if (startDistance < endDistance) {
+            this.currentStart = Math.min(selectedTime, this.currentEnd);
+        } else {
+            this.currentEnd = Math.max(selectedTime, this.currentStart);
+        }
+        
+        this.updateVisuals();
+        this.updateDateInputs();
+        this.applyTimeFilter();
+    },
+    
+    updateVisuals() {
+        if (!this.minTime || !this.maxTime) return;
+        
+        const timeRange = this.maxTime - this.minTime;
+        const startPercentage = ((this.currentStart - this.minTime) / timeRange) * 100;
+        const endPercentage = ((this.currentEnd - this.minTime) / timeRange) * 100;
+        
+        // Update handle positions
+        this.startHandle.style.left = `${10 + (startPercentage / 100) * (this.slider.offsetWidth - 20)}px`;
+        this.endHandle.style.left = `${10 + (endPercentage / 100) * (this.slider.offsetWidth - 20)}px`;
+        
+        // Update fill
+        this.fill.style.left = `${startPercentage}%`;
+        this.fill.style.width = `${endPercentage - startPercentage}%`;
+        
+        // Update range info
+        const startStr = this.formatDateTime(this.currentStart);
+        const endStr = this.formatDateTime(this.currentEnd);
+        this.rangeInfo.textContent = `${startStr} - ${endStr}`;
+    },
+    
+    updateDateInputs() {
+        if (!this.currentStart || !this.currentEnd) return;
+        
+        const startLocal = this.toAmsterdamTime(this.currentStart);
+        const endLocal = this.toAmsterdamTime(this.currentEnd);
+        
+        this.startDate.value = startLocal.slice(0, 16); // Remove seconds
+        this.endDate.value = endLocal.slice(0, 16);
+    },
+    
+    handleDateInputChange() {
+        const startVal = this.startDate.value;
+        const endVal = this.endDate.value;
+        
+        if (startVal && endVal) {
+            const startTime = this.fromAmsterdamTime(startVal + ':00');
+            const endTime = this.fromAmsterdamTime(endVal + ':00');
+            
+            if (startTime <= endTime && startTime >= this.minTime && endTime <= this.maxTime) {
+                this.currentStart = startTime;
+                this.currentEnd = endTime;
+                this.updateVisuals();
+            }
+        }
+    },
+    
+    applyTimeRange() {
+        this.handleDateInputChange();
+        this.applyTimeFilter();
+    },
+    
+    handleQuickTime(range) {
+        // Remove active class from all buttons
+        document.querySelectorAll('.quick-time-btn').forEach(btn => btn.classList.remove('active'));
+        
+        // Add active class to clicked button
+        event.target.classList.add('active');
+        
+        const now = new Date();
+        const amsterdamNow = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
+        
+        let start, end;
+        
+        switch (range) {
+            case 'today':
+                start = new Date(amsterdamNow);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                end.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'yesterday':
+                start = new Date(amsterdamNow);
+                start.setDate(start.getDate() - 1);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                end.setDate(end.getDate() - 1);
+                end.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'last7days':
+                start = new Date(amsterdamNow);
+                start.setDate(start.getDate() - 7);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                break;
+                
+            case 'last30days':
+                start = new Date(amsterdamNow);
+                start.setDate(start.getDate() - 30);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                break;
+                
+            case 'thisweek':
+                start = new Date(amsterdamNow);
+                const dayOfWeek = start.getDay();
+                const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                start.setDate(start.getDate() - daysFromMonday);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                break;
+                
+            case 'thismonth':
+                start = new Date(amsterdamNow);
+                start.setDate(1);
+                start.setHours(0, 0, 0, 0);
+                end = new Date(amsterdamNow);
+                break;
+                
+            case 'all':
+                if (this.minTime && this.maxTime) {
+                    start = new Date(this.minTime);
+                    end = new Date(this.maxTime);
+                } else {
+                    return;
+                }
+                break;
+                
+            default:
+                return;
+        }
+        
+        // Convert to UTC for internal use
+        this.currentStart = start.getTime();
+        this.currentEnd = end.getTime();
+        
+        this.updateVisuals();
+        this.updateDateInputs();
+        this.applyTimeFilter();
+    },
+    
+    updateTimeRange() {
+        // This function should be called when new data is loaded
+        // For now, we'll set some reasonable defaults
+        console.log('Updating time range...');
+        
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+        
+        this.minTime = yesterday.getTime();
+        this.maxTime = now.getTime();
+        this.currentStart = this.minTime;
+        this.currentEnd = this.maxTime;
+        
+        this.minTimeLabel.textContent = this.formatDateTime(this.minTime);
+        this.maxTimeLabel.textContent = this.formatDateTime(this.maxTime);
+        
+        this.updateVisuals();
+        this.updateDateInputs();
+    },
+    
+    applyTimeFilter() {
+        console.log(`Applying time filter: ${new Date(this.currentStart)} to ${new Date(this.currentEnd)}`);
+        
+        // Call the filtering function if it exists
+        if (typeof window.filterMapMarkers === 'function') {
+            window.filterMapMarkers();
+        }
+        
+        // Trigger custom event for other components
+        window.dispatchEvent(new CustomEvent('timeRangeChanged', {
+            detail: {
+                start: this.currentStart,
+                end: this.currentEnd
+            }
+        }));
+    },
+    
+    formatDateTime(timestamp) {
+        const date = new Date(timestamp);
+        const amsterdam = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
+        
+        const year = amsterdam.getFullYear();
+        const month = String(amsterdam.getMonth() + 1).padStart(2, '0');
+        const day = String(amsterdam.getDate()).padStart(2, '0');
+        const hours = String(amsterdam.getHours()).padStart(2, '0');
+        const minutes = String(amsterdam.getMinutes()).padStart(2, '0');
+        
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
+    },
+    
+    toAmsterdamTime(timestamp) {
+        const date = new Date(timestamp);
+        const amsterdam = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
+        
+        const year = amsterdam.getFullYear();
+        const month = String(amsterdam.getMonth() + 1).padStart(2, '0');
+        const day = String(amsterdam.getDate()).padStart(2, '0');
+        const hours = String(amsterdam.getHours()).padStart(2, '0');
+        const minutes = String(amsterdam.getMinutes()).padStart(2, '0');
+        const seconds = String(amsterdam.getSeconds()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    },
+    
+    fromAmsterdamTime(timeString) {
+        // Parse the local time string and convert to UTC timestamp
+        const localDate = new Date(timeString);
+        
+        // Get the offset for Amsterdam time zone
+        const amsterdamOffset = this.getAmsterdamOffset(localDate);
+        
+        // Subtract the offset to get UTC
+        return localDate.getTime() - (amsterdamOffset * 60 * 1000);
+    },
+    
+    getAmsterdamOffset(date) {
+        // Get the offset for Amsterdam timezone
+        const utc1 = date.getTime() + (date.getTimezoneOffset() * 60000);
+        const utc2 = new Date(utc1 + (3600000 * 1)); // +1 hour for CET
+        
+        // Check if DST is in effect (CEST = +2 hours)
+        const amsterdam = new Date(date.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
+        const utc = new Date(date.toLocaleString("en-US", {timeZone: "UTC"}));
+        
+        return (amsterdam.getTime() - utc.getTime()) / (1000 * 60);
+    },
+    
+    getCurrentTimeRange() {
+        return {
+            start: this.currentStart,
+            end: this.currentEnd
+        };
+    },
+    
+    setTimeRange(minTime, maxTime, currentStart = null, currentEnd = null) {
+        this.minTime = minTime;
+        this.maxTime = maxTime;
+        this.currentStart = currentStart || minTime;
+        this.currentEnd = currentEnd || maxTime;
+        
+        this.minTimeLabel.textContent = this.formatDateTime(this.minTime);
+        this.maxTimeLabel.textContent = this.formatDateTime(this.maxTime);
+        
+        this.updateVisuals();
+        this.updateDateInputs();
+    }
+};
+
+// Initialize time range slider function
+function initializeTimeRangeSlider() {
+    console.log('Initializing time range slider...');
+    
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            timeRangeSlider.init();
+        });
+    } else {
+        timeRangeSlider.init();
+    }
+}
+
+// Export time range functions to global scope
+window.timeRangeSlider = timeRangeSlider;
+window.initializeTimeRangeSlider = initializeTimeRangeSlider;
 </script>
 
 <style>
@@ -287,14 +990,42 @@ window.initializeRoughnessFilter = initializeRoughnessFilter;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
+    font-size: 0.9rem;
 }
 
-#roughness-filter {
-    padding: 0.25rem;
+.range-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.range-display {
+    font-weight: bold;
+    color: #333;
+    font-size: 0.85rem;
+    min-width: 60px;
+}
+
+#roughness-min, #roughness-max {
+    width: 80px;
+    height: 20px;
+    cursor: pointer;
+}
+
+#roughness-reset {
+    background: #f0f0f0;
     border: 1px solid #ccc;
     border-radius: 3px;
-    background: white;
-    min-width: 120px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#roughness-reset:hover {
+    background: #e0e0e0;
+}
+
+#roughness-reset:active {
+    background: #d0d0d0;
 }
 
 /* Bicycle marker animation */
@@ -317,6 +1048,149 @@ window.initializeRoughnessFilter = initializeRoughnessFilter;
     }
 }
 
+/* Time Range Slider Styles */
+.time-range-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: end;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.time-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.time-input-group label {
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.time-input-group input {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.apply-time-btn {
+    padding: 0.5rem 1rem;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.apply-time-btn:hover {
+    background-color: #0056b3;
+}
+
+.time-range-container {
+    margin: 1rem 0;
+}
+
+.time-range-slider {
+    position: relative;
+    height: 40px;
+    margin: 1rem 0;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.time-range-track {
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    right: 10px;
+    height: 8px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    transform: translateY(-50%);
+}
+
+.time-range-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    border-radius: 4px;
+    transition: all 0.1s ease;
+}
+
+.time-range-handle {
+    position: absolute;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    background-color: #007bff;
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: grab;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: all 0.1s ease;
+    z-index: 2;
+}
+
+.time-range-handle:hover, .time-range-handle.active {
+    background-color: #0056b3;
+    transform: translate(-50%, -50%) scale(1.1);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.time-range-handle:active {
+    cursor: grabbing;
+}
+
+.time-range-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.5rem;
+}
+
+.time-range-info {
+    font-weight: bold;
+    color: #333;
+    background-color: #f8f9fa;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
+.quick-time-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.quick-time-btn {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #ddd;
+    background-color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+}
+
+.quick-time-btn:hover {
+    background-color: #f8f9fa;
+    border-color: #007bff;
+}
+
+.quick-time-btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     #map {
@@ -326,10 +1200,16 @@ window.initializeRoughnessFilter = initializeRoughnessFilter;
     #roughness-filter-container {
         flex-direction: column;
         align-items: flex-start;
+        gap: 0.3rem;
     }
     
-    #roughness-filter {
-        min-width: 100%;
+    .range-filter {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    #roughness-min, #roughness-max {
+        width: 60px;
     }
 }
 </style>

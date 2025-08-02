@@ -391,6 +391,9 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
         fillOpacity: 0.8
     });
 
+    // Store roughness value for filtering
+    marker.roughnessValue = roughness;
+
     let popup = `Roughness: ${roughnessLabel(roughness)} (${(roughness || 0).toFixed(2)})`;
     if (info) {
         const timeStr = formatDutchTime(info.timestamp);
@@ -404,11 +407,20 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
     }
 
     marker.bindPopup(popup);
-    marker.addTo(window.map);
+    
+    // Check if marker passes current filter before adding to map
+    if (typeof passesRoughnessFilter === 'function' && !passesRoughnessFilter(roughness)) {
+        // Don't add to map, but store it for potential filtering later
+        marker._isFiltered = true;
+    } else {
+        marker.addTo(window.map);
+    }
     
     if (window.markers) {
         window.markers.push(marker);
     }
+    
+    return marker;
 }
 
 // ============================================================================

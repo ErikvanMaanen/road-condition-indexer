@@ -13,10 +13,7 @@
         #controls { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
         button { padding: 0.5rem 1rem; font-size: 1rem; }
         #controls input { margin-right: 0.5rem; }
-        #range-container { position:relative; height:30px; }
-        #range-container input { position:absolute; left:0; right:0; width:100%; }
-        #startRange { z-index:2; }
-        #endRange { z-index:1; }
+
         #log {
             width: 100%;
             height: 150px;
@@ -29,6 +26,20 @@
             width: 100%;
             height: 150px;
             margin-top: 1rem;
+        }
+        /* Highlight selected values in all selection options */
+        select[multiple] option:checked, select option:checked {
+            background-color: #007cba !important;
+            color: #fff !important;
+        }
+        select:focus option:checked {
+            outline: 2px solid #007cba;
+        }
+        /* Highlight default option (selected on load) */
+        option.selected-default {
+            background-color: #005a8b !important;
+            color: #fff !important;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -62,14 +73,6 @@ maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 <!-- Include standardized map component -->
 <div id="map-container"></div>
 
-<section id="filter-time" style="margin-bottom:1rem;">
-    <input id="startDate" type="datetime-local">
-    <input id="endDate" type="datetime-local">
-    <div id="range-container" style="flex-basis:100%; position:relative; height:30px;">
-        <input id="startRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
-        <input id="endRange" type="range" style="position:absolute;left:0;right:0;width:100%;">
-    </div>
-</section>
 <section id="controls" style="margin-bottom:1rem;">
     <button id="gpx-button">Generate GPX</button>
     <button id="refresh-button">Refresh Data</button>
@@ -123,6 +126,7 @@ function populateDeviceIds() {
     fetch('/device_ids').then(r => r.json()).then(data => {
         const sel = document.getElementById('deviceId');
         sel.innerHTML = '';
+        // Only show [All Devices] if explicitly requested, otherwise default to current user's device
         const optAll = document.createElement('option');
         optAll.value = '';
         optAll.textContent = '[All Devices]';
@@ -141,10 +145,29 @@ function populateDeviceIds() {
             opt.textContent = currentDeviceId;
             sel.appendChild(opt);
         }
-        Array.from(sel.options).forEach(o => {
-            if (selectedIds.includes(o.value)) o.selected = true;
-        });
-        selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+        // Default selection: current user's device only
+        if (currentDeviceId) {
+            Array.from(sel.options).forEach(o => {
+                o.selected = (o.value === currentDeviceId);
+                if (o.value === currentDeviceId) {
+                    o.classList.add('selected-default');
+                } else {
+                    o.classList.remove('selected-default');
+                }
+            });
+            selectedIds = [currentDeviceId];
+        } else {
+            // Fallback: select all if no current device
+            Array.from(sel.options).forEach(o => {
+                if (selectedIds.includes(o.value)) o.selected = true;
+                if (selectedIds.includes(o.value)) {
+                    o.classList.add('selected-default');
+                } else {
+                    o.classList.remove('selected-default');
+                }
+            });
+            selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+        }
     }).then(() =>
         setDateRange().then(() => {
             loadData();
@@ -170,25 +193,40 @@ function setDateRange() {
         }
         document.getElementById('endDate').value = toCESTDateTimeLocal(pageRefreshTime);
         sliderMax = pageRefreshTime;
+        
+        // Update time slider with data range
+        if (window.timeRangeSlider && sliderMin && sliderMax) {
+            window.timeRangeSlider.setTimeRange(sliderMin, sliderMax, sliderMin, sliderMax);
+        }
+        
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('dataRangeUpdated', {
+            detail: {
+                minTime: sliderMin,
+                maxTime: sliderMax,
+                start: data.start,
+                end: pageRefreshTime
+            }
+        }));
+        
         syncRanges();
     }).catch(console.error);
 }
 
 function syncRanges() {
-    const startVal = document.getElementById('startDate').value;
-    const endVal = document.getElementById('endDate').value;
-    
-    if (startVal && endVal) {
-        // Convert Amsterdam time inputs to UTC timestamps for slider
-        const startUtc = Date.parse(fromCESTDateTimeLocal(startVal));
-        const endUtc = Date.parse(fromCESTDateTimeLocal(endVal));
+    // Legacy function - time controls are now handled by map-partial time slider
+    // This function is kept for compatibility but delegates to the new system
+    if (typeof window.timeRangeSlider !== 'undefined' && window.timeRangeSlider.setTimeRange) {
+        const startVal = document.getElementById('startDate')?.value;
+        const endVal = document.getElementById('endDate')?.value;
         
-        if (!isNaN(startUtc) && !isNaN(endUtc)) {
-            const startR = document.getElementById('startRange');
-            const endR = document.getElementById('endRange');
-            startR.min = sliderMin; startR.max = sliderMax;
-            endR.min = sliderMin; endR.max = sliderMax;
-            startR.value = startUtc; endR.value = endUtc;
+        if (startVal && endVal) {
+            const startTime = Date.parse(fromCESTDateTimeLocal(startVal));
+            const endTime = Date.parse(fromCESTDateTimeLocal(endVal));
+            
+            if (!isNaN(startTime) && !isNaN(endTime) && window.sliderMin && window.sliderMax) {
+                window.timeRangeSlider.setTimeRange(window.sliderMin, window.sliderMax, startTime, endTime);
+            }
         }
     }
 }
@@ -205,6 +243,23 @@ function initMap() {
     // Initialize roughness filter
     initializeRoughnessFilter(() => {
         updateMarkers();
+    });
+    
+    // Initialize time range slider
+    initializeTimeRangeSlider();
+    
+    // Listen for time range changes from the map-partial time slider
+    window.addEventListener('timeRangeChanged', (event) => {
+        console.log('Time range changed:', event.detail);
+        updateMarkers();
+    });
+    
+    // Update time slider when data range is loaded
+    window.addEventListener('dataRangeUpdated', (event) => {
+        if (window.timeRangeSlider && event.detail) {
+            const { minTime, maxTime } = event.detail;
+            window.timeRangeSlider.setTimeRange(minTime, maxTime);
+        }
     });
 }
 
@@ -446,6 +501,12 @@ function filterRoughness(r) {
         return false; // Exclude invalid values
     }
     
+    // Use the new range slider filter if available
+    if (typeof passesRoughnessFilter === 'function') {
+        return passesRoughnessFilter(r);
+    }
+    
+    // Fallback to old dropdown filter if range sliders not available
     const sel = document.getElementById('roughness-filter');
     if (!sel) return true;
     const values = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
@@ -490,6 +551,10 @@ function addPoint(lat, lon, roughness, info = null, nickname = '', min = null, m
             fillOpacity: 0.9
         };
         const marker = L.circleMarker([lat, lon], opts).addTo(window.map);
+        
+        // Store roughness value for filtering
+        marker.roughnessValue = roughness;
+        
         let popup = `Roughness: ${roughnessLabel(roughness)} (${roughness.toFixed(2)})`;
         if (nickname) popup = `Device: ${nickname}<br>` + popup;
         if (info && info.timestamp) {
@@ -521,11 +586,20 @@ async function updateMarkers(showProgress = false) {
         return; // Don't try to update markers if we don't have data
     }
 
-    // Convert Amsterdam time inputs to UTC for comparison
-    const startInput = document.getElementById('startDate').value;
-    const endInput = document.getElementById('endDate').value;
-    const startVal = startInput ? Date.parse(fromCESTDateTimeLocal(startInput)) : NaN;
-    const endVal = endInput ? Date.parse(fromCESTDateTimeLocal(endInput)) : NaN;
+    // Get time range - prefer time slider values if available, fall back to input fields
+    let startVal, endVal;
+    
+    if (window.timeRangeSlider && window.timeRangeSlider.getCurrentTimeRange) {
+        const timeRange = window.timeRangeSlider.getCurrentTimeRange();
+        startVal = timeRange.start;
+        endVal = timeRange.end;
+    } else {
+        // Fallback to input fields
+        const startInput = document.getElementById('startDate').value;
+        const endInput = document.getElementById('endDate').value;
+        startVal = startInput ? Date.parse(fromCESTDateTimeLocal(startInput)) : NaN;
+        endVal = endInput ? Date.parse(fromCESTDateTimeLocal(endInput)) : NaN;
+    }
     
     const loadBox = document.getElementById('loading');
     const prog = document.getElementById('load-progress');
@@ -952,23 +1026,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateMarkers();
     });
     
-    document.getElementById('startRange').addEventListener('input', () => {
-        sliderUpdating = true;
-        const v = parseInt(document.getElementById('startRange').value, 10);
-        document.getElementById('startDate').value = toCESTDateTimeLocal(v);
-        syncRanges();
-        updateMarkers();
-        sliderUpdating = false;
-    });
-    
-    document.getElementById('endRange').addEventListener('input', () => {
-        sliderUpdating = true;
-        const v = parseInt(document.getElementById('endRange').value, 10);
-        document.getElementById('endDate').value = toCESTDateTimeLocal(v);
-        syncRanges();
-        updateMarkers();
-        sliderUpdating = false;
-    });
+    // Legacy range inputs removed - using map-partial time slider instead
 
     // Rename functionality
     document.getElementById('rename-button').addEventListener('click', () => {
