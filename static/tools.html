@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tools</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="utils.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
+        #page-links { margin-bottom: 1rem; }
+        .section { border: 1px solid #ddd; border-radius: 4px; margin: 20px 0; background: #f9f9f9; }
+        .section-header { padding: 8px 12px; background: #e9e9e9; border-bottom: 1px solid #ddd; cursor: pointer; font-weight: bold; display: flex; justify-content: space-between; align-items: center; font-size: 1.1em; color: #007cba; }
+        .section-header:hover { background: #ddd; }
+        .section-content { padding: 12px; display: none; }
+        .section-toggle { font-family: monospace; font-size: 1.2em; }
+        #drop-zone { border: 2px dashed #007cba; padding: 20px; text-align: center; border-radius: 4px; margin-bottom: 10px; }
+        #drop-zone.hover { background: #e0f0ff; }
+        #file-input { margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<nav id="page-links">
+    <a href="/">Main</a> |
+    <a href="device.html">Device View</a> |
+    <a href="database.html">Database Management</a> |
+    <a href="maintenance.html">Maintenance</a>
+</nav>
+
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Tools</h1>
+
+<!-- Calendar Viewer Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('cal-viewer')">
+        <span>📅 Calendar Viewer</span>
+        <span class="section-toggle" id="cal-viewer-toggle">▶</span>
+    </div>
+    <div class="section-content" id="cal-viewer-content">
+        <div id="drop-zone">
+            Drag & drop .cal file here or
+            <br>
+            <input type="file" id="file-input" accept=".cal,.ics">
+            <br>
+            <button id="open-btn" disabled>Open</button>
+        </div>
+        <div id="calendar-table"></div>
+    </div>
+</div>
+
+<script>
+function toggleSection(sectionId) {
+    const content = document.getElementById(sectionId + '-content');
+    const toggle = document.getElementById(sectionId + '-toggle');
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+    }
+}
+
+let selectedFile = null;
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const openBtn = document.getElementById('open-btn');
+
+['dragenter','dragover'].forEach(name => {
+    dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.add('hover'); });
+});
+['dragleave','drop'].forEach(name => {
+    dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.remove('hover'); });
+});
+dropZone.addEventListener('drop', e => {
+    selectedFile = e.dataTransfer.files[0];
+    fileInput.files = e.dataTransfer.files;
+    openBtn.disabled = !selectedFile;
+});
+fileInput.addEventListener('change', e => {
+    selectedFile = e.target.files[0];
+    openBtn.disabled = !selectedFile;
+});
+
+openBtn.addEventListener('click', () => {
+    if (!selectedFile) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        const events = parseICS(e.target.result);
+        renderTable(events);
+    };
+    reader.readAsText(selectedFile);
+});
+
+function parseICS(text) {
+    const lines = text.split(/\r?\n/);
+    const events = [];
+    let event = null;
+    lines.forEach(line => {
+        if (line === 'BEGIN:VEVENT') {
+            event = {};
+        } else if (line === 'END:VEVENT') {
+            if (event) events.push(event);
+            event = null;
+        } else if (event) {
+            const [key, ...valueParts] = line.split(':');
+            const value = valueParts.join(':');
+            if (key.startsWith('DTSTART')) event.start = value;
+            else if (key.startsWith('DTEND')) event.end = value;
+            else if (key === 'SUMMARY') event.summary = value;
+        }
+    });
+    return events;
+}
+
+function formatDate(str) {
+    if (!str) return '';
+    let s = str.trim();
+    if (s.length >= 8 && !s.includes('-')) {
+        const yyyy = s.slice(0,4);
+        const mm = s.slice(4,6);
+        const dd = s.slice(6,8);
+        if (s.length > 8) {
+            const hh = s.slice(9,11);
+            const mi = s.slice(11,13);
+            const ss = s.slice(13,15);
+            const dt = new Date(Date.UTC(yyyy, mm-1, dd, hh, mi, ss));
+            return dt.toLocaleString();
+        }
+        return new Date(`${yyyy}-${mm}-${dd}`).toLocaleDateString();
+    }
+    return s;
+}
+
+function renderTable(events) {
+    const container = document.getElementById('calendar-table');
+    if (!events.length) {
+        container.innerHTML = '<p>No events found.</p>';
+        return;
+    }
+    let html = '<table id="events-table" class="display"><thead><tr><th>Start</th><th>End</th><th>Summary</th></tr></thead><tbody>';
+    events.forEach(ev => {
+        html += `<tr><td>${formatDate(ev.start)}</td><td>${formatDate(ev.end)}</td><td>${ev.summary || ''}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    $('#events-table').DataTable();
+}
+</script>
+
+</body>
+</html>
+
