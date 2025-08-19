@@ -350,6 +350,14 @@ def read_database(request: Request):
     return FileResponse(BASE_DIR / "static" / "database.html")
 
 
+@app.get("/tools.html")
+def read_tools(request: Request):
+    """Serve the tools page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/tools.html")
+    return FileResponse(BASE_DIR / "static" / "tools.html")
+
+
 @app.get("/logs-partial.html")
 def read_logs_partial(request: Request):
     """Serve the logs partial file."""
