@@ -18,6 +18,11 @@ This is a FastAPI-based application that collects road roughness data from mobil
 - **Database View**: `static/database.html` - Database query interface
 - **Maintenance**: `static/maintenance.html` - Admin tools and API documentation
 - **Login**: `static/login.html` - Authentication interface
+- **Tools**: `static/tools.html` - Utility tools for data processing and analysis
+
+**Static File Guidelines**: When adding new frontend features, follow the patterns in 
+[`STATIC_FILES_GUIDE.md`](STATIC_FILES_GUIDE.md) to ensure proper static file handling 
+and avoid CORB/loading issues.
 
 ### Key Dependencies
 - **Core**: FastAPI, uvicorn, SQLAlchemy, pymssql, numpy, scipy, python-dotenv

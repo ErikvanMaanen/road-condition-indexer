@@ -114,6 +114,10 @@ The built-in frontend is served from the `static/` directory under the
 available at `/`, and you can still visit `/welcome.html` for a simple
 welcome page.
 
+**Important:** When adding new features that require static files (CSS, JS, images), 
+please follow the guidelines in [`STATIC_FILES_GUIDE.md`](STATIC_FILES_GUIDE.md) to 
+ensure proper loading and avoid CORB issues.
+
 The `/maintenance.html` page provides controls to inspect the current database
 and Azure App Service plan settings and lets you modify these configurations.
 
