@@ -250,3 +250,144 @@ If you find existing files using relative paths:
 7. **Keep consistent** URL patterns across all HTML files
 
 Following these guidelines will prevent static file loading issues and maintain consistency across the application.
+
+## 🚀 Deployment and Production
+
+### GitHub Actions Deployment
+
+The GitHub Actions workflow (`.github/workflows/main_rci-nl.yml`) has been updated to automatically download static dependencies during deployment:
+
+```yaml
+- name: Package app
+  run: |
+    python -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    
+    # Download static dependencies
+    echo "📦 Downloading static dependencies..."
+    mkdir -p static/vendor/jquery
+    mkdir -p static/vendor/datatables
+    mkdir -p static/vendor/jsoneditor
+    
+    # Download jQuery
+    curl -o static/vendor/jquery/jquery-3.7.1.min.js https://code.jquery.com/jquery-3.7.1.min.js
+    
+    # Download DataTables
+    curl -o static/vendor/datatables/jquery.dataTables.min.css https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css
+    curl -o static/vendor/datatables/jquery.dataTables.min.js https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js
+    
+    # Download JSON Editor
+    curl -o static/vendor/jsoneditor/jsoneditor.min.css https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.css
+    curl -o static/vendor/jsoneditor/jsoneditor.min.js https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.js
+    
+    # Verify downloads
+    echo "✅ Verifying static dependencies..."
+    ls -la static/vendor/jquery/
+    ls -la static/vendor/datatables/
+    ls -la static/vendor/jsoneditor/
+    
+    zip -r release.zip . -x 'venv/**'
+```
+
+This ensures all vendor files are available in the deployment package.
+
+### Manual Deployment
+
+For manual deployments using Azure CLI:
+
+```bash
+# 1. Download dependencies
+./startup_local.ps1
+
+# 2. Create deployment package (excluding venv and __pycache__)
+zip -r deployment.zip . -x 'venv/**' '__pycache__/**'
+
+# 3. Deploy to Azure
+az webapp deployment source config-zip \
+  --resource-group your-resource-group \
+  --name your-app-name \
+  --src deployment.zip
+```
+
+### Production Verification
+
+After deployment, verify static files are accessible:
+
+```bash
+# Check vendor files
+curl -I https://your-app.azurewebsites.net/static/vendor/jquery/jquery-3.7.1.min.js
+curl -I https://your-app.azurewebsites.net/static/vendor/datatables/jquery.dataTables.min.css
+curl -I https://your-app.azurewebsites.net/static/vendor/jsoneditor/jsoneditor.min.js
+
+# Check custom files
+curl -I https://your-app.azurewebsites.net/static/lib/simple-json-diff.js
+curl -I https://your-app.azurewebsites.net/static/lib/simple-json-diff.css
+```
+
+Expected response: `200 OK` for all files.
+
+### Deployment Troubleshooting
+
+#### 404 Errors for Static Files
+
+**Symptoms:**
+- Browser console shows 404 errors for `/static/vendor/` files
+- Tools page loads but lacks styling/functionality
+
+**Causes:**
+- Static dependencies not downloaded during deployment
+- `.gitignore` excludes vendor files from repository
+
+**Solutions:**
+1. **GitHub Actions:** Ensure the updated workflow runs successfully
+2. **Manual Deployment:** Run `startup_local.ps1` before creating deployment package
+3. **Azure App Service:** Check "Deployment Center" → "Logs" for build errors
+
+#### Missing Static File Structure
+
+**Symptoms:**
+- Entire `/static/` directory returns 404
+- FastAPI serves API but not static content
+
+**Causes:**
+- Azure startup script not running
+- `azure_startup.sh` permissions issue
+
+**Solutions:**
+1. Check Azure startup command: `azure_startup.sh`
+2. Verify script permissions in deployment logs
+3. Manually test script: `chmod +x azure_startup.sh && ./azure_startup.sh`
+
+#### Local Development Issues
+
+**Symptoms:**
+- Static files work in production but fail locally
+- Relative path errors in development
+
+**Causes:**
+- Development server path configuration
+- Local file permissions
+
+**Solutions:**
+1. Run `startup_local.ps1` to download dependencies
+2. Verify FastAPI static mount configuration in `main.py`
+3. Check local permissions: `ls -la static/vendor/`
+
+### Deployment Best Practices
+
+1. **Always use absolute paths** (`/static/...`) in HTML files
+2. **Run dependency download scripts** before deployment
+3. **Verify static file structure** with provided scripts
+4. **Test locally** before pushing to production
+5. **Monitor deployment logs** for download failures
+
+### Version Updates
+
+When updating third-party library versions:
+
+1. Update URLs in `startup_local.ps1`
+2. Update URLs in GitHub Actions workflow
+3. Update version references in HTML files
+4. Test locally before deploying
+5. Update this documentation with new versions

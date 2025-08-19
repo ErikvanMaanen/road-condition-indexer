@@ -1,5 +1,12 @@
 # Deployment Guide
 
+## Quick Links
+- 📋 [Static Files & Dependencies Guide](STATIC_FILES_GUIDE.md) - **Essential for production deployments**
+- 🔧 [Troubleshooting Guide](TROUBLESHOOTING.md)
+- 🖥️ [Development Setup](DEVELOPMENT.md)
+
+> ⚠️ **Important:** Read the [Static Files Guide](STATIC_FILES_GUIDE.md) before deploying to avoid 404 errors with vendor libraries.
+
 ## Azure App Service Deployment
 
 ### Prerequisites

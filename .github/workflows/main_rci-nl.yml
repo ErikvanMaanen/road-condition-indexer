@@ -22,6 +22,30 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           pip install -r requirements.txt
+          
+          # Download static dependencies
+          echo "📦 Downloading static dependencies..."
+          mkdir -p static/vendor/jquery
+          mkdir -p static/vendor/datatables
+          mkdir -p static/vendor/jsoneditor
+          
+          # Download jQuery
+          curl -o static/vendor/jquery/jquery-3.7.1.min.js https://code.jquery.com/jquery-3.7.1.min.js
+          
+          # Download DataTables
+          curl -o static/vendor/datatables/jquery.dataTables.min.css https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css
+          curl -o static/vendor/datatables/jquery.dataTables.min.js https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js
+          
+          # Download JSON Editor
+          curl -o static/vendor/jsoneditor/jsoneditor.min.css https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.css
+          curl -o static/vendor/jsoneditor/jsoneditor.min.js https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.js
+          
+          # Verify downloads
+          echo "✅ Verifying static dependencies..."
+          ls -la static/vendor/jquery/
+          ls -la static/vendor/datatables/
+          ls -la static/vendor/jsoneditor/
+          
           zip -r release.zip . -x 'venv/**'
 
       - uses: actions/upload-artifact@v4
