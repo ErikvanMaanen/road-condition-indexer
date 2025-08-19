@@ -161,9 +161,9 @@ function renderTable(events) {
         container.innerHTML = '<p>No events found.</p>';
         return;
     }
-    let html = '<table id="events-table" class="display"><thead><tr><th>NAME</th><th>DTSTART</th><th>DTEND</th><th>SUMMARY</th><th>location</th><th>status</th><th>DTSTAMP</th></tr></thead><tbody>';
+    let html = '<table id="events-table" class="display"><thead><tr><th>DTSTART</th><th>DTEND</th><th>SUMMARY</th><th>location</th><th>status</th><th>DTSTAMP</th></tr></thead><tbody>';
     events.forEach(ev => {
-        html += `<tr><td>${ev.name || ''}</td><td>${formatDate(ev.dtstart)}</td><td>${formatDate(ev.dtend)}</td><td>${ev.summary || ''}</td><td>${ev.location || ''}</td><td>${ev.status || ''}</td><td>${formatDate(ev.dtstamp)}</td></tr>`;
+        html += `<tr><td>${formatDate(ev.dtstart)}</td><td>${formatDate(ev.dtend)}</td><td>${ev.summary || ''}</td><td>${ev.location || ''}</td><td>${ev.status || ''}</td><td>${formatDate(ev.dtstamp)}</td></tr>`;
     });
     html += '</tbody></table>';
     container.innerHTML = html;
