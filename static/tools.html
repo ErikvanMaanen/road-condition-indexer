@@ -488,13 +488,26 @@ jsonCompareBtn.addEventListener('click', () => {
     }
     if (mode === 'differences') {
         try {
-            const delta = window.jsondiffpatch.diff(pa.value, pb.value);
+            // Ensure diff library is available
+            if (!window.jsondiffpatch) {
+                alert('Diff library failed to load. Please check your network connection and reload the page.');
+                return;
+            }
+            // Create an instance if available, otherwise use global
+            const diffpatch = (typeof window.jsondiffpatch.create === 'function')
+                ? window.jsondiffpatch.create({ arrays: { detectMove: true }, textDiff: { minLength: 60 } })
+                : window.jsondiffpatch;
+            const delta = diffpatch.diff(pa.value, pb.value);
             if (!delta) {
                 jsonCompareResult.innerHTML = '<em>No differences.</em>';
             } else {
-                const html = window.jsondiffpatch.formatters.html.format(delta, pa.value);
-                jsonCompareResult.innerHTML = html;
-                // Optionally, make unchanged context minimal
+                const formatter = window.jsondiffpatch.formatters && window.jsondiffpatch.formatters.html;
+                if (formatter && typeof formatter.format === 'function') {
+                    const html = formatter.format(delta, pa.value);
+                    jsonCompareResult.innerHTML = html;
+                } else {
+                    jsonCompareResult.innerHTML = '<pre style="margin:0;">' + (JSON.stringify(delta, null, 2)) + '</pre>';
+                }
             }
         } catch (e) {
             console.error(e);
