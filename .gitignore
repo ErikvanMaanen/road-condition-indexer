@@ -28,5 +28,4 @@ static/vendor/
 
 # Allow specific lib files but ignore others
 static/lib/*
-!static/lib/simple-json-diff.*
 !static/lib/README.md
