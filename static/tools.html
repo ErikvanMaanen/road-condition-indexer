@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.css">
+    <script src="https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/jsondiffpatch/dist/formatters-styles/html.css">
+    <script src="https://unpkg.com/jsondiffpatch/dist/jsondiffpatch.umd.js"></script>
+    <script src="https://unpkg.com/jsondiffpatch/dist/formatters/html.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
         #page-links { margin-bottom: 1rem; }
@@ -20,6 +25,15 @@
         #drop-zone { border: 2px dashed #007cba; padding: 20px; text-align: center; border-radius: 4px; margin-bottom: 10px; }
         #drop-zone.hover { background: #e0f0ff; }
         #file-input { margin-top: 10px; }
+        #json-drop-zone { border: 2px dashed #007cba; padding: 20px; text-align: center; border-radius: 4px; margin-bottom: 10px; }
+        #json-drop-zone.hover { background: #e0f0ff; }
+        #json-editor { border: 1px solid #ddd; border-radius: 4px; height: 420px; margin-top: 10px; }
+        .compare-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+        .json-col h4 { margin: 0 0 .25rem 0; color:#495057; }
+        .json-drop { border: 2px dashed #007cba; padding: 12px; text-align:center; border-radius: 4px; margin-bottom: 8px; }
+        .json-drop.hover { background:#e0f0ff; }
+        .result-box { margin-top: 10px; border:1px solid #ddd; border-radius:4px; padding:10px; background:#fff; overflow:auto; max-height:480px; }
+        .mode-group label { margin-right: .75rem; }
     </style>
 </head>
 <body>
@@ -65,6 +79,66 @@
             <thead><tr><th>Character</th><th>ASCII Code</th></tr></thead>
             <tbody></tbody>
         </table>
+    </div>
+</div>
+
+<!-- JSON Editor Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('json-editor')">
+        <span>🧩 JSON Editor</span>
+        <span class="section-toggle" id="json-editor-toggle">▶</span>
+    </div>
+    <div class="section-content" id="json-editor-content">
+        <div id="json-drop-zone">
+            Drag & drop a .json file here or paste JSON below
+        </div>
+        <div style="margin:6px 0;">
+            <input type="file" id="json-file-input" accept=".json,application/json">
+            <span id="json-file-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+        </div>
+        <textarea id="json-text" rows="8" style="width:100%;" placeholder='Paste JSON here...'></textarea>
+        <div style="margin-top:8px; display:flex; gap:.5rem; flex-wrap:wrap;">
+            <button id="json-load-btn">Load JSON</button>
+            <button id="json-download-btn" disabled>Download Edited JSON</button>
+            <button id="json-clear-btn">Clear</button>
+        </div>
+        <div id="json-editor"></div>
+    </div>
+</div>
+
+<!-- JSON Compare Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('json-compare')">
+        <span>🔍 JSON Compare</span>
+        <span class="section-toggle" id="json-compare-toggle">▶</span>
+    </div>
+    <div class="section-content" id="json-compare-content">
+        <div class="compare-grid">
+            <div class="json-col">
+                <h4>JSON A</h4>
+                <div id="jsonA-drop" class="json-drop">Drag & drop file A here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="jsonA-file" accept=".json,application/json">
+                    <span id="jsonA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="jsonA-text" rows="10" style="width:100%;" placeholder='Paste JSON A here...'></textarea>
+            </div>
+            <div class="json-col">
+                <h4>JSON B</h4>
+                <div id="jsonB-drop" class="json-drop">Drag & drop file B here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="jsonB-file" accept=".json,application/json">
+                    <span id="jsonB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="jsonB-text" rows="10" style="width:100%;" placeholder='Paste JSON B here...'></textarea>
+            </div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:.75rem; align-items:center; flex-wrap:wrap;" class="mode-group">
+            <label><input type="radio" name="compare-mode" value="differences" checked> Differences</label>
+            <label><input type="radio" name="compare-mode" value="similarities"> Similarities</label>
+            <button id="json-compare-btn">Compare</button>
+        </div>
+        <div id="json-compare-result" class="result-box jsondiffpatch-visualdiff"></div>
     </div>
 </div>
 
@@ -228,6 +302,214 @@ asciiBtn.addEventListener('click', () => {
         $('#ascii-table').DataTable().destroy();
     }
     $('#ascii-table').DataTable();
+});
+
+// JSON Editor tool
+let jsonEditor = null;
+const jsonDropZone = document.getElementById('json-drop-zone');
+const jsonText = document.getElementById('json-text');
+const jsonLoadBtn = document.getElementById('json-load-btn');
+const jsonDownloadBtn = document.getElementById('json-download-btn');
+const jsonClearBtn = document.getElementById('json-clear-btn');
+const jsonEditorContainer = document.getElementById('json-editor');
+const jsonFileInput = document.getElementById('json-file-input');
+const jsonFileName = document.getElementById('json-file-name');
+
+// Handle file selection via input
+jsonFileInput.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) { jsonFileName.textContent = ''; return; }
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext !== 'json') { alert('Please select a .json file.'); e.target.value=''; return; }
+    jsonFileName.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = ev => { jsonText.value = ev.target.result || ''; };
+    reader.onerror = () => alert('Failed to read file.');
+    reader.readAsText(file);
+});
+
+['dragenter','dragover'].forEach(name => {
+    jsonDropZone.addEventListener(name, e => { e.preventDefault(); jsonDropZone.classList.add('hover'); });
+});
+['dragleave','drop'].forEach(name => {
+    jsonDropZone.addEventListener(name, e => { e.preventDefault(); jsonDropZone.classList.remove('hover'); });
+});
+jsonDropZone.addEventListener('drop', e => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext !== 'json') return;
+    const reader = new FileReader();
+    reader.onload = ev => { jsonText.value = ev.target.result || ''; };
+    reader.readAsText(file);
+});
+
+function ensureJsonEditor() {
+    if (!jsonEditor) {
+        jsonEditor = new JSONEditor(jsonEditorContainer, {
+            mode: 'tree',
+            modes: ['tree','code'],
+            navigationBar: true,
+            mainMenuBar: true,
+            statusBar: false,
+            onError: function (err) { alert(err.toString()); }
+        });
+    }
+}
+
+jsonLoadBtn.addEventListener('click', () => {
+    const text = jsonText.value.trim();
+    if (!text) { alert('Please paste JSON or drop a file first.'); return; }
+    try {
+        const obj = JSON.parse(text);
+        ensureJsonEditor();
+        jsonEditor.set(obj);
+        // collapse all nodes initially
+        setTimeout(() => { try { jsonEditor.collapseAll(); } catch(_){} }, 0);
+        jsonDownloadBtn.disabled = false;
+    } catch (e) {
+        console.error('Invalid JSON:', e);
+        alert('Invalid JSON: ' + e.message);
+    }
+});
+
+jsonDownloadBtn.addEventListener('click', () => {
+    try {
+        const obj = jsonEditor ? jsonEditor.get() : JSON.parse(jsonText.value || '{}');
+        const content = JSON.stringify(obj, null, 2);
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g, '-');
+        a.download = `edited-${ts}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('Unable to generate download: ' + e.message);
+    }
+});
+
+jsonClearBtn.addEventListener('click', () => {
+    jsonText.value = '';
+    if (jsonEditor) { try { jsonEditor.set({}); jsonEditor.collapseAll(); } catch(_){} }
+    jsonDownloadBtn.disabled = true;
+});
+
+// JSON Compare tool
+const jsonAFile = document.getElementById('jsonA-file');
+const jsonBFile = document.getElementById('jsonB-file');
+const jsonAName = document.getElementById('jsonA-name');
+const jsonBName = document.getElementById('jsonB-name');
+const jsonADrop = document.getElementById('jsonA-drop');
+const jsonBDrop = document.getElementById('jsonB-drop');
+const jsonAText = document.getElementById('jsonA-text');
+const jsonBText = document.getElementById('jsonB-text');
+const jsonCompareBtn = document.getElementById('json-compare-btn');
+const jsonCompareResult = document.getElementById('json-compare-result');
+
+function readFileInto(file, targetTextArea, nameEl) {
+    if (!file) { if (nameEl) nameEl.textContent=''; return; }
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext !== 'json') { alert('Please select a .json file.'); return; }
+    if (nameEl) nameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = ev => { targetTextArea.value = ev.target.result || ''; };
+    reader.onerror = () => alert('Failed to read file.');
+    reader.readAsText(file);
+}
+
+jsonAFile.addEventListener('change', e => readFileInto(e.target.files && e.target.files[0], jsonAText, jsonAName));
+jsonBFile.addEventListener('change', e => readFileInto(e.target.files && e.target.files[0], jsonBText, jsonBName));
+
+;['dragenter','dragover'].forEach(evt => {
+    [jsonADrop, jsonBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.add('hover'); }));
+});
+;['dragleave','drop'].forEach(evt => {
+    [jsonADrop, jsonBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.remove('hover'); }));
+});
+jsonADrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonAText, jsonAName));
+jsonBDrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonBText, jsonBName));
+
+function parseJsonSafe(text, which) {
+    try {
+        return { ok: true, value: JSON.parse(text) };
+    } catch (e) {
+        return { ok: false, error: `Invalid JSON in ${which}: ${e.message}` };
+    }
+}
+
+function computeSimilarities(a, b) {
+    if (typeof a !== typeof b) return undefined;
+    if (a === null || b === null) return a === b ? a : undefined;
+    if (Array.isArray(a) && Array.isArray(b)) {
+        const len = Math.min(a.length, b.length);
+        const res = [];
+        for (let i = 0; i < len; i++) {
+            const child = computeSimilarities(a[i], b[i]);
+            if (child !== undefined) res[i] = child;
+        }
+        // keep only indices that matched
+        return res.filter(v => v !== undefined).length ? res : [];
+    }
+    if (typeof a === 'object') {
+        const keys = Object.keys(a);
+        const out = {};
+        keys.forEach(k => {
+            if (Object.prototype.hasOwnProperty.call(b, k)) {
+                const child = computeSimilarities(a[k], b[k]);
+                if (child !== undefined) {
+                    if (typeof child === 'object') {
+                        const isArray = Array.isArray(child);
+                        const hasItems = isArray ? child.length > 0 : Object.keys(child).length > 0;
+                        if (hasItems) out[k] = child;
+                    } else {
+                        out[k] = child;
+                    }
+                }
+            }
+        });
+        return Object.keys(out).length ? out : {};
+    }
+    return a === b ? a : undefined;
+}
+
+jsonCompareBtn.addEventListener('click', () => {
+    jsonCompareResult.innerHTML = '';
+    const mode = (document.querySelector('input[name="compare-mode"]:checked') || {}).value || 'differences';
+    const aText = jsonAText.value.trim();
+    const bText = jsonBText.value.trim();
+    if (!aText || !bText) { alert('Please provide both JSON A and JSON B (paste, drop, or choose files).'); return; }
+    const pa = parseJsonSafe(aText, 'A');
+    const pb = parseJsonSafe(bText, 'B');
+    if (!pa.ok || !pb.ok) {
+        alert((!pa.ok ? pa.error + '\n' : '') + (!pb.ok ? pb.error : ''));
+        return;
+    }
+    if (mode === 'differences') {
+        try {
+            const delta = window.jsondiffpatch.diff(pa.value, pb.value);
+            if (!delta) {
+                jsonCompareResult.innerHTML = '<em>No differences.</em>';
+            } else {
+                const html = window.jsondiffpatch.formatters.html.format(delta, pa.value);
+                jsonCompareResult.innerHTML = html;
+                // Optionally, make unchanged context minimal
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to compute differences: ' + e.message);
+        }
+    } else {
+        try {
+            const common = computeSimilarities(pa.value, pb.value);
+            const pretty = JSON.stringify(common, null, 2);
+            jsonCompareResult.innerHTML = '<pre style="margin:0;">' + (pretty || '{}') + '</pre>';
+        } catch (e) {
+            console.error(e);
+            alert('Failed to compute similarities: ' + e.message);
+        }
+    }
 });
 </script>
 
