@@ -5,15 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tools</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <script src="utils.js"></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.css">
-    <script src="https://unpkg.com/jsoneditor@9.10.5/dist/jsoneditor.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/jsondiffpatch/dist/formatters-styles/html.css">
-    <script src="https://unpkg.com/jsondiffpatch/dist/jsondiffpatch.umd.js"></script>
-    <script src="https://unpkg.com/jsondiffpatch/dist/formatters/html.js"></script>
+    <script src="/static/utils.js"></script>
+    <link rel="stylesheet" href="/static/vendor/datatables/jquery.dataTables.min.css">
+    <script src="/static/vendor/jquery/jquery-3.7.1.min.js"></script>
+    <script src="/static/vendor/datatables/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="/static/vendor/jsoneditor/jsoneditor.min.css">
+    <script src="/static/vendor/jsoneditor/jsoneditor.min.js"></script>
+    <link rel="stylesheet" href="/static/lib/simple-json-diff.css">
+    <script src="/static/lib/simple-json-diff.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
         #page-links { margin-bottom: 1rem; }
@@ -474,6 +473,76 @@ function computeSimilarities(a, b) {
     return a === b ? a : undefined;
 }
 
+function computeAndDisplayDifferences(objA, objB) {
+    try {
+        // Validate diff library availability
+        if (!isDiffLibraryAvailable()) {
+            showDiffLibraryError();
+            return;
+        }
+
+        // Create diff instance with optimized configuration
+        const diffInstance = createDiffInstance();
+        const delta = diffInstance.diff(objA, objB);
+
+        // Display results
+        displayDiffResults(delta, objA);
+    } catch (error) {
+        console.error('Difference computation error:', error);
+        alert('Failed to compute differences: ' + error.message);
+    }
+}
+
+function isDiffLibraryAvailable() {
+    return window.jsondiffpatch && typeof window.jsondiffpatch === 'object';
+}
+
+function showDiffLibraryError() {
+    alert('Diff library failed to load. Please check your network connection and reload the page.');
+}
+
+function createDiffInstance() {
+    if (typeof window.jsondiffpatch.create === 'function') {
+        return window.jsondiffpatch.create({
+            arrays: { detectMove: true },
+            textDiff: { minLength: 60 },
+            objectHash: function(obj) {
+                // Provide better object identification for arrays of objects
+                return obj && obj.id ? obj.id : JSON.stringify(obj);
+            }
+        });
+    }
+    return window.jsondiffpatch;
+}
+
+function displayDiffResults(delta, originalValue) {
+    if (!delta) {
+        jsonCompareResult.innerHTML = '<div style="color: #28a745; font-style: italic; padding: 10px;">✓ No differences found - objects are identical.</div>';
+        return;
+    }
+
+    const formatter = getDiffFormatter();
+    if (formatter) {
+        const html = formatter.format(delta, originalValue);
+        jsonCompareResult.innerHTML = html;
+    } else {
+        // Fallback to raw JSON display
+        const prettyDelta = JSON.stringify(delta, null, 2);
+        jsonCompareResult.innerHTML = `
+            <div style="color: #856404; margin-bottom: 8px;">⚠️ Visual formatter unavailable - showing raw diff:</div>
+            <pre style="margin:0; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">${prettyDelta}</pre>
+        `;
+    }
+}
+
+function getDiffFormatter() {
+    return window.jsondiffpatch.formatters && 
+           window.jsondiffpatch.formatters.html && 
+           typeof window.jsondiffpatch.formatters.html.format === 'function'
+           ? window.jsondiffpatch.formatters.html
+           : null;
+}
+
 jsonCompareBtn.addEventListener('click', () => {
     jsonCompareResult.innerHTML = '';
     const mode = (document.querySelector('input[name="compare-mode"]:checked') || {}).value || 'differences';
@@ -487,43 +556,25 @@ jsonCompareBtn.addEventListener('click', () => {
         return;
     }
     if (mode === 'differences') {
-        try {
-            // Ensure diff library is available
-            if (!window.jsondiffpatch) {
-                alert('Diff library failed to load. Please check your network connection and reload the page.');
-                return;
-            }
-            // Create an instance if available, otherwise use global
-            const diffpatch = (typeof window.jsondiffpatch.create === 'function')
-                ? window.jsondiffpatch.create({ arrays: { detectMove: true }, textDiff: { minLength: 60 } })
-                : window.jsondiffpatch;
-            const delta = diffpatch.diff(pa.value, pb.value);
-            if (!delta) {
-                jsonCompareResult.innerHTML = '<em>No differences.</em>';
-            } else {
-                const formatter = window.jsondiffpatch.formatters && window.jsondiffpatch.formatters.html;
-                if (formatter && typeof formatter.format === 'function') {
-                    const html = formatter.format(delta, pa.value);
-                    jsonCompareResult.innerHTML = html;
-                } else {
-                    jsonCompareResult.innerHTML = '<pre style="margin:0;">' + (JSON.stringify(delta, null, 2)) + '</pre>';
-                }
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Failed to compute differences: ' + e.message);
-        }
+        computeAndDisplayDifferences(pa.value, pb.value);
     } else {
-        try {
-            const common = computeSimilarities(pa.value, pb.value);
-            const pretty = JSON.stringify(common, null, 2);
-            jsonCompareResult.innerHTML = '<pre style="margin:0;">' + (pretty || '{}') + '</pre>';
-        } catch (e) {
-            console.error(e);
-            alert('Failed to compute similarities: ' + e.message);
-        }
+        computeAndDisplaySimilarities(pa.value, pb.value);
     }
 });
+
+function computeAndDisplaySimilarities(objA, objB) {
+    try {
+        const common = computeSimilarities(objA, objB);
+        const pretty = JSON.stringify(common, null, 2);
+        jsonCompareResult.innerHTML = `
+            <div style="color: #0066cc; margin-bottom: 8px;">🔍 Common elements found:</div>
+            <pre style="margin:0; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">${pretty || '{}'}</pre>
+        `;
+    } catch (error) {
+        console.error('Similarities computation error:', error);
+        alert('Failed to compute similarities: ' + error.message);
+    }
+}
 </script>
 
 </body>

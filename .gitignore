@@ -14,7 +14,17 @@ __pycache__/
 # Other
 .DS_Store
 run-local.cmd
+verify-vendor-structure.ps1
+test-static-files.ps1
 
 # Python virtual environments
 venv/
 **/venv/
+
+# Downloaded third-party libraries
+static/vendor/
+!static/vendor/.gitkeep
+!static/vendor/README.md
+static/lib/
+!static/lib/simple-json-diff.*
+!static/lib/README.md
