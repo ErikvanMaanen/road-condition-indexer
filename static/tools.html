@@ -124,9 +124,13 @@ function parseICS(text) {
         } else if (event) {
             const [key, ...valueParts] = line.split(':');
             const value = valueParts.join(':');
-            if (key.startsWith('DTSTART')) event.start = value;
-            else if (key.startsWith('DTEND')) event.end = value;
+            if (key.startsWith('DTSTART')) event.dtstart = value;
+            else if (key.startsWith('DTEND')) event.dtend = value;
             else if (key === 'SUMMARY') event.summary = value;
+            else if (key === 'NAME') event.name = value;
+            else if (key === 'LOCATION') event.location = value;
+            else if (key === 'STATUS') event.status = value;
+            else if (key.startsWith('DTSTAMP')) event.dtstamp = value;
         }
     });
     return events;
@@ -157,9 +161,9 @@ function renderTable(events) {
         container.innerHTML = '<p>No events found.</p>';
         return;
     }
-    let html = '<table id="events-table" class="display"><thead><tr><th>Start</th><th>End</th><th>Summary</th></tr></thead><tbody>';
+    let html = '<table id="events-table" class="display"><thead><tr><th>NAME</th><th>DTSTART</th><th>DTEND</th><th>SUMMARY</th><th>location</th><th>status</th><th>DTSTAMP</th></tr></thead><tbody>';
     events.forEach(ev => {
-        html += `<tr><td>${formatDate(ev.start)}</td><td>${formatDate(ev.end)}</td><td>${ev.summary || ''}</td></tr>`;
+        html += `<tr><td>${ev.name || ''}</td><td>${formatDate(ev.dtstart)}</td><td>${formatDate(ev.dtend)}</td><td>${ev.summary || ''}</td><td>${ev.location || ''}</td><td>${ev.status || ''}</td><td>${formatDate(ev.dtstamp)}</td></tr>`;
     });
     html += '</tbody></table>';
     container.innerHTML = html;
