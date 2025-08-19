@@ -41,11 +41,12 @@
     </div>
     <div class="section-content" id="cal-viewer-content">
         <div id="drop-zone">
-            Drag & drop .cal file here or
+            Drag & drop .cal/.ics files here or
             <br>
-            <input type="file" id="file-input" accept=".cal,.ics">
+            <input type="file" id="file-input" accept=".cal,.ics" multiple>
             <br>
             <button id="open-btn" disabled>Open</button>
+            <div id="file-list" style="margin-top:8px; font-size:0.9em; color:#555;"></div>
         </div>
     <div id="calendar-table"></div>
     </div>
@@ -80,10 +81,35 @@ function toggleSection(sectionId) {
     }
 }
 
-let selectedFile = null;
+let selectedFiles = [];
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const openBtn = document.getElementById('open-btn');
+const fileListEl = document.getElementById('file-list');
+
+function fileKey(f) { return `${f.name}|${f.size}|${f.lastModified}`; }
+function updateFileListUI() {
+    if (!fileListEl) return;
+    if (!selectedFiles.length) {
+        fileListEl.textContent = 'No files selected.';
+    } else {
+        const names = selectedFiles.map(f => f.name).join(', ');
+        fileListEl.textContent = `${selectedFiles.length} file(s): ${names}`;
+    }
+    openBtn.disabled = selectedFiles.length === 0;
+}
+function addFiles(files) {
+    const existing = new Set(selectedFiles.map(fileKey));
+    Array.from(files).forEach(f => {
+        const ext = (f.name.split('.').pop() || '').toLowerCase();
+        if (!['cal','ics'].includes(ext)) return;
+        if (!existing.has(fileKey(f))) {
+            selectedFiles.push(f);
+            existing.add(fileKey(f));
+        }
+    });
+    updateFileListUI();
+}
 
 ['dragenter','dragover'].forEach(name => {
     dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.add('hover'); });
@@ -92,23 +118,35 @@ const openBtn = document.getElementById('open-btn');
     dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.remove('hover'); });
 });
 dropZone.addEventListener('drop', e => {
-    selectedFile = e.dataTransfer.files[0];
-    fileInput.files = e.dataTransfer.files;
-    openBtn.disabled = !selectedFile;
+    addFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', e => {
-    selectedFile = e.target.files[0];
-    openBtn.disabled = !selectedFile;
+    addFiles(e.target.files);
+    // clear the input so the same file can be selected again if needed
+    e.target.value = '';
 });
 
-openBtn.addEventListener('click', () => {
-    if (!selectedFile) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        const events = parseICS(e.target.result);
-        renderTable(events);
-    };
-    reader.readAsText(selectedFile);
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+    });
+}
+
+openBtn.addEventListener('click', async () => {
+    if (!selectedFiles.length) return;
+    try {
+        const texts = await Promise.all(selectedFiles.map(readFileAsText));
+        // Merge all events from all files into one overview
+        const allEvents = [];
+        texts.forEach(t => { allEvents.push(...parseICS(t)); });
+        renderTable(allEvents);
+    } catch (err) {
+        console.error('Failed to read files:', err);
+        alert('Failed to read one or more files.');
+    }
 });
 
 function parseICS(text) {
