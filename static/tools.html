@@ -47,7 +47,23 @@
             <br>
             <button id="open-btn" disabled>Open</button>
         </div>
-        <div id="calendar-table"></div>
+    <div id="calendar-table"></div>
+    </div>
+</div>
+
+<!-- String to ASCII Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('string-ascii')">
+        <span>🔡 String to ASCII</span>
+        <span class="section-toggle" id="string-ascii-toggle">▶</span>
+    </div>
+    <div class="section-content" id="string-ascii-content">
+        <textarea id="ascii-input" rows="3" style="width:100%;" placeholder="Enter text here"></textarea><br>
+        <button id="ascii-convert-btn">Convert</button>
+        <table id="ascii-table" class="display" style="width:100%; margin-top:1em;">
+            <thead><tr><th>Character</th><th>ASCII Code</th></tr></thead>
+            <tbody></tbody>
+        </table>
     </div>
 </div>
 
@@ -149,6 +165,28 @@ function renderTable(events) {
     container.innerHTML = html;
     $('#events-table').DataTable();
 }
+
+// String to ASCII conversion
+const asciiInput = document.getElementById('ascii-input');
+const asciiBtn = document.getElementById('ascii-convert-btn');
+const asciiTableBody = document.querySelector('#ascii-table tbody');
+
+asciiBtn.addEventListener('click', () => {
+    const text = asciiInput.value || '';
+    let rows = '';
+    for (const ch of text) {
+        let displayChar = ch;
+        if (ch === ' ') displayChar = '&nbsp;';
+        else if (ch === '\n') displayChar = '\\n';
+        else if (ch === '\r') displayChar = '\\r';
+        rows += `<tr><td>${displayChar}</td><td>${ch.charCodeAt(0)}</td></tr>`;
+    }
+    asciiTableBody.innerHTML = rows || '<tr><td colspan="2">No input</td></tr>';
+    if ($.fn.DataTable.isDataTable('#ascii-table')) {
+        $('#ascii-table').DataTable().destroy();
+    }
+    $('#ascii-table').DataTable();
+});
 </script>
 
 </body>
