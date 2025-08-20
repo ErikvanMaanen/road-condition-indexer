@@ -473,15 +473,32 @@ function uploadObject(objectData) {
         headers: {
             'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify(objectData)
     })
-    .then(response => response.json())
+    .then(async response => {
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok) {
+            let errMsg = `${response.status} ${response.statusText}`;
+            try {
+                if (contentType.includes('application/json')) {
+                    const errJson = await response.json();
+                    errMsg = errJson.detail || errJson.message || errMsg;
+                } else {
+                    const text = await response.text();
+                    if (text) errMsg = text;
+                }
+            } catch {}
+            throw new Error(errMsg);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'ok') {
             showStatus('Object saved successfully!', 'success');
             loadSharedObjects();
         } else {
-            showStatus('Failed to save object: ' + data.message, 'error');
+            showStatus('Failed to save object: ' + (data.message || 'Unknown error'), 'error');
         }
     })
     .catch(error => {
@@ -491,13 +508,19 @@ function uploadObject(objectData) {
 }
 
 function loadSharedObjects() {
-    fetch('/api/shared')
-    .then(response => response.json())
+    fetch('/api/shared', { credentials: 'same-origin' })
+    .then(async response => {
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'ok') {
             displayObjects(data.objects);
         } else {
-            showStatus('Failed to load objects: ' + data.message, 'error');
+            showStatus('Failed to load objects: ' + (data.message || 'Unknown error'), 'error');
         }
     })
     .catch(error => {
@@ -562,8 +585,14 @@ function formatFileSize(bytes) {
 }
 
 function downloadFile(objectId) {
-    fetch(`/api/shared/${objectId}`)
-    .then(response => response.json())
+    fetch(`/api/shared/${objectId}`, { credentials: 'same-origin' })
+    .then(async response => {
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'ok' && data.object.object_type === 'file') {
             const obj = data.object;
@@ -614,15 +643,22 @@ function updateNote() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'same-origin',
             body: JSON.stringify({ note: newNote })
         })
-        .then(response => response.json())
+        .then(async response => {
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.status === 'ok') {
                 showStatus('Note updated successfully!', 'success');
                 loadSharedObjects();
             } else {
-                showStatus('Failed to update note: ' + data.message, 'error');
+                showStatus('Failed to update note: ' + (data.message || 'Unknown error'), 'error');
             }
         })
         .catch(error => {
@@ -637,15 +673,22 @@ function updateNote() {
 function deleteObject(objectId) {
     if (confirm('Are you sure you want to delete this object?')) {
         fetch(`/api/shared/${objectId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'same-origin'
         })
-        .then(response => response.json())
+        .then(async response => {
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.status === 'ok') {
                 showStatus('Object deleted successfully!', 'success');
                 loadSharedObjects();
             } else {
-                showStatus('Failed to delete object: ' + data.message, 'error');
+                showStatus('Failed to delete object: ' + (data.message || 'Unknown error'), 'error');
             }
         })
         .catch(error => {

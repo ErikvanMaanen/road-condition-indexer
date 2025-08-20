@@ -83,8 +83,9 @@ class DatabaseManager:
             LogLevel.CRITICAL: 4
         }
         
-        # Initialize SQLAlchemy engine
-        self.engine: Optional[Engine] = None
+        # Initialize SQLAlchemy engine cache per database
+        # Using a dict avoids reusing a 'master' engine for the app DB and vice versa
+        self.engines: Dict[str, Engine] = {}
         
         # Initialize logging
         self._setup_logging()
@@ -181,16 +182,21 @@ class DatabaseManager:
                     pass
     
     def get_engine(self, database: Optional[str] = None) -> Engine:
-        """Get SQLAlchemy engine for SQL Server database operations."""
-        if self.engine is not None:
-            return self.engine
-            
+        """Get SQLAlchemy engine for SQL Server database operations.
+        Caches one engine per database name to ensure we connect to the correct DB.
+        """
         try:
             server = os.getenv("AZURE_SQL_SERVER")
             port = os.getenv("AZURE_SQL_PORT")
             user = os.getenv("AZURE_SQL_USER")
             password = os.getenv("AZURE_SQL_PASSWORD")
             db_name = database or os.getenv("AZURE_SQL_DATABASE")
+            if not db_name:
+                raise RuntimeError("No database name provided or configured in AZURE_SQL_DATABASE")
+            
+            # Return cached engine for this database if available
+            if db_name in self.engines:
+                return self.engines[db_name]
             
             self.log_debug(f"Creating SQLAlchemy engine for SQL Server: {server}:{port}, database: {db_name}", 
                           LogLevel.DEBUG, LogCategory.CONNECTION)
@@ -198,7 +204,7 @@ class DatabaseManager:
             # Using pymssql driver
             connection_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{db_name}"
             
-            self.engine = create_engine(
+            engine = create_engine(
                 connection_string,
                 echo=False,  # Set to True for SQL query logging
                 pool_pre_ping=True,
@@ -206,9 +212,11 @@ class DatabaseManager:
                 connect_args={"timeout": 30}
             )
             
+            # Cache and return
+            self.engines[db_name] = engine
             self.log_debug("SQL Server SQLAlchemy engine created successfully", 
                           LogLevel.DEBUG, LogCategory.CONNECTION)
-            return self.engine
+            return engine
         except Exception as e:
             self.log_debug(f"Database engine creation failed: {e}", 
                           LogLevel.ERROR, LogCategory.CONNECTION, include_stack=True)
@@ -2183,8 +2191,16 @@ class DatabaseManager:
                         "user_agent": user_agent
                     }
                 )
+                # Commit the transaction before attempting to read the OUTPUT row
                 conn.commit()
-                shared_id = result.fetchone()[0]
+                
+                # Safely fetch the inserted row returned by OUTPUT
+                row = result.fetchone()
+                if row is None:
+                    self.log_debug("Failed to retrieve ID of inserted shared object: no row returned", LogLevel.ERROR, LogCategory.DATABASE)
+                    raise RuntimeError("Failed to retrieve ID of inserted shared object")
+
+                shared_id = row[0]
                 
                 self.log_debug(f"Shared object inserted with ID {shared_id}", LogLevel.INFO, LogCategory.DATABASE)
                 return shared_id
