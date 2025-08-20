@@ -404,7 +404,10 @@ function processFiles(files) {
                 mime_type: file.type || 'application/octet-stream'
             };
             
-            showNoteModal();
+            // Prefill the note with a description of the uploaded file including mime type and size
+            const mime = file.type || 'application/octet-stream';
+            const prefill = `File: ${file.name} (${formatFileSize(file.size)} - ${mime})`;
+            showNoteModal(prefill);
         };
         reader.readAsDataURL(file);
         break; // Process one file at a time for simplicity
@@ -419,7 +422,12 @@ function processUrl(url) {
         object_url: url
     };
     
-    showNoteModal();
+    // Prefill the note with the URL host and short name, select for overwrite
+    let host = '';
+    try { host = new URL(url).hostname; } catch (e) { host = ''; }
+    const name = extractNameFromUrl(url);
+    const prefillUrl = host ? `URL: ${name} — ${host}` : `URL: ${name} — ${url}`;
+    showNoteModal(prefillUrl);
 }
 
 function processText(text) {
@@ -432,23 +440,24 @@ function processText(text) {
         object_data: text
     };
     
-    showNoteModal();
+    // Prefill the note with a short preview of the text including character count and select it for easy overwrite
+    const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
+    const prefillText = `Text (${text.length} chars): ${preview}`;
+    showNoteModal(prefillText);
 }
 
-function extractNameFromUrl(url) {
-    try {
-        const urlObj = new URL(url);
-        const pathname = urlObj.pathname;
-        const filename = pathname.split('/').pop();
-        return filename || urlObj.hostname;
-    } catch {
-        return url.substring(0, 50);
-    }
-}
-
-function showNoteModal() {
-    document.getElementById('note-input').value = 'Notitie';
+function showNoteModal(prefill) {
+    const textarea = document.getElementById('note-input');
+    textarea.value = prefill || 'Notitie';
     document.getElementById('note-modal').style.display = 'block';
+
+    // Focus and select the content so the user can immediately overwrite it
+    try {
+        textarea.focus();
+        textarea.select();
+    } catch (e) {
+        // Ignore focus/select errors in older browsers
+    }
 }
 
 function closeNoteModal() {
@@ -570,7 +579,17 @@ function displayObjects(objects) {
     table = $('#objects-table').DataTable({
         order: [[0, 'desc']], // Sort by timestamp descending
         pageLength: 25,
-        responsive: true
+        responsive: true,
+        // Ensure the generated DataTables search input has an id and name for autofill/accessibility
+        initComplete: function() {
+            var searchInput = $('#objects-table_filter input');
+            if (searchInput.length) {
+                // Provide a stable id/name and an accessible label for the search input
+                searchInput.attr('id', 'objects-search');
+                searchInput.attr('name', 'objects-search');
+                searchInput.attr('aria-label', 'Search shared objects');
+            }
+        }
     });
 }
 
