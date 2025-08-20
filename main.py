@@ -30,7 +30,7 @@ import numpy as np
 
 # Import database constants and manager
 from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_BIKE_SOURCE_DATA
+    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_BIKE_SOURCE_DATA, TABLE_SHARED
 )
 
 # Import SQL connectivity testing
@@ -2257,3 +2257,117 @@ def set_thresholds(settings: ThresholdSettings, dep: None = Depends(password_dep
     
     log_info(f"Threshold settings updated: {current_thresholds}")
     return {"status": "ok", "thresholds": current_thresholds}
+
+
+# Shared objects management endpoints
+class SharedObjectRequest(BaseModel):
+    object_type: str = Field(..., description="Type of object: 'file', 'url', or 'text'")
+    object_name: str = Field(..., description="Name or title of the object")
+    object_data: str = Field(..., description="Base64 encoded file data, URL, or text content")
+    object_url: Optional[str] = Field(None, description="Original URL if applicable")
+    note: str = Field("Notitie", description="User note about the object")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: Optional[str] = Field(None, description="MIME type of the file")
+
+
+class SharedObjectNoteUpdate(BaseModel):
+    note: str = Field(..., description="Updated note text")
+
+
+@app.post("/api/shared")
+def create_shared_object(request: SharedObjectRequest, http_request: Request):
+    """Create a new shared object."""
+    try:
+        user_ip = get_client_ip(http_request)
+        user_agent = http_request.headers.get("user-agent")
+        
+        shared_id = db_manager.insert_shared_object(
+            object_type=request.object_type,
+            object_name=request.object_name,
+            object_data=request.object_data,
+            object_url=request.object_url,
+            note=request.note,
+            file_size=request.file_size,
+            mime_type=request.mime_type,
+            user_ip=user_ip,
+            user_agent=user_agent
+        )
+        
+        return {"status": "ok", "id": shared_id, "message": "Shared object created successfully"}
+        
+    except Exception as exc:
+        log_error(f"Failed to create shared object: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to create shared object: {str(exc)}")
+
+
+@app.get("/api/shared")
+def get_shared_objects(limit: Optional[int] = Query(None, description="Maximum number of objects to return")):
+    """Get all shared objects."""
+    try:
+        objects = db_manager.get_shared_objects(limit)
+        return {"status": "ok", "objects": objects}
+        
+    except Exception as exc:
+        log_error(f"Failed to get shared objects: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to get shared objects: {str(exc)}")
+
+
+@app.get("/api/shared/{shared_id}")
+def get_shared_object(shared_id: int):
+    """Get a specific shared object by ID."""
+    try:
+        obj = db_manager.get_shared_object(shared_id)
+        if not obj:
+            raise HTTPException(status_code=404, detail="Shared object not found")
+            
+        return {"status": "ok", "object": obj}
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to get shared object: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to get shared object: {str(exc)}")
+
+
+@app.put("/api/shared/{shared_id}/note")
+def update_shared_object_note(shared_id: int, request: SharedObjectNoteUpdate, dep: None = Depends(password_dependency)):
+    """Update the note for a shared object."""
+    try:
+        # Check if object exists
+        obj = db_manager.get_shared_object(shared_id)
+        if not obj:
+            raise HTTPException(status_code=404, detail="Shared object not found")
+            
+        db_manager.update_shared_object_note(shared_id, request.note)
+        return {"status": "ok", "message": "Note updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to update shared object note: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to update note: {str(exc)}")
+
+
+@app.delete("/api/shared/{shared_id}")
+def delete_shared_object(shared_id: int, dep: None = Depends(password_dependency)):
+    """Delete a shared object."""
+    try:
+        # Check if object exists
+        obj = db_manager.get_shared_object(shared_id)
+        if not obj:
+            raise HTTPException(status_code=404, detail="Shared object not found")
+            
+        db_manager.delete_shared_object(shared_id)
+        return {"status": "ok", "message": "Shared object deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to delete shared object: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete shared object: {str(exc)}")
+
+
+@app.get("/shared.html")
+def read_shared(request: Request):
+    """Serve the shared objects page."""
+    return FileResponse(BASE_DIR / "static" / "shared.html")

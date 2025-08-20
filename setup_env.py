@@ -2,14 +2,13 @@
 """Environment setup and database connectivity verification for Road Condition Indexer.
 
 This script verifies that all required environment variables are set and tests 
-database connectivity using the new SQLAlchemy-based database manager.
+database connectivity using the SQLAlchemy-based database manager.
 
-The application supports two database backends:
-1. Azure SQL Server (primary) - using SQLAlchemy with pymssql driver
-2. SQLite (fallback) - using SQLAlchemy with local database file
+The application requires Azure SQL Server configuration:
+- Azure SQL Server (required) - using SQLAlchemy with pymssql driver
 
-If Azure SQL environment variables are not provided, the application will
-automatically fall back to SQLite for local development.
+All Azure SQL environment variables must be provided. The application will
+fail to start if any required variables are missing.
 """
 
 import os
@@ -66,8 +65,8 @@ def check_azure_sql_env_vars():
     missing = [var for var in required_vars if not os.getenv(var)]
     
     if missing:
-        print(f"⚠️  Azure SQL environment variables missing: {', '.join(missing)}")
-        print("   Application will fall back to SQLite database")
+        print(f"❌ Azure SQL environment variables missing: {', '.join(missing)}")
+        print("   Application requires Azure SQL Server configuration")
         return False
     else:
         print("✅ Azure SQL environment variables are configured")
@@ -84,16 +83,11 @@ def test_database_connection():
         # Initialize database manager
         db_manager = DatabaseManager()
         
-        if db_manager.use_sqlserver:
-            print("📊 Using Azure SQL Server backend")
-            server = os.getenv("AZURE_SQL_SERVER")
-            database = os.getenv("AZURE_SQL_DATABASE")
-            print(f"   Server: {server}")
-            print(f"   Database: {database}")
-        else:
-            print("📁 Using SQLite backend")
-            db_path = Path(__file__).parent / "RCI_local.db"
-            print(f"   Database file: {db_path}")
+        print("📊 Using Azure SQL Server backend")
+        server = os.getenv("AZURE_SQL_SERVER")
+        database = os.getenv("AZURE_SQL_DATABASE")
+        print(f"   Server: {server}")
+        print(f"   Database: {database}")
         
         # Test basic connectivity
         result = db_manager.execute_scalar("SELECT 1")
@@ -108,8 +102,7 @@ def test_database_connection():
             # Test a simple query
             print("🔄 Testing basic database operations...")
             tables_result = db_manager.execute_query(
-                "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'" if db_manager.use_sqlserver 
-                else "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'RCI_%'"
+                "SELECT name FROM sys.tables WHERE name LIKE 'RCI_%'"
             )
             
             table_count = len(tables_result) if tables_result else 0
@@ -140,6 +133,11 @@ def main():
     print("\n🔧 Checking environment configuration...")
     azure_sql_available = check_azure_sql_env_vars()
     
+    if not azure_sql_available:
+        print("\n❌ Environment setup verification failed!")
+        print("Azure SQL Server configuration is required. Please set all required environment variables.")
+        sys.exit(1)
+    
     # Test database connection
     db_success = test_database_connection()
     
@@ -148,7 +146,7 @@ def main():
     print("📋 Setup Verification Summary:")
     print(f"   Python Version: ✅")
     print(f"   Required Packages: ✅")
-    print(f"   Azure SQL Config: {'✅' if azure_sql_available else '⚠️  (using SQLite fallback)'}")
+    print(f"   Azure SQL Config: ✅")
     print(f"   Database Connection: {'✅' if db_success else '❌'}")
     
     if db_success:

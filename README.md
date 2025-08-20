@@ -13,6 +13,8 @@ The application uses a modern SQLAlchemy-based database layer with SQL Server en
 - **Configuration**: Set Azure SQL environment variables (see Setup section)
 - **Fail-Fast**: Application will not start without proper SQL Server configuration
 
+**Important**: This application requires Azure SQL Server and will not start without proper configuration. No fallback databases are supported.
+
 ### **SQL Connectivity Testing**
 The application includes comprehensive SQL connectivity testing that runs automatically on startup:
 - **Environment Detection**: Automatically detects Azure App Service vs local development
@@ -37,7 +39,7 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed connectivity testing a
 
 1. **Environment Configuration** (Required):
 
-   **For Local Development:**
+   **Azure SQL Server Configuration is Mandatory:**
    Create a `.env` file with your Azure SQL connection details:
    ```env
    AZURE_SQL_SERVER=your-server.database.windows.net
@@ -49,6 +51,8 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed connectivity testing a
    
    **For Azure App Service:**
    Set the same variables as Application Settings in your Azure App Service configuration.
+
+   **Note**: All five environment variables are required. The application will fail to start if any are missing.
 
 2. **Install Dependencies**:
    ```bash
@@ -94,10 +98,10 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed connectivity testing a
 - **Current**: Uses pymssql driver with direct TCP connection
 - **Benefit**: Simpler deployment, fewer dependencies, more reliable connections
 
-### **Automatic Fallback**
-- **Previous**: Manual configuration required for database selection
-- **Current**: Automatic detection and fallback to SQLite
-- **Benefit**: Zero-configuration development environment
+### **Production-Ready Architecture**
+- **Database**: Azure SQL Server only - no fallback options
+- **Configuration**: Fail-fast validation ensures proper setup
+- **Benefit**: Consistent production environment, no configuration drift
 
 ### **Connection Pooling & Reliability**
 - **Previous**: Manual connection management
@@ -139,7 +143,7 @@ threshold (7 km/h by default) still yield a roughness score of zero.
 
 ## Database Schema
 
-The application automatically creates the following tables in both SQL Server and SQLite:
+The application automatically creates the following tables in Azure SQL Server:
 
 ### Core Data Tables
 ```sql

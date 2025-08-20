@@ -427,10 +427,10 @@
 
 **Migration Benefits:**
 - **No ODBC Driver Required**: Direct pymssql connection to SQL Server
-- **Automatic Fallback**: SQLite for development when Azure SQL not configured
 - **Connection Pooling**: Better performance and reliability
 - **Simplified Deployment**: Fewer dependencies and configuration steps
 - **Cross-Platform**: Works on Windows, Linux, and macOS without driver issues
+- **SQL Server Only**: Enforced production-grade database architecture
 
 **Migration Steps:**
 1. **Update Dependencies**:

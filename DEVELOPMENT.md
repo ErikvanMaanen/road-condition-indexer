@@ -32,11 +32,13 @@ and avoid CORB/loading issues.
 
 ## Database Architecture
 
-### Modern SQLAlchemy Backend
-- **Primary**: Azure SQL Server via SQLAlchemy + pymssql driver
-- **Fallback**: SQLite for development environments (automatic detection)
+### SQL Server Only Architecture
+- **Database**: Azure SQL Server via SQLAlchemy + pymssql driver (required)
 - **Features**: Connection pooling, automatic reconnection, robust error handling
+- **Configuration**: All five Azure SQL environment variables must be set
 - **Migration**: Migrated from pyodbc to SQLAlchemy for better reliability
+
+**Important**: The application requires Azure SQL Server configuration and will not start without it. No fallback databases are supported.
 
 ### Database Tables
 1. **RCI_bike_data**: Main data table with GPS coordinates, speed, direction, roughness
@@ -48,6 +50,18 @@ and avoid CORB/loading issues.
 ## Development Setup
 
 ### 1. Environment Configuration
+
+**Azure SQL Server Configuration (Required)**:
+Create a `.env` file with all required Azure SQL connection details:
+```env
+AZURE_SQL_SERVER=your-server.database.windows.net
+AZURE_SQL_DATABASE=your-database-name
+AZURE_SQL_USER=your-username
+AZURE_SQL_PASSWORD=your-password
+AZURE_SQL_PORT=1433
+```
+
+**Note**: All five environment variables are mandatory. The application will fail to start if any are missing.
 Create a `.env` file for local development:
 ```env
 AZURE_SQL_SERVER=your-server.database.windows.net

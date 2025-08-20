@@ -28,7 +28,16 @@
         #json-drop-zone.hover { background: #e0f0ff; }
         #json-editor { border: 1px solid #ddd; border-radius: 4px; height: 420px; margin-top: 10px; }
         .compare-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+        .json-col { display: flex; flex-direction: column; }
         .json-col h4 { margin: 0 0 .25rem 0; color:#495057; }
+        .json-drop { border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 8px 0; border-radius: 4px; color: #666; }
+        .json-drop.hover { border-color: #007cba; background: #f0f8ff; }
+        .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .diff-panel { border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+        .diff-header { font-weight: bold; margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; }
+        .diff-controls { margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .diff-controls label { display: flex; align-items: center; font-size: 0.9em; }
+        .diff-content { font-family: 'Courier New', monospace; font-size: 0.9em; }
         .json-drop { border: 2px dashed #007cba; padding: 12px; text-align:center; border-radius: 4px; margin-bottom: 8px; }
         .json-drop.hover { background:#e0f0ff; }
         .result-box { margin-top: 10px; border:1px solid #ddd; border-radius:4px; padding:10px; background:#fff; overflow:auto; max-height:480px; }
@@ -64,7 +73,8 @@
     <a href="/">Main</a> |
     <a href="device.html">Device View</a> |
     <a href="database.html">Database Management</a> |
-    <a href="maintenance.html">Maintenance</a>
+    <a href="maintenance.html">Maintenance</a> |
+    <a href="shared.html">Shared</a>
 </nav>
 
 <h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Tools</h1>
@@ -163,6 +173,10 @@
         <div id="json-compare-result" class="result-box jsondiffpatch-visualdiff"></div>
     </div>
 </div>
+
+
+
+
 
 <script>
 function toggleSection(sectionId) {
@@ -452,6 +466,30 @@ jsonBFile.addEventListener('change', e => readFileInto(e.target.files && e.targe
 });
 jsonADrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonAText, jsonAName));
 jsonBDrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonBText, jsonBName));
+
+jsonCompareBtn.addEventListener('click', () => {
+    jsonCompareResult.innerHTML = '';
+    const mode = (document.querySelector('input[name="compare-mode"]:checked') || {}).value || 'differences';
+    const aText = jsonAText.value.trim();
+    const bText = jsonBText.value.trim();
+    
+    if (!aText || !bText) { 
+        alert('Please provide both JSON A and JSON B (paste, drop, or choose files).'); 
+        return; 
+    }
+    
+    const parseA = parseJsonSafe(aText, 'JSON A');
+    const parseB = parseJsonSafe(bText, 'JSON B');
+    
+    if (!parseA.ok) { alert(parseA.error); return; }
+    if (!parseB.ok) { alert(parseB.error); return; }
+    
+    if (mode === 'similarities') {
+        computeAndDisplaySimilarities(parseA.value, parseB.value);
+    } else {
+        computeAndDisplayDifferences(parseA.value, parseB.value);
+    }
+});
 
 function parseJsonSafe(text, which) {
     try {
@@ -774,9 +812,15 @@ function toggleExpand(elementId) {
     }
 }
 
-// Utility functions
-function isObject(value) {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
+// Helper functions
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function generateId() {
+    return Math.random().toString(36).substr(2, 9);
 }
 
 function getValueType(value) {
@@ -785,70 +829,35 @@ function getValueType(value) {
     return typeof value;
 }
 
+function isObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function deepEqual(a, b) {
     if (a === b) return true;
     if (a == null || b == null) return false;
-    if (Array.isArray(a) && Array.isArray(b)) {
-        if (a.length !== b.length) return false;
+    if (typeof a !== typeof b) return false;
+    
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) return false;
         for (let i = 0; i < a.length; i++) {
             if (!deepEqual(a[i], b[i])) return false;
         }
         return true;
     }
-    if (typeof a === 'object' && typeof b === 'object') {
+    
+    if (typeof a === 'object') {
         const keysA = Object.keys(a);
         const keysB = Object.keys(b);
         if (keysA.length !== keysB.length) return false;
-        for (let key of keysA) {
-            if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
+        for (const key of keysA) {
+            if (!b.hasOwnProperty(key) || !deepEqual(a[key], b[key])) return false;
         }
         return true;
     }
+    
     return false;
 }
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-let idCounter = 0;
-function generateId() {
-    return `id-${++idCounter}`;
-}
-
-jsonCompareBtn.addEventListener('click', () => {
-    jsonCompareResult.innerHTML = '';
-    const mode = (document.querySelector('input[name="compare-mode"]:checked') || {}).value || 'differences';
-    const aText = jsonAText.value.trim();
-    const bText = jsonBText.value.trim();
-    if (!aText || !bText) { alert('Please provide both JSON A and JSON B (paste, drop, or choose files).'); return; }
-    const pa = parseJsonSafe(aText, 'A');
-    const pb = parseJsonSafe(bText, 'B');
-    if (!pa.ok || !pb.ok) {
-        alert((!pa.ok ? pa.error + '\n' : '') + (!pb.ok ? pb.error : ''));
-        return;
-    }
-    
-    // Check if objects are identical
-    const areIdentical = JSON.stringify(pa.value) === JSON.stringify(pb.value);
-    
-    if (areIdentical && mode === 'differences') {
-        jsonCompareResult.innerHTML = `
-            <div style="color: #28a745; font-style: italic; padding: 20px; text-align: center; background: #d4edda; border-radius: 4px; border: 1px solid #c3e6cb;">
-                ✓ No differences found - JSON objects are identical
-            </div>
-        `;
-        return;
-    }
-    
-    if (mode === 'differences') {
-        computeAndDisplayDifferences(pa.value, pb.value);
-    } else {
-        computeAndDisplaySimilarities(pa.value, pb.value);
-    }
-});
 
 // Global function for expand/collapse (accessible from onclick)
 window.toggleExpand = toggleExpand;

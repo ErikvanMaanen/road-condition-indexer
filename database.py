@@ -1,9 +1,10 @@
 """Database management module for Road Condition Indexer.
 
-This module handles all database operations including:
-- Database connection management
+This module handles all database operations using Azure SQL Server exclusively:
+- Azure SQL Server connection management via SQLAlchemy + pymssql
 - Table creation and schema updates
-- Data access layer for bike data, debug logs, and device nicknames
+- Data access layer for bike data, debug logs, device nicknames, and shared objects
+- Requires all Azure SQL environment variables to be configured
 """
 
 import os
@@ -44,6 +45,7 @@ TABLE_DEVICE_NICKNAMES = "RCI_device_nicknames"
 TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
 TABLE_USER_ACTIONS = "RCI_user_actions"
+TABLE_SHARED = "RCI_shared"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -400,6 +402,30 @@ class DatabaseManager:
                     additional_data NVARCHAR(MAX),
                     success BIT DEFAULT 1,
                     error_message NVARCHAR(MAX)
+                )
+            END
+            """)
+        )
+
+        # Create shared table for file/link sharing functionality
+        conn.execute(
+            text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_SHARED}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_SHARED} (
+                    id INT IDENTITY PRIMARY KEY,
+                    timestamp DATETIME2 DEFAULT GETDATE(),
+                    object_type NVARCHAR(20) NOT NULL,
+                    object_name NVARCHAR(500) NOT NULL,
+                    object_data NVARCHAR(MAX) NOT NULL,
+                    object_url NVARCHAR(2000),
+                    note NVARCHAR(1000) DEFAULT 'Notitie',
+                    file_size BIGINT,
+                    mime_type NVARCHAR(200),
+                    user_ip NVARCHAR(45),
+                    user_agent NVARCHAR(500)
                 )
             END
             """)
@@ -2129,6 +2155,119 @@ class DatabaseManager:
                 "message": f"Constraint verification error: {str(exc)}",
                 "details": []
             }
+    
+    # Shared objects management methods
+    def insert_shared_object(self, object_type: str, object_name: str, object_data: str,
+                           object_url: Optional[str] = None, note: str = "Notitie",
+                           file_size: Optional[int] = None, mime_type: Optional[str] = None,
+                           user_ip: Optional[str] = None, user_agent: Optional[str] = None) -> int:
+        """Insert a shared object into the database."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                    INSERT INTO {TABLE_SHARED} 
+                    (object_type, object_name, object_data, object_url, note, file_size, mime_type, user_ip, user_agent)
+                    OUTPUT INSERTED.id
+                    VALUES (:object_type, :object_name, :object_data, :object_url, :note, :file_size, :mime_type, :user_ip, :user_agent)
+                    """),
+                    {
+                        "object_type": object_type,
+                        "object_name": object_name,
+                        "object_data": object_data,
+                        "object_url": object_url,
+                        "note": note,
+                        "file_size": file_size,
+                        "mime_type": mime_type,
+                        "user_ip": user_ip,
+                        "user_agent": user_agent
+                    }
+                )
+                conn.commit()
+                shared_id = result.fetchone()[0]
+                
+                self.log_debug(f"Shared object inserted with ID {shared_id}", LogLevel.INFO, LogCategory.DATABASE)
+                return shared_id
+                
+        except Exception as exc:
+            self.log_debug(f"Failed to insert shared object: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+    
+    def get_shared_objects(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get all shared objects from the database."""
+        try:
+            query = f"""
+                SELECT id, timestamp, object_type, object_name, object_data, object_url, note, 
+                       file_size, mime_type, user_ip, user_agent
+                FROM {TABLE_SHARED}
+                ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY"
+                
+            with self.get_connection_context() as conn:
+                result = conn.execute(text(query))
+                return [dict(row._mapping) for row in result.fetchall()]
+                
+        except Exception as exc:
+            self.log_debug(f"Failed to get shared objects: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+    
+    def update_shared_object_note(self, shared_id: int, note: str) -> None:
+        """Update the note for a shared object."""
+        try:
+            with self.get_connection_context() as conn:
+                conn.execute(
+                    text(f"""
+                    UPDATE {TABLE_SHARED} 
+                    SET note = :note 
+                    WHERE id = :shared_id
+                    """),
+                    {"note": note, "shared_id": shared_id}
+                )
+                conn.commit()
+                
+                self.log_debug(f"Updated note for shared object ID {shared_id}", LogLevel.INFO, LogCategory.DATABASE)
+                
+        except Exception as exc:
+            self.log_debug(f"Failed to update shared object note: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+    
+    def delete_shared_object(self, shared_id: int) -> None:
+        """Delete a shared object from the database."""
+        try:
+            with self.get_connection_context() as conn:
+                conn.execute(
+                    text(f"DELETE FROM {TABLE_SHARED} WHERE id = :shared_id"),
+                    {"shared_id": shared_id}
+                )
+                conn.commit()
+                
+                self.log_debug(f"Deleted shared object ID {shared_id}", LogLevel.INFO, LogCategory.DATABASE)
+                
+        except Exception as exc:
+            self.log_debug(f"Failed to delete shared object: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+    
+    def get_shared_object(self, shared_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific shared object by ID."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                    SELECT id, timestamp, object_type, object_name, object_data, object_url, note, 
+                           file_size, mime_type, user_ip, user_agent
+                    FROM {TABLE_SHARED}
+                    WHERE id = :shared_id
+                    """),
+                    {"shared_id": shared_id}
+                )
+                row = result.fetchone()
+                return dict(row._mapping) if row else None
+                
+        except Exception as exc:
+            self.log_debug(f"Failed to get shared object: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
 
 
 # Global database manager instance
