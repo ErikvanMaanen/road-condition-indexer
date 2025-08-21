@@ -405,7 +405,7 @@ function processFiles(files) {
             };
             
             // Prefill the note with a simple description of the uploaded file (name only)
-            const prefill = `${file.name}`;
+            const prefill = `File: ${file.name}`;
             showNoteModal(prefill);
         };
         reader.readAsDataURL(file);
@@ -430,6 +430,12 @@ function processUrl(url) {
 }
 
 function processText(text) {
+    // If the pasted/dragged text is a URL, treat it as a URL
+    if (isValidUrl(text)) {
+        processUrl(text);
+        return;
+    }
+
     // Limit text length for display name
     const displayName = text.length > 50 ? text.substring(0, 50) + '...' : text;
     
