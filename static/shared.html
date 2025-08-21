@@ -404,9 +404,8 @@ function processFiles(files) {
                 mime_type: file.type || 'application/octet-stream'
             };
             
-            // Prefill the note with a description of the uploaded file including mime type and size
-            const mime = file.type || 'application/octet-stream';
-            const prefill = `File: ${file.name} (${formatFileSize(file.size)} - ${mime})`;
+            // Prefill the note with a simple description of the uploaded file (name only)
+            const prefill = `${file.name}`;
             showNoteModal(prefill);
         };
         reader.readAsDataURL(file);
@@ -554,7 +553,9 @@ function displayObjects(objects) {
         
         let nameContent = '';
         if (obj.object_type === 'url') {
-            nameContent = `<a href="${obj.object_url}" target="_blank" class="object-link">${obj.object_name}</a>`;
+            // Prefer explicit object_url, fall back to object_data which may contain the URL
+            const href = obj.object_url || obj.object_data || '#';
+            nameContent = `<a href="${href}" target="_blank" rel="noopener noreferrer" class="object-link">${obj.object_name}</a>`;
         } else if (obj.object_type === 'file') {
             nameContent = `<a href="#" onclick="downloadFile(${obj.id})" class="object-link">${obj.object_name}</a>`;
         } else {
