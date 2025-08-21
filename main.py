@@ -7,6 +7,8 @@ import math
 import re
 import hashlib
 import pytz
+import asyncio
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING, Union
 
@@ -24,7 +26,7 @@ from scipy import signal
 import requests
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, RedirectResponse
+from fastapi.responses import FileResponse, Response, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import numpy as np
 
@@ -58,6 +60,11 @@ except Exception:  # pragma: no cover - optional deps
     Sku = None
 
 from database import db_manager
+
+try:  # Optional dependency for video downloads
+    import yt_dlp  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    yt_dlp = None
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -911,6 +918,10 @@ class DeviceDeletionEntry(BaseModel):
     delete_data: bool = False
 
 
+class VideoDownloadRequest(BaseModel):
+    url: str
+
+
 @app.delete("/nickname")
 def delete_device_nickname(entry: DeviceDeletionEntry, dep: None = Depends(password_dependency)):
     """Delete a device nickname/registration."""
@@ -966,6 +977,45 @@ def get_gpx(limit: Optional[int] = None):
     gpx_lines.append('</trkseg></trk></gpx>')
     gpx_data = "\n".join(gpx_lines)
     return Response(content=gpx_data, media_type="application/gpx+xml", headers={"Content-Disposition": "attachment; filename=records.gpx"})
+
+
+@app.post("/tools/download_video")
+async def download_video(entry: VideoDownloadRequest):
+    """Download streaming video from a URL and return as a single file."""
+    if yt_dlp is None:
+        raise HTTPException(status_code=500, detail="Video downloading not supported")
+    if not entry.url:
+        raise HTTPException(status_code=400, detail="URL is required")
+
+    def _download() -> Tuple[bytes, str]:
+        """Download video using yt-dlp in a background thread."""
+        tmpdir = tempfile.mkdtemp()
+        outtmpl = os.path.join(tmpdir, "video.%(ext)s")
+        ydl_opts = {
+            "format": "best",
+            "quiet": True,
+            "noplaylist": True,
+            "outtmpl": outtmpl,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(entry.url, download=True)
+            filepath = ydl.prepare_filename(info)
+            ext = info.get("ext", "mp4")
+        with open(filepath, "rb") as f:
+            data = f.read()
+        try:
+            os.remove(filepath)
+            os.rmdir(tmpdir)
+        except Exception:
+            pass
+        return data, ext
+
+    try:
+        data, ext = await asyncio.to_thread(_download)
+    except Exception as exc:  # pragma: no cover - network/third-party errors
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return Response(content=data, media_type=f"video/{ext}", headers={"Content-Disposition": f"attachment; filename=video.{ext}"})
 
 
 @app.get("/debuglog")
