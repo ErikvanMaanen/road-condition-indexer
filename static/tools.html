@@ -191,6 +191,22 @@
     </div>
 </div>
 
+<!-- YouTube Downloader Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('yt-downloader')">
+        <span>📺 YouTube Downloader</span>
+        <span class="section-toggle" id="yt-downloader-toggle">▶</span>
+    </div>
+    <div class="section-content" id="yt-downloader-content">
+        <div id="yt-drop" class="json-drop">Drop or paste a YouTube URL here</div>
+        <div style="margin:6px 0;">
+            <input type="text" id="yt-url" style="width:100%;" placeholder="Enter YouTube URL here">
+        </div>
+        <button id="yt-fetch-btn" disabled>Fetch HD Links</button>
+        <div id="yt-links" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
+    </div>
+</div>
+
 
 
 
@@ -893,6 +909,70 @@ videoDownloadBtn.addEventListener('click', async () => {
         videoStatus.textContent = 'Download started.';
     } catch (err) {
         videoStatus.textContent = 'Error: ' + err.message;
+    }
+});
+
+// YouTube Downloader logic
+const ytDrop = document.getElementById('yt-drop');
+const ytUrlInput = document.getElementById('yt-url');
+const ytFetchBtn = document.getElementById('yt-fetch-btn');
+const ytLinks = document.getElementById('yt-links');
+
+function updateYtButton() {
+    ytFetchBtn.disabled = !ytUrlInput.value.trim();
+}
+
+['dragenter', 'dragover'].forEach(ev => {
+    ytDrop.addEventListener(ev, e => {
+        e.preventDefault();
+        ytDrop.classList.add('hover');
+    });
+});
+['dragleave', 'drop'].forEach(ev => {
+    ytDrop.addEventListener(ev, e => {
+        e.preventDefault();
+        ytDrop.classList.remove('hover');
+    });
+});
+ytDrop.addEventListener('drop', e => {
+    const url = e.dataTransfer.getData('text/plain');
+    if (url) {
+        ytUrlInput.value = url.trim();
+        updateYtButton();
+    }
+});
+ytDrop.addEventListener('paste', e => {
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (text) {
+        ytUrlInput.value = text.trim();
+        updateYtButton();
+    }
+});
+ytUrlInput.addEventListener('input', updateYtButton);
+
+ytFetchBtn.addEventListener('click', async () => {
+    const url = ytUrlInput.value.trim();
+    if (!url) return;
+    ytLinks.textContent = 'Fetching formats...';
+    try {
+        const resp = await fetch('/tools/youtube_formats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        if (!resp.ok) throw new Error('Server error');
+        const data = await resp.json();
+        if (!data.formats || !data.formats.length) {
+            ytLinks.textContent = 'No HD formats found.';
+            return;
+        }
+        const linksHtml = data.formats.map(f => {
+            const name = `${data.title || 'video'}-${f.height}p.${f.ext}`;
+            return `<div><a href="${f.url}" download="${name}">${f.height}p ${f.ext}</a></div>`;
+        }).join('');
+        ytLinks.innerHTML = linksHtml;
+    } catch (err) {
+        ytLinks.textContent = 'Error: ' + err.message;
     }
 });
 

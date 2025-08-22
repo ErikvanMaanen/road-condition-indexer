@@ -979,6 +979,42 @@ def get_gpx(limit: Optional[int] = None):
     return Response(content=gpx_data, media_type="application/gpx+xml", headers={"Content-Disposition": "attachment; filename=records.gpx"})
 
 
+@app.post("/tools/youtube_formats")
+async def youtube_formats(entry: VideoDownloadRequest):
+    """Return direct download links for HD formats of a YouTube video."""
+    if yt_dlp is None:
+        raise HTTPException(status_code=500, detail="Video downloading not supported")
+    if not entry.url:
+        raise HTTPException(status_code=400, detail="URL is required")
+
+    def _get_formats() -> Dict[str, Any]:
+        """Extract available HD formats using yt-dlp."""
+        ydl_opts = {"quiet": True, "noplaylist": True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(entry.url, download=False)
+            results: List[Dict[str, Any]] = []
+            for f in info.get("formats", []):
+                height = f.get("height") or 0
+                if height >= 720 and f.get("acodec") != "none" and f.get("vcodec") != "none":
+                    results.append(
+                        {
+                            "format_id": f.get("format_id"),
+                            "ext": f.get("ext", "mp4"),
+                            "height": height,
+                            "url": f.get("url"),
+                        }
+                    )
+            results.sort(key=lambda x: x["height"], reverse=True)
+            return {"title": info.get("title"), "formats": results}
+
+    try:
+        data = await asyncio.to_thread(_get_formats)
+    except Exception as exc:  # pragma: no cover - network/third-party errors
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return data
+
+
 @app.post("/tools/download_video")
 async def download_video(entry: VideoDownloadRequest):
     """Download streaming video from a URL and return as a single file."""
