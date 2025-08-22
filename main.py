@@ -989,7 +989,13 @@ async def youtube_formats(entry: VideoDownloadRequest):
 
     def _get_formats() -> Dict[str, Any]:
         """Extract available HD formats using yt-dlp."""
-        ydl_opts = {"quiet": True, "noplaylist": True}
+        # Use the "android" client to reduce bot-detection issues with YouTube
+        # which can cause errors like "Sign in to confirm you're not a bot".
+        ydl_opts = {
+            "quiet": True,
+            "noplaylist": True,
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(entry.url, download=False)
             results: List[Dict[str, Any]] = []
@@ -1010,7 +1016,11 @@ async def youtube_formats(entry: VideoDownloadRequest):
     try:
         data = await asyncio.to_thread(_get_formats)
     except Exception as exc:  # pragma: no cover - network/third-party errors
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        msg = str(exc)
+        # Provide a clearer error when YouTube requests authentication
+        if "Sign in to confirm" in msg:
+            msg = "YouTube requires authentication for this video"
+        raise HTTPException(status_code=400, detail=msg) from exc
 
     return data
 
