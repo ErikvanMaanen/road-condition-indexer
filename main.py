@@ -11,6 +11,7 @@ import asyncio
 import tempfile
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING, Union
+import webbrowser
 
 # Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -68,8 +69,8 @@ except Exception:  # pragma: no cover - optional dependency
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# In-memory storage for YouTube authentication credentials
-yt_credentials: Optional[Dict[str, str]] = None
+# Browser to pull YouTube cookies from after interactive login
+yt_browser: Optional[str] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -926,17 +927,24 @@ class VideoDownloadRequest(BaseModel):
     format_id: Optional[str] = None
 
 
-class YouTubeLoginRequest(BaseModel):
-    username: str
-    password: str
+def _open_google_login() -> None:
+    """Launch Google sign-in in the user's default browser.
 
-
-@app.post("/tools/youtube_login")
-def youtube_login(entry: YouTubeLoginRequest):
-    """Store YouTube credentials for subsequent downloads."""
-    global yt_credentials
-    yt_credentials = {"username": entry.username, "password": entry.password}
-    return {"status": "ok"}
+    Stores the detected browser name for yt-dlp's cookiesfrombrowser option.
+    """
+    global yt_browser
+    try:
+        controller = webbrowser.get()
+        webbrowser.open_new("https://accounts.google.com/ServiceLogin")
+        name = getattr(controller, "name", "").lower()
+        for key in ("chrome", "chromium", "firefox", "edge", "safari"):
+            if key in name:
+                yt_browser = "chromium" if key.startswith("chromium") else key
+                break
+        else:
+            yt_browser = None
+    except Exception:
+        yt_browser = None
 
 
 @app.delete("/nickname")
@@ -1013,11 +1021,8 @@ async def youtube_formats(entry: VideoDownloadRequest):
             "noplaylist": True,
             "extractor_args": {"youtube": {"player_client": ["android"]}},
         }
-        if yt_credentials:
-            ydl_opts.update({
-                "username": yt_credentials["username"],
-                "password": yt_credentials["password"],
-            })
+        if yt_browser:
+            ydl_opts["cookiesfrombrowser"] = (yt_browser,)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(entry.url, download=False)
             results: List[Dict[str, Any]] = []
@@ -1039,6 +1044,7 @@ async def youtube_formats(entry: VideoDownloadRequest):
     except Exception as exc:  # pragma: no cover - network/third-party errors
         msg = str(exc)
         if "Sign in to confirm" in msg or "This video is private" in msg:
+            _open_google_login()
             raise HTTPException(status_code=401, detail="YouTube authentication required") from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
@@ -1063,11 +1069,8 @@ async def download_video(entry: VideoDownloadRequest):
             "noplaylist": True,
             "outtmpl": outtmpl,
         }
-        if yt_credentials:
-            ydl_opts.update({
-                "username": yt_credentials["username"],
-                "password": yt_credentials["password"],
-            })
+        if yt_browser:
+            ydl_opts["cookiesfrombrowser"] = (yt_browser,)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(entry.url, download=True)
             filepath = ydl.prepare_filename(info)
@@ -1084,7 +1087,11 @@ async def download_video(entry: VideoDownloadRequest):
     try:
         data, ext = await asyncio.to_thread(_download)
     except Exception as exc:  # pragma: no cover - network/third-party errors
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        msg = str(exc)
+        if "Sign in to confirm" in msg or "This video is private" in msg:
+            _open_google_login()
+            raise HTTPException(status_code=401, detail="YouTube authentication required") from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
 
     return Response(content=data, media_type=f"video/{ext}", headers={"Content-Disposition": f"attachment; filename=video.{ext}"})
 
