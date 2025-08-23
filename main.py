@@ -68,6 +68,9 @@ except Exception:  # pragma: no cover - optional dependency
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# In-memory storage for YouTube authentication credentials
+yt_credentials: Optional[Dict[str, str]] = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -920,6 +923,20 @@ class DeviceDeletionEntry(BaseModel):
 
 class VideoDownloadRequest(BaseModel):
     url: str
+    format_id: Optional[str] = None
+
+
+class YouTubeLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/tools/youtube_login")
+def youtube_login(entry: YouTubeLoginRequest):
+    """Store YouTube credentials for subsequent downloads."""
+    global yt_credentials
+    yt_credentials = {"username": entry.username, "password": entry.password}
+    return {"status": "ok"}
 
 
 @app.delete("/nickname")
@@ -996,6 +1013,11 @@ async def youtube_formats(entry: VideoDownloadRequest):
             "noplaylist": True,
             "extractor_args": {"youtube": {"player_client": ["android"]}},
         }
+        if yt_credentials:
+            ydl_opts.update({
+                "username": yt_credentials["username"],
+                "password": yt_credentials["password"],
+            })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(entry.url, download=False)
             results: List[Dict[str, Any]] = []
@@ -1007,7 +1029,6 @@ async def youtube_formats(entry: VideoDownloadRequest):
                             "format_id": f.get("format_id"),
                             "ext": f.get("ext", "mp4"),
                             "height": height,
-                            "url": f.get("url"),
                         }
                     )
             results.sort(key=lambda x: x["height"], reverse=True)
@@ -1017,9 +1038,8 @@ async def youtube_formats(entry: VideoDownloadRequest):
         data = await asyncio.to_thread(_get_formats)
     except Exception as exc:  # pragma: no cover - network/third-party errors
         msg = str(exc)
-        # Provide a clearer error when YouTube requests authentication
-        if "Sign in to confirm" in msg:
-            msg = "YouTube requires authentication for this video"
+        if "Sign in to confirm" in msg or "This video is private" in msg:
+            raise HTTPException(status_code=401, detail="YouTube authentication required") from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
     return data
@@ -1038,11 +1058,16 @@ async def download_video(entry: VideoDownloadRequest):
         tmpdir = tempfile.mkdtemp()
         outtmpl = os.path.join(tmpdir, "video.%(ext)s")
         ydl_opts = {
-            "format": "best",
+            "format": entry.format_id or "best",
             "quiet": True,
             "noplaylist": True,
             "outtmpl": outtmpl,
         }
+        if yt_credentials:
+            ydl_opts.update({
+                "username": yt_credentials["username"],
+                "password": yt_credentials["password"],
+            })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(entry.url, download=True)
             filepath = ydl.prepare_filename(info)

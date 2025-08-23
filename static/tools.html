@@ -203,6 +203,12 @@
             <input type="text" id="yt-url" style="width:100%;" placeholder="Enter YouTube URL here">
         </div>
         <button id="yt-fetch-btn" disabled>Fetch HD Links</button>
+        <div id="yt-login" style="display:none;margin-top:8px;">
+            <input type="text" id="yt-username" placeholder="YouTube username" style="width:100%;max-width:300px;display:block;margin-bottom:4px;">
+            <input type="password" id="yt-password" placeholder="Password" style="width:100%;max-width:300px;display:block;margin-bottom:4px;">
+            <button id="yt-login-btn">Login</button>
+            <div id="yt-login-status" style="margin-top:4px;font-size:0.9em;color:#555;"></div>
+        </div>
         <div id="yt-links" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
     </div>
 </div>
@@ -917,6 +923,11 @@ const ytDrop = document.getElementById('yt-drop');
 const ytUrlInput = document.getElementById('yt-url');
 const ytFetchBtn = document.getElementById('yt-fetch-btn');
 const ytLinks = document.getElementById('yt-links');
+const ytLoginDiv = document.getElementById('yt-login');
+const ytUser = document.getElementById('yt-username');
+const ytPass = document.getElementById('yt-password');
+const ytLoginBtn = document.getElementById('yt-login-btn');
+const ytLoginStatus = document.getElementById('yt-login-status');
 
 function updateYtButton() {
     ytFetchBtn.disabled = !ytUrlInput.value.trim();
@@ -960,6 +971,11 @@ ytFetchBtn.addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
         });
+        if (resp.status === 401) {
+            ytLinks.textContent = 'Authentication required.';
+            ytLoginDiv.style.display = 'block';
+            return;
+        }
         if (!resp.ok) throw new Error('Server error');
         const data = await resp.json();
         if (!data.formats || !data.formats.length) {
@@ -967,12 +983,54 @@ ytFetchBtn.addEventListener('click', async () => {
             return;
         }
         const linksHtml = data.formats.map(f => {
-            const name = `${data.title || 'video'}-${f.height}p.${f.ext}`;
-            return `<div><a href="${f.url}" download="${name}">${f.height}p ${f.ext}</a></div>`;
+            return `<div><a href="#" data-format="${f.format_id}" data-ext="${f.ext}" data-height="${f.height}">${f.height}p ${f.ext}</a></div>`;
         }).join('');
         ytLinks.innerHTML = linksHtml;
+        ytLinks.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', async e => {
+                e.preventDefault();
+                const formatId = a.dataset.format;
+                try {
+                    const resp = await fetch('/tools/download_video', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url, format_id: formatId })
+                    });
+                    if (!resp.ok) throw new Error('Server error');
+                    const blob = await resp.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = dlUrl;
+                    link.download = `${data.title || 'video'}-${a.dataset.height}p.${a.dataset.ext}`;
+                    link.click();
+                    setTimeout(() => window.URL.revokeObjectURL(dlUrl), 1000);
+                } catch (err) {
+                    ytLinks.textContent = 'Error: ' + err.message;
+                }
+            });
+        });
     } catch (err) {
         ytLinks.textContent = 'Error: ' + err.message;
+    }
+});
+
+ytLoginBtn.addEventListener('click', async () => {
+    const username = ytUser.value.trim();
+    const password = ytPass.value;
+    if (!username || !password) return;
+    ytLoginStatus.textContent = 'Logging in...';
+    try {
+        const resp = await fetch('/tools/youtube_login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (!resp.ok) throw new Error('Login failed');
+        ytLoginStatus.textContent = 'Login successful.';
+        ytLoginDiv.style.display = 'none';
+        ytFetchBtn.click();
+    } catch (err) {
+        ytLoginStatus.textContent = 'Error: ' + err.message;
     }
 });
 
