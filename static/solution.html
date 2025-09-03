@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solution</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="/static/utils.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
+        #solution-canvas { border:1px solid #ccc; margin-top:1rem; }
+    </style>
+</head>
+<body>
+<nav id="page-links" style="margin-bottom:1rem;">
+    <a href="tools.html">Tools</a> |
+    <a href="/">Main</a>
+</nav>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Solution</h1>
+<p>Solving the system of equations:</p>
+<pre style="font-size:1.2em;">
+    x + y = 6
+    x × y = 36
+</pre>
+<p>Substituting <em>y = 6 − x</em> into <em>xy = 36</em> gives <em>x(6 − x) = 36</em>,
+which simplifies to <em>x² − 6x + 36 = 0</em>. Using the quadratic formula,
+<em>x = 3 ± 3√3i</em>. Then <em>y = 6 − x = 3 ∓ 3√3i</em>.</p>
+<div id="solution-text"></div>
+<canvas id="solution-canvas" width="400" height="300"></canvas>
+<script>
+const sum = 6;
+const product = 36;
+const real = sum / 2; // 3
+const imaginary = Math.sqrt(4 * product - sum * sum) / 2; // 3*sqrt(3)
+const solutions = [
+    { x: real, y: imaginary },
+    { x: real, y: -imaginary }
+];
+// Display textual solutions
+const text = `Solutions: (x, y) = (${real.toFixed(2)} + ${imaginary.toFixed(2)}i, ${real.toFixed(2)} - ${imaginary.toFixed(2)}i) and (${real.toFixed(2)} - ${imaginary.toFixed(2)}i, ${real.toFixed(2)} + ${imaginary.toFixed(2)}i)`;
+document.getElementById('solution-text').innerText = text;
+// Draw complex plane
+const canvas = document.getElementById('solution-canvas');
+const ctx = canvas.getContext('2d');
+const origin = { x: canvas.width / 2, y: canvas.height / 2 };
+const scale = 20;
+ctx.strokeStyle = '#000';
+ctx.beginPath();
+ctx.moveTo(0, origin.y);
+ctx.lineTo(canvas.width, origin.y); // Real axis
+ctx.moveTo(origin.x, 0);
+ctx.lineTo(origin.x, canvas.height); // Imaginary axis
+ctx.stroke();
+ctx.fillStyle = 'red';
+for (const p of solutions) {
+    const px = origin.x + p.x * scale;
+    const py = origin.y - p.y * scale;
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fill();
+}
+ctx.fillStyle = 'black';
+ctx.font = '12px sans-serif';
+ctx.fillText('Re', canvas.width - 20, origin.y - 5);
+ctx.fillText('Im', origin.x + 5, 15);
+</script>
+</body>
+</html>
