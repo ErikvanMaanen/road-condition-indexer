@@ -16,6 +16,8 @@ __pycache__/
 run-local.cmd
 verify-vendor-structure.ps1
 test-static-files.ps1
+.history/
+.claude/
 
 # Python virtual environments
 venv/
