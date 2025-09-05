@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Bash(set)",
+      "Bash(env)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Read(/C:\\Projects\\road-condition-indexer/**)",
+      "Bash(az webapp list:*)",
+      "Bash(az webapp show:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

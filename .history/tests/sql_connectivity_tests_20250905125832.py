@@ -2,6 +2,11 @@
 
 Provides the same public symbols expected by application code while performing
 no real network or database operations. This keeps startup and test runs fast.
+"""
+"""Clean minimal stub for legacy SQL connectivity tests.
+
+Provides the same public symbols expected by application code while performing
+no real network or database operations. This keeps startup and test runs fast.
 Restore the previous comprehensive implementation from version control if
 extended diagnostics are required in the future.
 """
@@ -9,8 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
-
+from typing import List, Dict, Any, Optional
 
 class ConnectivityTestResult(Enum):
     SUCCESS = "SUCCESS"

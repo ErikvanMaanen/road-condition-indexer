@@ -27,13 +27,28 @@ from sqlalchemy.pool import StaticPool
 # Import logging utilities
 from log_utils import LogLevel, LogCategory
 
-# Load environment variables from .env file
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    # dotenv not available, continue without it
-    pass
+# Load environment variables based on environment
+# - Local development: Load from .env file
+# - Azure Web App: Use environment variables set on webapp instance  
+# - GitHub Codespaces: Use environment variables set in Codespaces
+def load_environment_config():
+    # Check if running in Azure Web App (has WEBSITE_SITE_NAME)
+    if os.getenv('WEBSITE_SITE_NAME'):
+        return
+    
+    # Check if running in GitHub Codespaces (has CODESPACES)
+    if os.getenv('CODESPACES'):
+        return
+    
+    # Default to local development - load from .env file
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        # dotenv not available, continue without it
+        pass
+
+load_environment_config()
 
 # Import HTTPException for management operations
 from fastapi import HTTPException

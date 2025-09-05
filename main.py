@@ -1,6 +1,33 @@
 import os
 import time
 import warnings
+
+# Load environment variables based on environment
+# - Local development: Load from .env file
+# - Azure Web App: Use environment variables set on webapp instance
+# - GitHub Codespaces: Use environment variables set in Codespaces
+def load_environment_config():
+    # Check if running in Azure Web App (has WEBSITE_SITE_NAME)
+    if os.getenv('WEBSITE_SITE_NAME'):
+        print("Running in Azure Web App - using environment variables")
+        return
+    
+    # Check if running in GitHub Codespaces (has CODESPACES)
+    if os.getenv('CODESPACES'):
+        print("Running in GitHub Codespaces - using environment variables")
+        return
+    
+    # Default to local development - load from .env file
+    try:
+        from dotenv import load_dotenv
+        if load_dotenv():
+            print("Running locally - loaded environment variables from .env file")
+        else:
+            print("Running locally - .env file not found or empty")
+    except ImportError:
+        print("Running locally - dotenv not available, using system environment variables")
+
+load_environment_config()
 from pathlib import Path
 from datetime import datetime
 import math
@@ -271,7 +298,12 @@ def read_index(request: Request):
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/")
     
-    db_manager.init_tables()
+    try:
+        db_manager.init_tables()
+    except Exception as e:
+        log_error(f"Database initialization failed: {e}")
+        raise HTTPException(status_code=500, detail="Database connection failed. Please check configuration.")
+    
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
@@ -512,7 +544,11 @@ def startup_init():
             log_error(f"❌ SQL connectivity testing failed: {str(e)}", LogCategory.STARTUP)
         
         # Database Initialization
-        db_manager.init_tables()
+        try:
+            db_manager.init_tables()
+        except Exception as e:
+            log_error(f"Database initialization failed during startup: {e}")
+            raise
         
         # Basic connectivity verification
         test_result = db_manager.execute_scalar("SELECT 1")

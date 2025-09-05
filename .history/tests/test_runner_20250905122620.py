@@ -18,12 +18,12 @@ Options:
     --help        - Show this help message
 """
 
-import argparse
-import os
 import sys
+import os
 import time
+import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict, Any
 
 # Add parent directory to path for imports
 project_dir = Path(__file__).resolve().parent.parent
@@ -55,9 +55,8 @@ class TestRunner:
         
         try:
             # Import SQL connectivity tester
-            from tests.extended.sql_connectivity_tests import (
-                ConnectivityTestResult, SQLConnectivityTester)
-
+            from tests.extended.sql_connectivity_tests import SQLConnectivityTester, ConnectivityTestResult
+            
             # Create tester instance
             tester = SQLConnectivityTester(timeout_seconds=30, retry_attempts=3)
             
@@ -99,9 +98,8 @@ class TestRunner:
         
         try:
             # Import data flow test
-            from tests.core.test_comprehensive_data_flow import \
-                ComprehensiveDataFlowTest
-
+            from tests.core.test_comprehensive_data_flow import ComprehensiveDataFlowTest
+            
             # Create test instance
             test_instance = ComprehensiveDataFlowTest()
             
