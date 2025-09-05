@@ -2,6 +2,7 @@ import os
 import time
 import warnings
 
+
 # Load environment variables based on environment
 # - Local development: Load from .env file
 # - Azure Web App: Use environment variables set on webapp instance
@@ -28,16 +29,17 @@ def load_environment_config():
         print("Running locally - dotenv not available, using system environment variables")
 
 load_environment_config()
-from pathlib import Path
-from datetime import datetime
+import asyncio
+import hashlib
 import math
 import re
-import hashlib
-import pytz
-import asyncio
 import tempfile
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING, Union
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+import pytz
 
 # Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -48,37 +50,38 @@ warnings.filterwarnings("ignore", message=r".*KEY_LOCAL_MACHINE.*", category=Syn
 # Additional Python 3.12 compatibility
 warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
+import numpy as np
+import requests
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import (FileResponse, RedirectResponse, Response,
+                               StreamingResponse)
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from scipy import signal
 
-import requests
-from fastapi import FastAPI, HTTPException, Request, Depends, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field
-import numpy as np
-
 # Import database constants and manager
-from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_BIKE_SOURCE_DATA, TABLE_SHARED
-)
-
-# Import SQL connectivity testing
-from tests.sql_connectivity_tests import run_startup_connectivity_tests, ConnectivityTestResult
-
+from database import (TABLE_ARCHIVE_LOGS, TABLE_BIKE_DATA,
+                      TABLE_BIKE_SOURCE_DATA, TABLE_DEBUG_LOG,
+                      TABLE_DEVICE_NICKNAMES, TABLE_SHARED, DatabaseManager)
 # Import logging utilities
-from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
+from log_utils import (DEBUG_LOG, LogCategory, LogLevel, format_display_time,
+                       get_utc_timestamp, log_debug, log_error, log_info,
+                       log_warning)
+# Import SQL connectivity testing
+from tests.sql_connectivity_tests import (ConnectivityTestResult,
+                                          run_startup_connectivity_tests)
 
 if TYPE_CHECKING:
     from azure.identity import ClientSecretCredential
-    from azure.mgmt.web import WebSiteManagementClient
     from azure.mgmt.sql import SqlManagementClient
     from azure.mgmt.sql.models import DatabaseUpdate, Sku
+    from azure.mgmt.web import WebSiteManagementClient
 
 try:
     from azure.identity import ClientSecretCredential
-    from azure.mgmt.web import WebSiteManagementClient
     from azure.mgmt.sql import SqlManagementClient
     from azure.mgmt.sql.models import DatabaseUpdate, Sku
+    from azure.mgmt.web import WebSiteManagementClient
 except Exception:  # pragma: no cover - optional deps
     ClientSecretCredential = None
     WebSiteManagementClient = None
@@ -115,6 +118,7 @@ app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 
 # Serve all static files automatically (public, no auth)
 from fastapi.staticfiles import StaticFiles
+
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 # MD5 hash for the default password
@@ -531,6 +535,7 @@ def startup_init():
     try:
         # SQL Connectivity Tests
         try:
+            # Run SQL connectivity tests with explicit timeout
             connectivity_report = run_startup_connectivity_tests(timeout_seconds=30, retry_attempts=3)
             
             if connectivity_report.overall_status == ConnectivityTestResult.SUCCESS:
