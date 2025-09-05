@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chris - LVGL in MicroPython</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
+        pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+<nav id="page-links" style="margin-bottom:1rem;">
+    <a href="/">Main</a>
+</nav>
+<h1>Chris</h1>
+<p>LVGL (Light and Versatile Graphics Library) is an open-source graphics library designed for embedded systems. In the context of MicroPython, it enables rich graphical user interfaces on microcontrollers.</p>
+<p>The example below demonstrates initializing LVGL and displaying a label:</p>
+<pre><code>import lvgl as lv
+lv.init()
+
+# Initialize display driver here (depends on hardware)
+
+scr = lv.obj()
+label = lv.label(scr)
+label.set_text("Hello, LVGL!")
+label.center()
+
+lv.scr_load(scr)
+</code></pre>
+</body>
+</html>

@@ -21,7 +21,7 @@ import pytz
 
 # SQLAlchemy imports
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine, Connection
+from sqlalchemy.engine import Engine, Connection, URL
 from sqlalchemy.pool import StaticPool
 
 # Import logging utilities
@@ -201,11 +201,19 @@ class DatabaseManager:
             self.log_debug(f"Creating SQLAlchemy engine for SQL Server: {server}:{port}, database: {db_name}", 
                           LogLevel.DEBUG, LogCategory.CONNECTION)
             
-            # Using pymssql driver
-            connection_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{db_name}"
-            
+            # Using SQLAlchemy URL to ensure credentials are properly escaped
+            port_number = int(port) if port else None
+            connection_url = URL.create(
+                "mssql+pymssql",
+                username=user,
+                password=password,
+                host=server,
+                port=port_number,
+                database=db_name,
+            )
+
             engine = create_engine(
-                connection_string,
+                connection_url,
                 echo=False,  # Set to True for SQL query logging
                 pool_pre_ping=True,
                 pool_recycle=3600,  # Recycle connections after 1 hour
