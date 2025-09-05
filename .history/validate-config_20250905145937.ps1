@@ -34,85 +34,30 @@ function Write-Status {
 
 function Read-EnvFile {
     param($FilePath)
+    
     $envVars = @{}
+    
     if (-not (Test-Path $FilePath)) {
         Write-Status "❌ .env file not found at $FilePath" "Error"
         return $envVars
     }
-    Write-Status "📄 Reading .env file (legacy flat parse for fallback)..." "Info"
+    
+    Write-Status "📄 Reading .env file..." "Info"
+    
     Get-Content $FilePath | ForEach-Object {
         $line = $_.Trim()
-        if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
-            $parts = $line.Split('=',2)
-            if ($parts.Length -eq 2) { $envVars[$parts[0].Trim()] = $parts[1].Trim() }
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            if ($parts.Length -eq 2) {
+                $key = $parts[0].Trim()
+                $value = $parts[1].Trim()
+                $envVars[$key] = $value
+            }
         }
     }
+    
+    Write-Status "✅ Found $($envVars.Count) variables in .env file" "Success"
     return $envVars
-}
-
-# Structured configuration parser aligned with new .env format
-function Parse-EnvConfiguration {
-    param([string]$FilePath = '.\\.env')
-    $model = [ordered]@{
-        Sections = @();                # Ordered list of section objects
-        Variables = @{};               # name -> { value, secret:bool, sections:[..] }
-        Requirements = [ordered]@{     # name -> { visibility: secret|public, sections:[..] }
-        };
-        Meta = [ordered]@{             # sectionName -> metaHashtable
-        };
-    }
-    if (-not (Test-Path $FilePath)) { return $model }
-    $currentSection = $null
-    $lineNumber = 0
-    foreach ($raw in Get-Content $FilePath) {
-        $lineNumber++
-        $line = $raw.TrimEnd()
-        if (-not $line) { continue }
-        # Section header
-        if ($line -match '^\[SECTION +(.+?)\]') {
-            $currentSection = $Matches[1].Trim()
-            if (-not $model.Meta.ContainsKey($currentSection)) { $model.Meta[$currentSection] = @{} }
-            $model.Sections += $currentSection
-            continue
-        }
-        # Normalize comment lines beginning with '#'
-        $core = $line
-        if ($core.StartsWith('#')) { $core = $core.TrimStart('#').Trim() }
-        if (-not $core) { continue }
-        # Skip if not in a section for structured directives
-        if (-not $currentSection) { continue }
-        switch -regex ($core) {
-            '^META +([^=]+)=(.+)$' {
-                $k = $Matches[1].Trim(); $v = $Matches[2].Trim()
-                $model.Meta[$currentSection][$k] = $v
-            }
-            '^(VAR|SECRET) +([A-Za-z0-9_]+)=(.+)$' {
-                $type = $Matches[1]; $name = $Matches[2]; $val = $Matches[3].Trim()
-                if (-not $model.Variables.ContainsKey($name)) {
-                    $model.Variables[$name] = [ordered]@{ value = $val; secret = ($type -eq 'SECRET'); sections = @($currentSection) }
-                } else {
-                    # Preserve first value; append section and possibly upgrade to secret
-                    $existing = $model.Variables[$name]
-                    if (-not $existing.sections.Contains($currentSection)) { $existing.sections += $currentSection }
-                    if ($type -eq 'SECRET') { $existing.secret = $true }
-                }
-            }
-            '^REQUIRE +([A-Za-z0-9_]+) +(secret|public)$' {
-                $rName = $Matches[1]; $vis = $Matches[2]
-                if (-not $model.Requirements.ContainsKey($rName)) {
-                    $model.Requirements[$rName] = [ordered]@{ visibility = $vis; sections = @($currentSection) }
-                } else {
-                    $req = $model.Requirements[$rName]
-                    if (-not $req.sections.Contains($currentSection)) { $req.sections += $currentSection }
-                    # If any section marks as secret escalate to secret
-                    if ($vis -eq 'secret') { $req.visibility = 'secret' }
-                }
-            }
-            '^NOTE ' { }
-            default { }
-        }
-    }
-    return $model
 }
 
 # Parse Azure Web App config (App Name & Resource Group) from commented section in .env
@@ -131,7 +76,7 @@ function Parse-AzureSectionFromEnvFile {
             if ($line -match '^# +AZURE WEB APP CONFIGURATION') { $inSection = $true; continue }
             if ($inSection) {
                 # Stop if we reach a blank line followed by non comment or next major separator
-                if ($line -match '^# ==+' ) { return }
+                if ($line -match '^# ==+' ) { break }
                 # If the line contains a ' : ' pattern, extract key/value
                 # Example: # - Subscription Name: raet experimental
                 # Example result should be: @{ SubscriptionName = "raet experimental" }
@@ -299,41 +244,11 @@ Write-Status "=" * 60 "Info"
 # Read .env file
 $envVars = Read-EnvFile ".\.env"
 
-# Structured parse (preferred). Fallback to legacy variable listing.
-$configModel = Parse-EnvConfiguration -FilePath '.\\.env'
-$isStructured = ($configModel.Sections.Count -gt 0 -and $configModel.Meta.Keys -contains 'AzureWebApp')
-if ($isStructured) {
-    Write-Status "🧩 Detected structured configuration format (.env sections)." "Success"
-} else {
-    Write-Status "ℹ️  Structured sections not detected – using legacy flat parsing." "Warning"
+# Extract Azure AppName / ResourceGroup from commented section
+$azureNames = Parse-AzureSectionFromEnvFile -FilePath '.\\.env'
+if ($azureNames.AppName -or $azureNames.ResourceGroup) {
+    Write-Status "🔧 Parsed Azure config from .env comments: AppName='${($azureNames.AppName | ForEach-Object { $_ })}' ResourceGroup='${($azureNames.ResourceGroup | ForEach-Object { $_ })}'" "Info"
 }
-
-# Compute required variables & classification from model when structured
-if ($isStructured) {
-    $requiredVars = @($configModel.Requirements.Keys | Sort-Object)
-    $secretVars = @($configModel.Requirements.GetEnumerator() | Where-Object { $_.Value.visibility -eq 'secret' } | ForEach-Object { $_.Key } | Sort-Object)
-    $publicVars = @($configModel.Requirements.GetEnumerator() | Where-Object { $_.Value.visibility -eq 'public' } | ForEach-Object { $_.Key } | Sort-Object)
-} else {
-    # Legacy path: derive from flat env vars
-    $envVars = Read-EnvFile '.\\.env'
-    if ($envVars.Count -eq 0) { Write-Status '❌ No variables found in .env file. Cannot proceed with validation.' 'Error'; exit 1 }
-    $requiredVars, $secretVars, $publicVars = Get-RequiredVariables $envVars
-}
-
-# Materialize a lookup of local values (structured or legacy)
-$localValues = @{}
-if ($isStructured) {
-    foreach ($kv in $configModel.Variables.GetEnumerator()) { $localValues[$kv.Key] = $kv.Value.value }
-} else {
-    $localValues = $envVars
-}
-
-# Azure identifiers
-$azureAppName = if ($isStructured -and $configModel.Meta['AzureWebApp'].AppName) { $configModel.Meta['AzureWebApp'].AppName } else { 'rci-nl' }
-$azureRg       = if ($isStructured -and $configModel.Meta['AzureWebApp'].ResourceGroup) { $configModel.Meta['AzureWebApp'].ResourceGroup } else { 'ErikMaa' }
-Write-Status "🔧 Azure Target: AppName='$azureAppName' ResourceGroup='$azureRg'" 'Info'
-
-if ($requiredVars.Count -eq 0) { Write-Status '❌ No required variables determined from configuration model.' 'Error'; exit 1 }
 
 if ($envVars.Count -eq 0) {
     Write-Status "❌ No variables found in .env file. Cannot proceed with validation." "Error"
@@ -350,11 +265,16 @@ $results = @{
     GitHub = @{ Success = 0; Missing = 0; Total = $requiredVars.Count }
 }
 
-# Validate local values (structured or legacy)
-Write-Status "`n📄 VALIDATING LOCAL CONFIGURATION" 'Info'
-Write-Status ('-' * 40) 'Info'
+# Validate local .env file (all variables should exist by definition)
+Write-Status "`n📄 VALIDATING LOCAL .ENV FILE" "Info"
+Write-Status "-" * 40 "Info"
+
 foreach ($var in $requiredVars) {
-    if (Test-VariableExists $var $localValues 'Local') { $results.Local.Success++ } else { $results.Local.Missing++ }
+    if (Test-VariableExists $var $envVars "Local") {
+        $results.Local.Success++
+    } else {
+        $results.Local.Missing++
+    }
 }
 
 # Validate Azure Web App settings
@@ -362,7 +282,13 @@ if (-not $SkipAzure) {
     Write-Status "`n☁️  VALIDATING AZURE WEB APP SETTINGS" "Info"
     Write-Status "-" * 40 "Info"
     
-    $azureSettings = Get-AzureWebAppSettings -AppName $azureAppName -ResourceGroup $azureRg
+    $resolvedAppName = if ($azureNames.AppName) { $azureNames.AppName } else { "rci-nl" }
+    $resolvedRgName  = if ($azureNames.ResourceGroup) { $azureNames.ResourceGroup } else { "ErikMaa" }
+    if (-not $azureNames.AppName -or -not $azureNames.ResourceGroup) {
+        Write-Status "ℹ️  Using fallback values AppName='$resolvedAppName' ResourceGroup='$resolvedRgName'" "Info"
+    }
+
+    $azureSettings = Get-AzureWebAppSettings -AppName $resolvedAppName -ResourceGroup $resolvedRgName
     
     if ($azureSettings.Count -gt 0) {
         foreach ($var in $requiredVars) {
@@ -385,7 +311,7 @@ if (-not $SkipGitHub) {
     Write-Status "`n🐙 VALIDATING GITHUB REPOSITORY SETTINGS" "Info"  
     Write-Status "-" * 40 "Info"
     
-    $githubSecrets, $githubVariables = Get-GitHubSecrets 'ErikvanMaanen' 'road-condition-indexer'
+    $githubSecrets, $githubVariables = Get-GitHubSecrets "ErikvanMaanen" "road-condition-indexer"
     
     if (($githubSecrets.Count + $githubVariables.Count) -gt 0) {
         # Check secrets
