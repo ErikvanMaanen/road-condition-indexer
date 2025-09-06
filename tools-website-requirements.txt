@@ -1,0 +1,24 @@
+# Tools Website - Python Dependencies
+# Core web framework and ASGI server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+
+# HTTP client for external APIs
+requests>=2.31.0
+
+# Async support
+aiofiles>=23.2.0
+
+# Security and hashing
+hashlib  # Built-in Python module
+
+# Optional: Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0  # For testing FastAPI endpoints
+
+# Note: Frontend dependencies (jQuery, DataTables, JSONEditor) are downloaded separately
+# See setup instructions in the development prompt for third-party library setup

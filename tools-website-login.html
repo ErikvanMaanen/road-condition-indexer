@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tools Website - Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            margin: 1rem;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .logo h1 {
+            color: #333;
+            margin: 0;
+            font-size: 2rem;
+        }
+        
+        .logo p {
+            color: #666;
+            margin: 0.5rem 0 0 0;
+            font-size: 1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #007cba;
+            box-shadow: 0 0 0 2px rgba(0, 124, 186, 0.2);
+        }
+        
+        .login-button {
+            width: 100%;
+            padding: 0.75rem;
+            background: #007cba;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .login-button:hover {
+            background: #005a8c;
+        }
+        
+        .login-button:active {
+            transform: translateY(1px);
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .demo-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            border: 1px solid #bee5eb;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 1.5rem;
+            }
+            
+            .logo h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🔧 Tools Website</h1>
+            <p>Utility Tools Collection</p>
+        </div>
+        
+        <form id="loginForm" action="/auth/login" method="post">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            
+            <button type="submit" class="login-button">Login</button>
+        </form>
+        
+        <div class="demo-info">
+            <strong>Demo Credentials:</strong><br>
+            Username: admin<br>
+            Password: password
+        </div>
+    </div>
+    
+    <script>
+        // Handle form submission
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const credentials = {
+                username: formData.get('username'),
+                password: formData.get('password')
+            };
+            
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(credentials),
+                    redirect: 'follow'
+                });
+                
+                if (response.ok) {
+                    // Successful login - redirect will be handled automatically
+                    window.location.href = '/tools.html';
+                } else {
+                    // Show error message
+                    showError('Invalid username or password');
+                }
+            } catch (error) {
+                showError('Login failed. Please try again.');
+                console.error('Login error:', error);
+            }
+        });
+        
+        function showError(message) {
+            // Remove any existing error messages
+            const existingError = document.querySelector('.error-message');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            // Create and show new error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            
+            const form = document.getElementById('loginForm');
+            form.insertBefore(errorDiv, form.firstChild);
+        }
+        
+        // Check for error in URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error')) {
+            showError('Authentication failed. Please try again.');
+        }
+    </script>
+</body>
+</html>

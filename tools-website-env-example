@@ -1,0 +1,25 @@
+############################################################
+# Tools Website - Example .env file                       #
+# Copy to .env and fill in real secrets.                  #
+############################################################
+
+# Authentication
+AUTH_SECRET_KEY=REPLACE_WITH_SECURE_RANDOM_STRING_HERE
+
+# Application settings
+TOOLS_MAX_FILE_SIZE_MB=50
+TOOLS_SESSION_TIMEOUT_HOURS=24
+JSON_MAX_SIZE_MB=10
+
+# External APIs
+VIDEO_API_TIMEOUT_SEC=30
+
+# Server configuration
+HOST=0.0.0.0
+PORT=8000
+DEBUG=true
+
+# Notes:
+# - Generate AUTH_SECRET_KEY using: python -c "import secrets; print(secrets.token_hex(32))"
+# - Set DEBUG=false in production
+# - Use environment variables in production instead of .env file
