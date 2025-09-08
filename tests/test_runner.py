@@ -18,19 +18,30 @@ Options:
     --help        - Show this help message
 """
 
-import sys
-import os
-import time
 import argparse
+import os
+import sys
+import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 # Add parent directory to path for imports
 project_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_dir))
 
-class TestRunner:
-    """Manages and executes test suites."""
+# NOTE: Pytest attempted to collect the previous 'TestRunner' class because the
+# name started with 'Test'. We rename to 'AppTestRunner' and exclude via
+# __all__ to prevent accidental collection while still allowing direct script use.
+
+__all__ = ["main", "AppTestRunner"]
+
+class AppTestRunner:
+    """Manages and executes test suites for manual invocation.
+
+    This wrapper avoids pytest auto-discovery (class name no longer starts with
+    'Test') and adds resilient environment initialization so the script can
+    run outside CI with minimal setup.
+    """
     
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
@@ -42,6 +53,17 @@ class TestRunner:
             "failed": 0,
             "errors": []
         }
+        # Ensure minimal required env vars (dummy) so imports that validate
+        # presence of AZURE_SQL_* do not fail when running locally.
+        required = {
+            'AZURE_SQL_SERVER': 'dummy.server.local',
+            'AZURE_SQL_PORT': '1433',
+            'AZURE_SQL_USER': 'user',
+            'AZURE_SQL_PASSWORD': 'pass',
+            'AZURE_SQL_DATABASE': 'testdb',
+        }
+        for k, v in required.items():
+            os.environ.setdefault(k, v)
     
     def log(self, message: str, level: str = "INFO"):
         """Log a message with timestamp."""
@@ -54,24 +76,35 @@ class TestRunner:
         self.log("Running SQL connectivity tests...", "INFO")
         
         try:
-            # Import SQL connectivity tester
-            from sql_connectivity_tests import SQLConnectivityTester, ConnectivityTestResult
-            
+            # Import SQL connectivity tester (enum name may vary; handle dynamically)
+            from tests.extended.sql_connectivity_tests import \
+                SQLConnectivityTester
+
             # Create tester instance
             tester = SQLConnectivityTester(timeout_seconds=30, retry_attempts=3)
             
             # Run tests
             report = tester.run_comprehensive_tests()
             
+            # Determine pass condition robustly without assuming specific enum name
+            overall_status = getattr(report, "overall_status", None)
+            if overall_status is not None:
+                status_value = getattr(overall_status, "value", str(overall_status))
+                status_name = getattr(overall_status, "name", str(status_value)).upper()
+                passed = status_name in ("SUCCESS", "PASSED", "OK")
+            else:
+                status_value = "unknown"
+                passed = False
+            
             # Process results
             test_result = {
                 "name": "SQL Connectivity Tests",
-                "passed": report.overall_status == ConnectivityTestResult.SUCCESS,
-                "duration": report.total_duration_ms / 1000.0,
+                "passed": passed,
+                "duration": getattr(report, "total_duration_ms", 0) / 1000.0,
                 "details": {
-                    "overall_status": report.overall_status.value,
-                    "individual_tests": len(report.tests),
-                    "recommendations": len(report.recommendations)
+                    "overall_status": status_value,
+                    "individual_tests": len(getattr(report, "tests", [])),
+                    "recommendations": len(getattr(report, "recommendations", []))
                 }
             }
             
@@ -98,8 +131,9 @@ class TestRunner:
         
         try:
             # Import data flow test
-            from test_comprehensive_data_flow import ComprehensiveDataFlowTest
-            
+            from tests.core.test_comprehensive_data_flow import \
+                ComprehensiveDataFlowTest
+
             # Create test instance
             test_instance = ComprehensiveDataFlowTest()
             
@@ -249,7 +283,7 @@ Examples:
     args = parser.parse_args()
     
     # Create test runner
-    runner = TestRunner(verbose=args.verbose)
+    runner = AppTestRunner(verbose=args.verbose)
     
     print("🧪 Road Condition Indexer - Test Runner")
     print("=" * 50)

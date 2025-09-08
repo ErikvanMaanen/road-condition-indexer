@@ -1,14 +1,45 @@
 import os
 import time
 import warnings
-from pathlib import Path
-from datetime import datetime
+
+
+# Load environment variables based on environment
+# - Local development: Load from .env file
+# - Azure Web App: Use environment variables set on webapp instance
+# - GitHub Codespaces: Use environment variables set in Codespaces
+def load_environment_config():
+    # Check if running in Azure Web App (has WEBSITE_SITE_NAME)
+    if os.getenv('WEBSITE_SITE_NAME'):
+        print("Running in Azure Web App - using environment variables")
+        return
+    
+    # Check if running in GitHub Codespaces (has CODESPACES)
+    if os.getenv('CODESPACES'):
+        print("Running in GitHub Codespaces - using environment variables")
+        return
+    
+    # Default to local development - load from .env file
+    try:
+        from dotenv import load_dotenv
+        if load_dotenv():
+            print("Running locally - loaded environment variables from .env file")
+        else:
+            print("Running locally - .env file not found or empty")
+    except ImportError:
+        print("Running locally - dotenv not available, using system environment variables")
+
+load_environment_config()
+import asyncio
+import hashlib
 import math
 import re
-import hashlib
-import pytz
+import tempfile
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING, Union
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+import pytz
 
 # Python 3.12 compatible warning suppression for Azure SDK
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -19,37 +50,38 @@ warnings.filterwarnings("ignore", message=r".*KEY_LOCAL_MACHINE.*", category=Syn
 # Additional Python 3.12 compatibility
 warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
+import numpy as np
+import requests
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import (FileResponse, RedirectResponse, Response,
+                               StreamingResponse)
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from scipy import signal
 
-import requests
-from fastapi import FastAPI, HTTPException, Request, Depends, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, RedirectResponse
-from pydantic import BaseModel, Field
-import numpy as np
-
 # Import database constants and manager
-from database import (
-    DatabaseManager, TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES, TABLE_ARCHIVE_LOGS, TABLE_BIKE_SOURCE_DATA, TABLE_SHARED
-)
-
-# Import SQL connectivity testing
-from tests.sql_connectivity_tests import run_startup_connectivity_tests, ConnectivityTestResult
-
+from database import (TABLE_ARCHIVE_LOGS, TABLE_BIKE_DATA,
+                      TABLE_BIKE_SOURCE_DATA, TABLE_DEBUG_LOG,
+                      TABLE_DEVICE_NICKNAMES, TABLE_SHARED, DatabaseManager)
 # Import logging utilities
-from log_utils import LogLevel, LogCategory, log_info, log_warning, log_error, log_debug, DEBUG_LOG, get_utc_timestamp, format_display_time
+from log_utils import (DEBUG_LOG, LogCategory, LogLevel, format_display_time,
+                       get_utc_timestamp, log_debug, log_error, log_info,
+                       log_warning)
+# Import SQL connectivity testing
+from tests.sql_connectivity_tests import (ConnectivityTestResult,
+                                          run_startup_connectivity_tests)
 
 if TYPE_CHECKING:
     from azure.identity import ClientSecretCredential
-    from azure.mgmt.web import WebSiteManagementClient
     from azure.mgmt.sql import SqlManagementClient
     from azure.mgmt.sql.models import DatabaseUpdate, Sku
+    from azure.mgmt.web import WebSiteManagementClient
 
 try:
     from azure.identity import ClientSecretCredential
-    from azure.mgmt.web import WebSiteManagementClient
     from azure.mgmt.sql import SqlManagementClient
     from azure.mgmt.sql.models import DatabaseUpdate, Sku
+    from azure.mgmt.web import WebSiteManagementClient
 except Exception:  # pragma: no cover - optional deps
     ClientSecretCredential = None
     WebSiteManagementClient = None
@@ -58,6 +90,9 @@ except Exception:  # pragma: no cover - optional deps
     Sku = None
 
 from database import db_manager
+
+# Note: yt-dlp was previously used for advanced video downloading (YouTube, etc.).
+# We remove the dependency and keep a generic streaming downloader below.
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -83,6 +118,7 @@ app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 
 # Serve all static files automatically (public, no auth)
 from fastapi.staticfiles import StaticFiles
+
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 # MD5 hash for the default password
@@ -266,7 +302,12 @@ def read_index(request: Request):
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/")
     
-    db_manager.init_tables()
+    try:
+        db_manager.init_tables()
+    except Exception as e:
+        log_error(f"Database initialization failed: {e}")
+        raise HTTPException(status_code=500, detail="Database connection failed. Please check configuration.")
+    
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
@@ -494,6 +535,7 @@ def startup_init():
     try:
         # SQL Connectivity Tests
         try:
+            # Run SQL connectivity tests with explicit timeout
             connectivity_report = run_startup_connectivity_tests(timeout_seconds=30, retry_attempts=3)
             
             if connectivity_report.overall_status == ConnectivityTestResult.SUCCESS:
@@ -507,7 +549,11 @@ def startup_init():
             log_error(f"❌ SQL connectivity testing failed: {str(e)}", LogCategory.STARTUP)
         
         # Database Initialization
-        db_manager.init_tables()
+        try:
+            db_manager.init_tables()
+        except Exception as e:
+            log_error(f"Database initialization failed during startup: {e}")
+            raise
         
         # Basic connectivity verification
         test_result = db_manager.execute_scalar("SELECT 1")
@@ -911,6 +957,10 @@ class DeviceDeletionEntry(BaseModel):
     delete_data: bool = False
 
 
+class VideoDownloadRequest(BaseModel):
+    url: str
+
+
 @app.delete("/nickname")
 def delete_device_nickname(entry: DeviceDeletionEntry, dep: None = Depends(password_dependency)):
     """Delete a device nickname/registration."""
@@ -966,6 +1016,36 @@ def get_gpx(limit: Optional[int] = None):
     gpx_lines.append('</trkseg></trk></gpx>')
     gpx_data = "\n".join(gpx_lines)
     return Response(content=gpx_data, media_type="application/gpx+xml", headers={"Content-Disposition": "attachment; filename=records.gpx"})
+
+
+@app.post("/tools/download_video")
+async def download_video(entry: VideoDownloadRequest):
+    """Download streaming video from a URL and return as a single file."""
+    if not entry.url:
+        raise HTTPException(status_code=400, detail="URL is required")
+
+    # Explicitly disallow known YouTube domains to remove YouTube-specific handling
+    lower = entry.url.lower()
+    if "youtube.com" in lower or "youtu.be" in lower:
+        raise HTTPException(status_code=400, detail="YouTube downloads are not supported")
+
+    try:
+        # Stream the remote resource and return it as a single response
+        with requests.get(entry.url, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            content_type = r.headers.get("Content-Type", "application/octet-stream")
+            # Read into memory (for simplicity). For large files, consider streaming through StreamingResponse.
+            data = r.content
+            # Attempt to infer extension from content-type
+            ext = "mp4"
+            if content_type and "/" in content_type:
+                main_type, sub = content_type.split("/", 1)
+                if main_type == "video":
+                    ext = sub.split(";")[0]
+    except Exception as exc:  # pragma: no cover - network/third-party errors
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return Response(content=data, media_type=content_type, headers={"Content-Disposition": f"attachment; filename=video.{ext}"})
 
 
 @app.get("/debuglog")

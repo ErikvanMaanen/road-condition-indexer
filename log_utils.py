@@ -10,14 +10,15 @@ All logs are stored with UTC timestamps and displayed in Europe/Amsterdam timezo
 using a short format (MM/DD HH:MM:SS).
 """
 
-import os
 import json
 import logging
-import traceback
+import os
 import time
-from datetime import datetime
+import traceback
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
+
 import pytz
 
 # Load environment variables from .env file
@@ -54,19 +55,20 @@ class LogCategory(Enum):
 DEBUG_LOG = []
 
 def get_utc_timestamp() -> str:
-    """Get current UTC timestamp in ISO format for database storage."""
-    return datetime.utcnow().isoformat()
+    """Get current UTC timestamp in ISO format for database storage (timezone-aware)."""
+    return datetime.now(UTC).isoformat()
 
 def format_display_time(utc_timestamp: Optional[str] = None) -> str:
     """Convert UTC timestamp to short Amsterdam time format for display (MM/DD HH:MM:SS)."""
     try:
         if utc_timestamp is None:
-            utc_time = datetime.utcnow()
+            utc_time = datetime.now(UTC)
         else:
             utc_time = datetime.fromisoformat(utc_timestamp.replace('Z', ''))
         
         # Convert to Amsterdam time
-        utc_time = utc_time.replace(tzinfo=pytz.UTC)
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=pytz.UTC)
         amsterdam_tz = pytz.timezone('Europe/Amsterdam')
         amsterdam_time = utc_time.astimezone(amsterdam_tz)
         
@@ -74,7 +76,7 @@ def format_display_time(utc_timestamp: Optional[str] = None) -> str:
         return amsterdam_time.strftime('%m/%d %H:%M:%S')
     except Exception:
         # Fallback to current UTC time in short format
-        return datetime.utcnow().strftime('%m/%d %H:%M:%S')
+        return datetime.now(UTC).strftime('%m/%d %H:%M:%S')
 
 def log_debug(message: str, device_id: Optional[str] = None) -> None:
     """Log a debug message. Stores in UTC, displays in Amsterdam time."""

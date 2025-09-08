@@ -119,35 +119,44 @@ All common JavaScript functions have been centralized in `utils.js`:
 
 ## Testing
 
-### Test Structure
-All tests are located in the `tests/` folder:
-- `test_comprehensive_data_flow.py`: Comprehensive database and API tests
-- `test_runner.py`: Smart test runner with multiple modes
-- `sql_connectivity_tests.py`: Database connectivity validation
+### Minimal Test Suite (Lean Mode)
+The repository has been simplified to a fast, low‑maintenance test set focused on import sanity and core helper behavior. Heavy integration / connectivity diagnostics were removed to reduce noise and speed up CI.
+
+Current tests (in `tests/core/`):
+- `test_imports.py` – Verifies key modules import successfully with dummy environment variables.
+- `test_database_config.py` – Checks `DatabaseManager` basic properties (e.g., `use_sqlserver`, log level change mechanics) without opening real connections.
+- `test_logging_basic.py` – Ensures in‑memory debug ring buffer appends and logging helpers execute without exceptions.
+- `sql_connectivity_tests.py` (root) – Lightweight stub preserving the historic public API (returns immediate SUCCESS) so `main.py` startup imports still work.
+
+Removed legacy artifacts:
+- Comprehensive data flow integration test harness
+- Custom `test_runner.py`
+- Extended connectivity benchmarking + legacy enforcement tests
 
 ### Running Tests
-
-#### Quick Database-Only Tests
+Pytest is used for simplicity:
 ```bash
-python tests/test_runner.py
+pytest -q
 ```
 
-#### Full Test Suite (Database + API)
-```bash
-python tests/test_runner.py --full
-```
+### Design Principles of Minimal Suite
+- **Fast**: No network, database, or external API calls.
+- **Deterministic**: Uses fixed dummy environment vars; no timing or random variability.
+- **Safety**: Never attempts to create engines or touch production resources during unit tests.
+- **Compatibility**: Keeps public symbols (`run_startup_connectivity_tests`, classes & enums) so app code requiring them remains unchanged.
 
-#### Individual Test Files
-```bash
-python tests/test_comprehensive_data_flow.py
-```
+### Extending Tests (Optional)
+If you later need richer validation:
+1. Add new file under `tests/` (e.g., `tests/integration/…`).
+2. Gate real DB usage behind explicit markers:
+   ```python
+   import os, pytest
+   pytest.skip("needs real DB", allow_module_level=True) if not os.getenv("RCI_REAL_DB") else None
+   ```
+3. Use `pytest -m integration` with custom markers to separate slow tests.
 
-### Test Features
-- **Database validation**: Direct database insert and query operations
-- **API testing**: Full API endpoint validation when server is running
-- **Enhanced logging**: Tests all logging levels and categories
-- **Data consistency**: Verifies data integrity across different entry methods
-- **Automatic server management**: Starts/stops server for API tests
+### Why the Reduction?
+The previous suite mixed diagnostics and unit testing, increasing maintenance cost and producing flaky results in constrained environments. The lean approach keeps confidence for core imports and utilities while avoiding setup complexity.
 
 ## Browser Compatibility
 

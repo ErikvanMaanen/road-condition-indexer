@@ -58,7 +58,7 @@
         .json-null { color: #6c757d; font-style: italic; }
         .json-array, .json-nested-object { margin-left: 1em; }
         .json-bracket { color: #666; font-weight: bold; }
-        .json-expand { cursor: pointer; user-select: none; color: #007cba; font-weight: bold; margin-right: 0.25em; }
+        .json-expand { cursor: pointer; -webkit-user-select: none; user-select: none; color: #007cba; font-weight: bold; margin-right: 0.25em; }
         .json-expand:hover { background: #e0f0ff; }
         .diff-added { background-color: #d4edda; border-left: 3px solid #28a745; }
         .diff-removed { background-color: #f8d7da; border-left: 3px solid #dc3545; }
@@ -206,6 +206,23 @@
             <button id="json-merge-download-btn" disabled>Download Merged JSON</button>
         </div>
         <div id="json-merge-result" class="result-box"></div>
+    </div>
+</div>
+	
+<!-- Video Downloader Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('video-downloader')">
+        <span>🎥 Video Downloader</span>
+        <span class="section-toggle" id="video-downloader-toggle">▶</span>
+    </div>
+    <div class="section-content" id="video-downloader-content">
+        <div id="video-drop" class="json-drop">Drop or paste a video URL here</div>
+        <div style="margin:6px 0;">
+            <input type="text" id="video-url" style="width:100%;" placeholder="Enter video URL here">
+        </div>
+        <button id="video-download-btn" disabled>Download</button>
+        <a id="video-download-link" style="display:none;"></a>
+        <div id="video-status" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
     </div>
 </div>
 
@@ -917,6 +934,73 @@ function toggleExpand(elementId) {
         if (preview) preview.style.display = 'inline';
     }
 }
+
+// Video Downloader logic
+const videoDrop = document.getElementById('video-drop');
+const videoUrlInput = document.getElementById('video-url');
+const videoDownloadBtn = document.getElementById('video-download-btn');
+const videoLink = document.getElementById('video-download-link');
+const videoStatus = document.getElementById('video-status');
+
+function updateVideoButton() {
+    videoDownloadBtn.disabled = !videoUrlInput.value.trim();
+}
+
+['dragenter', 'dragover'].forEach(ev => {
+    videoDrop.addEventListener(ev, e => {
+        e.preventDefault();
+        videoDrop.classList.add('hover');
+    });
+});
+['dragleave', 'drop'].forEach(ev => {
+    videoDrop.addEventListener(ev, e => {
+        e.preventDefault();
+        videoDrop.classList.remove('hover');
+    });
+});
+videoDrop.addEventListener('drop', e => {
+    const url = e.dataTransfer.getData('text/plain');
+    if (url) {
+        videoUrlInput.value = url.trim();
+        updateVideoButton();
+    }
+});
+videoDrop.addEventListener('paste', e => {
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (text) {
+        videoUrlInput.value = text.trim();
+        updateVideoButton();
+    }
+});
+videoUrlInput.addEventListener('input', updateVideoButton);
+
+videoDownloadBtn.addEventListener('click', async () => {
+    const url = videoUrlInput.value.trim();
+    if (!url) return;
+    videoStatus.textContent = 'Fetching video...';
+    try {
+        const resp = await fetch('/tools/download_video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        if (!resp.ok) throw new Error('Server error');
+        const blob = await resp.blob();
+        const dlUrl = URL.createObjectURL(blob);
+        let filename = 'video.mp4';
+        const cd = resp.headers.get('Content-Disposition');
+        if (cd) {
+            const m = cd.match(/filename="?(.+?)"?$/);
+            if (m) filename = m[1];
+        }
+        videoLink.href = dlUrl;
+        videoLink.download = filename;
+        videoLink.click();
+        videoStatus.textContent = 'Download started.';
+    } catch (err) {
+        videoStatus.textContent = 'Error: ' + err.message;
+    }
+});
 
 // Helper functions
 function escapeHtml(text) {

@@ -7,33 +7,49 @@ This module handles all database operations using Azure SQL Server exclusively:
 - Requires all Azure SQL environment variables to be configured
 """
 
-import os
 import json
 import logging
-import traceback
-import time
+import os
 import re
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any, Union, Iterator, Generator
+import time
+import traceback
 from contextlib import contextmanager
-import pytz
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple, Union
 
+import pytz
 # SQLAlchemy imports
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine, Connection
+from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.pool import StaticPool
 
 # Import logging utilities
-from log_utils import LogLevel, LogCategory
+from log_utils import LogCategory, LogLevel
 
-# Load environment variables from .env file
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    # dotenv not available, continue without it
-    pass
+
+# Load environment variables based on environment
+# - Local development: Load from .env file
+# - Azure Web App: Use environment variables set on webapp instance  
+# - GitHub Codespaces: Use environment variables set in Codespaces
+def load_environment_config():
+    # Check if running in Azure Web App (has WEBSITE_SITE_NAME)
+    if os.getenv('WEBSITE_SITE_NAME'):
+        return
+    
+    # Check if running in GitHub Codespaces (has CODESPACES)
+    if os.getenv('CODESPACES'):
+        return
+    
+    # Default to local development - load from .env file
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        # dotenv not available, continue without it
+        pass
+
+load_environment_config()
 
 # Import HTTPException for management operations
 from fastapi import HTTPException
@@ -125,7 +141,7 @@ class DatabaseManager:
     def _get_utc_timestamp(self, utc_time: Optional[datetime] = None) -> str:
         """Get UTC timestamp for SQL Server database storage."""
         if utc_time is None:
-            utc_time = datetime.utcnow()
+            utc_time = datetime.now(UTC)
         
         # Ensure we have a UTC datetime
         if utc_time.tzinfo is None:
@@ -201,11 +217,19 @@ class DatabaseManager:
             self.log_debug(f"Creating SQLAlchemy engine for SQL Server: {server}:{port}, database: {db_name}", 
                           LogLevel.DEBUG, LogCategory.CONNECTION)
             
-            # Using pymssql driver
-            connection_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{db_name}"
-            
+            # Using SQLAlchemy URL to ensure credentials are properly escaped
+            port_number = int(port) if port else None
+            connection_url = URL.create(
+                "mssql+pymssql",
+                username=user,
+                password=password,
+                host=server,
+                port=port_number,
+                database=db_name,
+            )
+
             engine = create_engine(
-                connection_string,
+                connection_url,
                 echo=False,  # Set to True for SQL query logging
                 pool_pre_ping=True,
                 pool_recycle=3600,  # Recycle connections after 1 hour
@@ -627,7 +651,7 @@ class DatabaseManager:
         """Attempt to recover the debug log table from corruption."""
         try:
             # First try to backup existing data if possible
-            backup_table = f"{TABLE_DEBUG_LOG}_backup_{int(datetime.utcnow().timestamp())}"
+            backup_table = f"{TABLE_DEBUG_LOG}_backup_{int(datetime.now(UTC).timestamp())}"
             try:
                 backup_query = f"CREATE TABLE {backup_table} AS SELECT * FROM {TABLE_DEBUG_LOG}"
                 self.execute_query(backup_query)
@@ -1314,7 +1338,7 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                start_time = datetime.utcnow()
+                start_time = datetime.now(UTC)
                 
                 # Execute query with proper parameter handling
                 if params is not None and len(params) > 0:
@@ -1348,7 +1372,7 @@ class DatabaseManager:
                     except (AttributeError, IndexError):
                         result_list = []
                 
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
                 duration = (end_time - start_time).total_seconds()
                 self.log_debug(f"Query completed in {duration:.3f}s, returned {len(result_list)} rows", 
                               LogLevel.DEBUG, LogCategory.QUERY)
@@ -1365,7 +1389,7 @@ class DatabaseManager:
         
         try:
             with self.get_connection_context() as conn:
-                start_time = datetime.utcnow()
+                start_time = datetime.now(UTC)
                 
                 # Execute query with proper parameter handling
                 if params is not None and len(params) > 0:
@@ -1376,7 +1400,7 @@ class DatabaseManager:
                 row = result.fetchone()
                 scalar_result = row[0] if row else None
                 
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
                 duration = (end_time - start_time).total_seconds()
                 self.log_debug(f"Scalar query completed in {duration:.3f}s, result: {scalar_result}", 
                               LogLevel.DEBUG, LogCategory.QUERY)
@@ -1497,8 +1521,7 @@ class DatabaseManager:
         # Only allow tables that start with RCI_
         if not table_name.startswith("RCI_"):
             raise ValueError("Access denied: Only RCI_ tables are allowed")
-            
-        uid = datetime.utcnow().strftime("test_%Y%m%d%H%M%S%f")
+        uid = datetime.now(UTC).strftime("test_%Y%m%d%H%M%S%f")
         rows: List[Dict[str, Any]] = []
         
         if table_name == TABLE_BIKE_DATA:
@@ -1576,8 +1599,7 @@ class DatabaseManager:
         # Only allow tables that start with RCI_
         if not table_name.startswith("RCI_"):
             raise ValueError("Access denied: Only RCI_ tables are allowed")
-            
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         new_table = f"{table_name}_backup_{timestamp}"
         
         self.log_debug(f"Starting backup of table '{table_name}' to '{new_table}'", 

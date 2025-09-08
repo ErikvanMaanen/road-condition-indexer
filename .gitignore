@@ -7,6 +7,7 @@ __pycache__/
 # Environments
 .env
 *.env
+.config
 
 # Logs
 *.log
@@ -16,6 +17,8 @@ __pycache__/
 run-local.cmd
 verify-vendor-structure.ps1
 test-static-files.ps1
+.history/
+.claude/
 
 # Python virtual environments
 venv/

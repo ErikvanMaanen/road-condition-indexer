@@ -1,0 +1,30 @@
+###################################################################################################
+# ROAD CONDITION INDEXER - CONFIG TEMPLATE                                                          #
+# Copy to .config (which is gitignored) and fill in real secrets.                                   #
+###################################################################################################
+[SECTION Database]
+META Type=AzureSQL
+META Purpose=Primary application data store
+SECRET AZURE_SQL_PASSWORD=REPLACE_ME_SECURE_PASSWORD
+VAR    AZURE_SQL_SERVER=yourserver.database.windows.net
+VAR    AZURE_SQL_DATABASE=your-database-name
+VAR    AZURE_SQL_USER=your-username
+VAR    AZURE_SQL_PORT=1433
+REQUIRE AZURE_SQL_PASSWORD secret
+REQUIRE AZURE_SQL_SERVER public
+REQUIRE AZURE_SQL_DATABASE public
+REQUIRE AZURE_SQL_USER public
+REQUIRE AZURE_SQL_PORT public
+
+[SECTION Application]
+META Purpose=Domain specific thresholds
+VAR  RCI_MAX_INTERVAL_SEC=15
+VAR  RCI_MAX_DISTANCE_M=100
+VAR  RCI_MIN_SPEED_KMH=7
+REQUIRE RCI_MAX_INTERVAL_SEC public
+REQUIRE RCI_MAX_DISTANCE_M public
+REQUIRE RCI_MIN_SPEED_KMH public
+
+[SECTION Notes]
+NOTE Copy variable values into .env for local runtime if needed.
+NOTE This file preserves structure & metadata; production should rely on environment variables.
