@@ -14,6 +14,65 @@
 
   let statusTimeoutId = null;
 
+  async function copyTextToClipboard(text) {
+    const value = typeof text === 'string' ? text : '';
+    if (!value) {
+      return false;
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch (error) {
+        console.error('navigator.clipboard.writeText failed', error);
+      }
+    }
+
+    if (!document.body) {
+      return false;
+    }
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      textarea.style.fontSize = '16px';
+
+      const activeElement = document.activeElement;
+      const selection = document.getSelection();
+      const selectedRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const successful = document.execCommand('copy');
+
+      document.body.removeChild(textarea);
+
+      if (selectedRange && selection) {
+        selection.removeAllRanges();
+        selection.addRange(selectedRange);
+      } else if (selection) {
+        selection.removeAllRanges();
+      }
+
+      if (activeElement && typeof activeElement.focus === 'function') {
+        activeElement.focus();
+      }
+
+      return successful;
+    } catch (error) {
+      console.error('Fallback clipboard copy failed', error);
+      return false;
+    }
+  }
+
   function formatMemoTime(isoString) {
     if (!isoString) {
       return '';
@@ -131,6 +190,12 @@
     const actions = document.createElement('div');
     actions.className = 'memo-card__actions';
 
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'memo-copy-btn focus-ring';
+    copyButton.textContent = '📋 Kopiëren';
+    actions.appendChild(copyButton);
+
     const editButton = document.createElement('button');
     editButton.type = 'button';
     editButton.className = 'memo-edit-btn focus-ring';
@@ -188,6 +253,28 @@
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       } else {
         textarea.value = memo.content;
+      }
+    });
+
+    copyButton.addEventListener('click', async () => {
+      const originalText = copyButton.textContent;
+      if (!memo.content) {
+        showStatus('Deze memo is leeg en kan niet gekopieerd worden.', 'warning');
+        return;
+      }
+
+      copyButton.disabled = true;
+      copyButton.textContent = 'Kopiëren…';
+
+      const success = await copyTextToClipboard(memo.content);
+
+      copyButton.disabled = false;
+      copyButton.textContent = originalText;
+
+      if (success) {
+        showStatus('Memo gekopieerd naar klembord.', 'success');
+      } else {
+        showStatus('Kopiëren naar klembord mislukt.', 'error');
       }
     });
 
@@ -286,7 +373,13 @@
       const newMemo = Object.assign({}, data.memo, { __highlight: true });
       state.memos.unshift(newMemo);
       renderMemos();
-      showStatus('Memo opgeslagen.', 'success');
+
+      const copySucceeded = await copyTextToClipboard(newMemo.content);
+      if (copySucceeded) {
+        showStatus('Memo opgeslagen en gekopieerd naar klembord.', 'success');
+      } else {
+        showStatus('Memo opgeslagen, maar kopiëren naar klembord is mislukt.', 'warning');
+      }
       return true;
     } catch (error) {
       console.error('Failed to save memo', error);
