@@ -399,6 +399,14 @@ def read_tools(request: Request):
     return FileResponse(BASE_DIR / "static" / "tools.html")
 
 
+@app.get("/memo.html")
+def read_memo_page(request: Request):
+    """Serve the memo management page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/memo.html")
+    return FileResponse(BASE_DIR / "static" / "memo.html")
+
+
 @app.get("/logs-partial.html")
 def read_logs_partial(request: Request):
     """Serve the logs partial file."""
@@ -2354,6 +2362,14 @@ class SharedObjectNoteUpdate(BaseModel):
     note: str = Field(..., description="Updated note text")
 
 
+class MemoCreateRequest(BaseModel):
+    content: str = Field(..., description="Transcribed memo text")
+
+
+class MemoUpdateRequest(BaseModel):
+    content: str = Field(..., description="Updated memo text")
+
+
 @app.post("/api/shared")
 def create_shared_object(request: SharedObjectRequest, http_request: Request):
     """Create a new shared object."""
@@ -2436,15 +2452,61 @@ def delete_shared_object(shared_id: int, dep: None = Depends(password_dependency
         obj = db_manager.get_shared_object(shared_id)
         if not obj:
             raise HTTPException(status_code=404, detail="Shared object not found")
-            
+
         db_manager.delete_shared_object(shared_id)
         return {"status": "ok", "message": "Shared object deleted successfully"}
-        
+
     except HTTPException:
         raise
     except Exception as exc:
         log_error(f"Failed to delete shared object: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to delete shared object: {str(exc)}")
+
+
+# Memo management endpoints
+@app.post("/api/memos")
+def create_memo(request: MemoCreateRequest):
+    """Create a new memo entry."""
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Memo mag niet leeg zijn")
+
+    try:
+        memo = db_manager.create_memo(content)
+        return {"status": "ok", "memo": memo}
+    except Exception as exc:
+        log_error(f"Failed to create memo: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to create memo: {str(exc)}")
+
+
+@app.get("/api/memos")
+def list_memos(limit: Optional[int] = Query(None, ge=1, le=200, description="Maximum number of memos")):
+    """Return stored memos in reverse chronological order."""
+    try:
+        memos = db_manager.get_memos(limit)
+        return {"status": "ok", "memos": memos}
+    except Exception as exc:
+        log_error(f"Failed to fetch memos: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch memos: {str(exc)}")
+
+
+@app.put("/api/memos/{memo_id}")
+def update_memo(memo_id: int, request: MemoUpdateRequest):
+    """Update an existing memo."""
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Memo mag niet leeg zijn")
+
+    try:
+        memo = db_manager.update_memo(memo_id, content)
+        if memo is None:
+            raise HTTPException(status_code=404, detail="Memo niet gevonden")
+        return {"status": "ok", "memo": memo}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to update memo {memo_id}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to update memo: {str(exc)}")
 
 
 @app.get("/shared.html")
