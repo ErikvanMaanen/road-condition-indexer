@@ -100,8 +100,15 @@
     </div>
     <div class="input-group">
         <label for="file-input">Select File</label>
-        <input id="file-input" type="file" />
-    <small class="rci-muted">Single file; larger files may take longer.</small>
+        <div class="input-inline">
+            <input id="file-input" type="file" />
+            <button class="btn btn-primary btn-small" id="file-upload-btn" disabled>Upload</button>
+            <button class="btn btn-secondary btn-small" id="file-clear-btn" disabled>Clear</button>
+        </div>
+        <div class="file-selected-wrapper">
+            <small id="file-selected-name" class="rci-muted"></small>
+        </div>
+        <small class="rci-muted">Choose a file, then click Upload. Drag & drop still works.</small>
     </div>
     <div class="input-group input-group--compact">
         <label>Camera / QR</label>
@@ -632,6 +639,9 @@ window.onclick = function(event) {
     const manualInput = document.getElementById('manual-input');
     const manualSubmit = document.getElementById('manual-submit');
     const fileInput = document.getElementById('file-input');
+    const fileUploadBtn = document.getElementById('file-upload-btn');
+    const fileClearBtn = document.getElementById('file-clear-btn');
+    const fileSelectedName = document.getElementById('file-selected-name');
     const openCameraBtn = document.getElementById('open-camera');
     const closeCameraBtn = document.getElementById('close-camera');
     const cameraSection = document.getElementById('camera-section');
@@ -661,16 +671,51 @@ window.onclick = function(event) {
     manualSubmit.addEventListener('click', handleManualSubmit);
     manualInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); handleManualSubmit(); }});
 
+    let selectedFile = null;
+
+    function resetSelectedFile(){
+        selectedFile = null;
+        fileUploadBtn.disabled = true;
+        fileClearBtn.disabled = true;
+        fileSelectedName.textContent = '';
+        fileInput.value='';
+    }
+
     fileInput.addEventListener('change', (e)=>{
         const files = e.target.files;
         if(files && files.length){
-            processFiles(files);
-            fileInput.value='';
+            selectedFile = files[0];
+            fileSelectedName.textContent = 'Selected: '+ selectedFile.name + ' ('+ formatFileSize(selectedFile.size)+')';
+            fileUploadBtn.disabled = false;
+            fileClearBtn.disabled = false;
+        } else {
+            resetSelectedFile();
         }
     });
 
+    fileClearBtn.addEventListener('click', ()=>{
+        resetSelectedFile();
+    });
+
+    fileUploadBtn.addEventListener('click', ()=>{
+        if(!selectedFile) return;
+        // Wrap selected file in a FileList-like structure for reuse of existing processFiles
+        processFiles([selectedFile]);
+        resetSelectedFile();
+    });
+
     openCameraBtn.addEventListener('click', async ()=>{
+        if(stream){
+            // Already open; ignore duplicate click
+            return;
+        }
         try {
+            // Feature detection
+            if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+                qrStatus.textContent = 'Camera unsupported in this browser';
+                return;
+            }
+            qrStatus.textContent = 'Requesting camera permission...';
             openCameraBtn.disabled = true;
             closeCameraBtn.disabled = false;
             cameraSection.style.display='flex';
@@ -681,9 +726,14 @@ window.onclick = function(event) {
             if(qrMode) startScanLoop();
             captureBtn.disabled = qrMode; // only enabled in photo mode
         } catch(err){
-            qrStatus.textContent = 'Camera error: '+ err.message;
+            // Differentiate common permission cases
+            let msg = err && err.name === 'NotAllowedError' ? 'Permission denied. Enable camera access in browser settings.' :
+                      err && err.name === 'NotFoundError' ? 'No suitable camera device found.' :
+                      'Camera error: ' + err.message;
+            qrStatus.textContent = msg;
             openCameraBtn.disabled = false;
             closeCameraBtn.disabled = true;
+            cameraSection.style.display='none';
         }
     });
 
@@ -782,7 +832,7 @@ window.onclick = function(event) {
 
     // Clean up if page unloads
     window.addEventListener('beforeunload', stopCamera);
-})();
+});
 </script>
 
 </body>
