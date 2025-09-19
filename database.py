@@ -62,6 +62,7 @@ TABLE_BIKE_SOURCE_DATA = "RCI_bike_source_data"
 TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
 TABLE_USER_ACTIONS = "RCI_user_actions"
 TABLE_SHARED = "RCI_shared"
+TABLE_MEMOS = "RCI_memos"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -463,6 +464,21 @@ class DatabaseManager:
             """)
         )
         
+        # Create memos table for voice memos
+        conn.execute(text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_MEMOS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_MEMOS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    content NVARCHAR(MAX) NOT NULL,
+                    created_at DATETIME2 DEFAULT SYSUTCDATETIME(),
+                    updated_at DATETIME2 DEFAULT SYSUTCDATETIME()
+                )
+            END
+        """))
+
         # Schema migration statements
         self._apply_sqlserver_migrations(conn)
 
@@ -2299,7 +2315,7 @@ class DatabaseManager:
             with self.get_connection_context() as conn:
                 result = conn.execute(
                     text(f"""
-                    SELECT id, timestamp, object_type, object_name, object_data, object_url, note, 
+                    SELECT id, timestamp, object_type, object_name, object_data, object_url, note,
                            file_size, mime_type, user_ip, user_agent
                     FROM {TABLE_SHARED}
                     WHERE id = :shared_id
@@ -2308,9 +2324,128 @@ class DatabaseManager:
                 )
                 row = result.fetchone()
                 return dict(row._mapping) if row else None
-                
+
         except Exception as exc:
             self.log_debug(f"Failed to get shared object: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def _serialize_memo_row(self, row: Any) -> Dict[str, Any]:
+        """Convert a memo row to a JSON-serializable dictionary."""
+        mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
+
+        for key in ("created_at", "updated_at"):
+            value = mapping.get(key)
+            if isinstance(value, datetime):
+                if value.tzinfo is None:
+                    mapping[key] = value.replace(tzinfo=pytz.UTC).isoformat()
+                else:
+                    mapping[key] = value.astimezone(pytz.UTC).isoformat()
+        return mapping
+
+    def create_memo(self, content: str) -> Dict[str, Any]:
+        """Insert a new memo and return the stored record."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                        INSERT INTO {TABLE_MEMOS} (content)
+                        OUTPUT INSERTED.id, INSERTED.content, INSERTED.created_at, INSERTED.updated_at
+                        VALUES (:content)
+                    """),
+                    {"content": content}
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    raise RuntimeError("Failed to insert memo: no row returned")
+
+                conn.commit()
+
+                memo = self._serialize_memo_row(row)
+                self.log_debug(
+                    f"Memo created with ID {memo['id']}",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE
+                )
+                return memo
+
+        except Exception as exc:
+            self.log_debug(f"Failed to create memo: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def get_memos(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Return stored memos ordered from newest to oldest."""
+        try:
+            query = f"""
+                SELECT id, content, created_at, updated_at
+                FROM {TABLE_MEMOS}
+                ORDER BY created_at DESC
+            """
+
+            if limit:
+                query += f" OFFSET 0 ROWS FETCH NEXT {int(limit)} ROWS ONLY"
+
+            with self.get_connection_context() as conn:
+                result = conn.execute(text(query))
+                return [self._serialize_memo_row(row) for row in result.fetchall()]
+
+        except Exception as exc:
+            self.log_debug(f"Failed to get memos: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def get_memo(self, memo_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a single memo by ID."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                        SELECT id, content, created_at, updated_at
+                        FROM {TABLE_MEMOS}
+                        WHERE id = :memo_id
+                    """),
+                    {"memo_id": memo_id}
+                )
+                row = result.fetchone()
+                if not row:
+                    return None
+                return self._serialize_memo_row(row)
+
+        except Exception as exc:
+            self.log_debug(f"Failed to get memo {memo_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def update_memo(self, memo_id: int, content: str) -> Optional[Dict[str, Any]]:
+        """Update an existing memo and return the updated record."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"""
+                        UPDATE {TABLE_MEMOS}
+                        SET content = :content,
+                            updated_at = SYSUTCDATETIME()
+                        OUTPUT INSERTED.id, INSERTED.content, INSERTED.created_at, INSERTED.updated_at
+                        WHERE id = :memo_id
+                    """),
+                    {"content": content, "memo_id": memo_id}
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    conn.rollback()
+                    return None
+
+                conn.commit()
+
+                memo = self._serialize_memo_row(row)
+                self.log_debug(
+                    f"Memo {memo_id} updated",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE
+                )
+                return memo
+
+        except Exception as exc:
+            self.log_debug(f"Failed to update memo {memo_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
             raise
 
 

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memo's</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js" defer></script>
+    <script src="/static/memo.js" defer></script>
+</head>
+<body>
+
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="tools.html">Tools</a>
+    <a href="memo.html" aria-current="page">Memo's</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+<h1 id="memo-page-title">
+    <img src="/static/logo.png" alt="Road Condition Indexer" class="rci-logo">
+    Memo's
+</h1>
+
+<main class="memo-layout" aria-labelledby="memo-page-title">
+    <section class="memo-controls rci-card" aria-labelledby="memo-create-heading">
+        <div class="memo-section-header">
+            <h2 id="memo-create-heading">Nieuwe memo opnemen</h2>
+            <p class="memo-description">Houd de knop ingedrukt en spreek om een memo op te nemen. Laat los om het transcript op te slaan.</p>
+        </div>
+        <div class="memo-record-wrapper">
+            <button id="memo-record-btn" type="button" class="memo-record-btn focus-ring">
+                🎙️ Houd ingedrukt om op te nemen
+            </button>
+            <div id="memo-live-transcript" class="memo-live-transcript" aria-live="polite" aria-atomic="true"></div>
+        </div>
+        <div class="memo-divider" role="presentation">of</div>
+        <div class="memo-manual">
+            <label for="memo-manual-input" class="memo-label">Typ een memo</label>
+            <textarea id="memo-manual-input" rows="3" placeholder="Schrijf hier je memo..."></textarea>
+            <button id="memo-manual-save" type="button" class="memo-manual-btn focus-ring">Memo opslaan</button>
+        </div>
+        <div id="memo-status" class="status-message" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="memo-list rci-card" aria-labelledby="memo-list-heading">
+        <div class="memo-section-header">
+            <h2 id="memo-list-heading">Memo-overzicht</h2>
+            <p class="rci-muted">De nieuwste memo verschijnt bovenaan.</p>
+        </div>
+        <div id="memo-list" class="memo-card-list" aria-live="polite" aria-atomic="false"></div>
+    </section>
+</main>
+
+</body>
+</html>
