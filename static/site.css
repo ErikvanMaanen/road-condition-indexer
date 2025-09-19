@@ -228,8 +228,8 @@ select { padding:.5rem; font-size:1rem; border:1px solid var(--rci-border); bord
 .memo-card__timestamps { display:flex; flex-direction:column; gap:0.25rem; font-size:0.9rem; color:var(--rci-text-muted); }
 .memo-card__timestamp--updated { font-style:italic; }
 .memo-card__actions { display:flex; gap:0.5rem; }
-.memo-edit-btn, .memo-save-btn, .memo-cancel-btn { padding:0.45rem 0.9rem; border-radius:var(--rci-radius); border:1px solid var(--rci-border); background:var(--rci-surface-alt); cursor:pointer; font-weight:600; transition:background .2s ease, color .2s ease; }
-.memo-edit-btn:hover, .memo-save-btn:hover, .memo-cancel-btn:hover { background:var(--rci-primary); color:#fff; }
+.memo-edit-btn, .memo-save-btn, .memo-cancel-btn, .memo-copy-btn { padding:0.45rem 0.9rem; border-radius:var(--rci-radius); border:1px solid var(--rci-border); background:var(--rci-surface-alt); cursor:pointer; font-weight:600; transition:background .2s ease, color .2s ease; }
+.memo-edit-btn:hover, .memo-save-btn:hover, .memo-cancel-btn:hover, .memo-copy-btn:hover { background:var(--rci-primary); color:#fff; }
 .memo-card__content { margin:0; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
 .memo-edit-area { display:none; flex-direction:column; gap:0.6rem; }
 .memo-edit-area textarea { width:100%; border:1px solid var(--rci-border); border-radius:var(--rci-radius); padding:0.75rem; min-height:120px; font-size:1rem; resize:vertical; background:var(--rci-surface); color:var(--rci-text); }
