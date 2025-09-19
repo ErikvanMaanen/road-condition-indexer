@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsoneditor@10.0.3/dist/jsoneditor.min.js"></script>
     <link rel="stylesheet" href="/static/lib/simple-json-diff.css">
     <script src="/static/lib/simple-json-diff.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/diff@5.1.0/dist/diff.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
         #page-links { margin-bottom: 1rem; }
@@ -65,6 +66,7 @@
         .diff-modified { background-color: #fff3cd; border-left: 3px solid #ffc107; }
         .diff-unchanged { background-color: #f8f9fa; }
         .hidden { display: none !important; }
+        .diff-line { white-space: pre; }
     </style>
 </head>
 <body>
@@ -174,6 +176,77 @@
     </div>
 </div>
 
+<!-- JSON Merge Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('json-merge')">
+        <span>🔄 JSON Merge</span>
+        <span class="section-toggle" id="json-merge-toggle">▶</span>
+    </div>
+    <div class="section-content" id="json-merge-content">
+        <div class="compare-grid">
+            <div class="json-col">
+                <h4>JSON A</h4>
+                <div id="jsonMergeA-drop" class="json-drop">Drag & drop file A here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="jsonMergeA-file" accept=".json,application/json">
+                    <span id="jsonMergeA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="jsonMergeA-text" rows="10" style="width:100%;" placeholder='Paste JSON A here...'></textarea>
+            </div>
+            <div class="json-col">
+                <h4>JSON B</h4>
+                <div id="jsonMergeB-drop" class="json-drop">Drag & drop file B here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="jsonMergeB-file" accept=".json,application/json">
+                    <span id="jsonMergeB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="jsonMergeB-text" rows="10" style="width:100%;" placeholder='Paste JSON B here...'></textarea>
+            </div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center;">
+            <button id="json-merge-btn">Merge</button>
+            <button id="json-merge-download-btn" disabled>Download Merged JSON</button>
+        </div>
+        <div id="json-merge-result" class="result-box"></div>
+    </div>
+</div>
+
+<!-- Text Compare Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('text-compare')">
+        <span>📝 Text Compare</span>
+        <span class="section-toggle" id="text-compare-toggle">▶</span>
+    </div>
+    <div class="section-content" id="text-compare-content">
+        <div class="compare-grid">
+            <div class="json-col">
+                <h4>Original</h4>
+                <div id="textA-drop" class="json-drop">Drag & drop file A here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="textA-file">
+                    <span id="textA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="textA-text" rows="12" style="width:100%;" placeholder="Paste original text here..."></textarea>
+            </div>
+            <div class="json-col">
+                <h4>Modified</h4>
+                <div id="textB-drop" class="json-drop">Drag & drop file B here</div>
+                <div style="margin:6px 0;">
+                    <input type="file" id="textB-file">
+                    <span id="textB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                </div>
+                <textarea id="textB-text" rows="12" style="width:100%;" placeholder="Paste modified text here..."></textarea>
+            </div>
+        </div>
+        <div class="diff-controls" style="margin-top:8px;">
+            <label><input type="checkbox" id="show-added" checked> Show Added</label>
+            <label><input type="checkbox" id="show-removed" checked> Show Removed</label>
+            <label><input type="checkbox" id="show-modified" checked> Show Modified</label>
+        </div>
+        <div id="text-compare-result" class="diff-content"></div>
+    </div>
+</div>
+
 <!-- Video Downloader Section -->
 <div class="section">
     <div class="section-header" onclick="toggleSection('video-downloader')">
@@ -190,10 +263,6 @@
         <div id="video-status" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
     </div>
 </div>
-
-
-
-
 
 <script>
 function toggleSection(sectionId) {
@@ -507,6 +576,155 @@ jsonCompareBtn.addEventListener('click', () => {
         computeAndDisplayDifferences(parseA.value, parseB.value);
     }
 });
+
+// JSON Merge tool
+const jsonMergeAFile = document.getElementById('jsonMergeA-file');
+const jsonMergeBFile = document.getElementById('jsonMergeB-file');
+const jsonMergeAName = document.getElementById('jsonMergeA-name');
+const jsonMergeBName = document.getElementById('jsonMergeB-name');
+const jsonMergeADrop = document.getElementById('jsonMergeA-drop');
+const jsonMergeBDrop = document.getElementById('jsonMergeB-drop');
+const jsonMergeAText = document.getElementById('jsonMergeA-text');
+const jsonMergeBText = document.getElementById('jsonMergeB-text');
+const jsonMergeBtn = document.getElementById('json-merge-btn');
+const jsonMergeResult = document.getElementById('json-merge-result');
+const jsonMergeDownloadBtn = document.getElementById('json-merge-download-btn');
+let mergedResult = null;
+
+jsonMergeAFile.addEventListener('change', e => readFileInto(e.target.files && e.target.files[0], jsonMergeAText, jsonMergeAName));
+jsonMergeBFile.addEventListener('change', e => readFileInto(e.target.files && e.target.files[0], jsonMergeBText, jsonMergeBName));
+
+;['dragenter','dragover'].forEach(evt => {
+    [jsonMergeADrop, jsonMergeBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.add('hover'); }));
+});
+;['dragleave','drop'].forEach(evt => {
+    [jsonMergeADrop, jsonMergeBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.remove('hover'); }));
+});
+jsonMergeADrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonMergeAText, jsonMergeAName));
+jsonMergeBDrop.addEventListener('drop', e => readFileInto(e.dataTransfer.files && e.dataTransfer.files[0], jsonMergeBText, jsonMergeBName));
+
+function mergeJson(a, b) {
+    if (Array.isArray(a) && Array.isArray(b)) {
+        return a.concat(b);
+    }
+    if (isObject(a) && isObject(b)) {
+        const out = { ...a };
+        Object.keys(b).forEach(key => {
+            if (key in out) {
+                out[key] = mergeJson(out[key], b[key]);
+            } else {
+                out[key] = b[key];
+            }
+        });
+        return out;
+    }
+    return b;
+}
+
+jsonMergeBtn.addEventListener('click', () => {
+    jsonMergeResult.textContent = '';
+    jsonMergeDownloadBtn.disabled = true;
+    const aText = jsonMergeAText.value.trim();
+    const bText = jsonMergeBText.value.trim();
+    if (!aText || !bText) {
+        alert('Please provide both JSON A and JSON B (paste, drop, or choose files).');
+        return;
+    }
+    const parseA = parseJsonSafe(aText, 'JSON A');
+    const parseB = parseJsonSafe(bText, 'JSON B');
+    if (!parseA.ok) { alert(parseA.error); return; }
+    if (!parseB.ok) { alert(parseB.error); return; }
+    mergedResult = mergeJson(parseA.value, parseB.value);
+    jsonMergeResult.textContent = JSON.stringify(mergedResult, null, 2);
+    jsonMergeDownloadBtn.disabled = false;
+});
+
+jsonMergeDownloadBtn.addEventListener('click', () => {
+    if (!mergedResult) return;
+    const content = JSON.stringify(mergedResult, null, 2);
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `merged-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+// Text Compare tool
+const textAFile = document.getElementById('textA-file');
+const textBFile = document.getElementById('textB-file');
+const textAName = document.getElementById('textA-name');
+const textBName = document.getElementById('textB-name');
+const textADrop = document.getElementById('textA-drop');
+const textBDrop = document.getElementById('textB-drop');
+const textAText = document.getElementById('textA-text');
+const textBText = document.getElementById('textB-text');
+const textCompareResult = document.getElementById('text-compare-result');
+const showAdded = document.getElementById('show-added');
+const showRemoved = document.getElementById('show-removed');
+const showModified = document.getElementById('show-modified');
+
+textAFile.addEventListener('change', e => readTextFileInto(e.target.files && e.target.files[0], textAText, textAName));
+textBFile.addEventListener('change', e => readTextFileInto(e.target.files && e.target.files[0], textBText, textBName));
+
+;['dragenter','dragover'].forEach(evt => {
+    [textADrop, textBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.add('hover'); }));
+});
+;['dragleave','drop'].forEach(evt => {
+    [textADrop, textBDrop].forEach(el => el.addEventListener(evt, e => { e.preventDefault(); el.classList.remove('hover'); }));
+});
+textADrop.addEventListener('drop', e => readTextFileInto(e.dataTransfer.files && e.dataTransfer.files[0], textAText, textAName));
+textBDrop.addEventListener('drop', e => readTextFileInto(e.dataTransfer.files && e.dataTransfer.files[0], textBText, textBName));
+
+[textAText, textBText].forEach(el => el.addEventListener('input', compareText));
+
+showAdded.addEventListener('change', applyTextFilters);
+showRemoved.addEventListener('change', applyTextFilters);
+showModified.addEventListener('change', applyTextFilters);
+
+function readTextFileInto(file, target, nameEl) {
+    if (!file) { if (nameEl) nameEl.textContent=''; return; }
+    if (nameEl) nameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = ev => { target.value = ev.target.result || ''; compareText(); };
+    reader.onerror = () => alert('Failed to read file.');
+    reader.readAsText(file);
+}
+
+function compareText() {
+    const a = textAText.value;
+    const b = textBText.value;
+    if (!a || !b) { textCompareResult.innerHTML = ''; return; }
+    const diff = Diff.diffLines(a, b);
+    let html = '';
+    for (let i = 0; i < diff.length; i++) {
+        const part = diff[i];
+        if (part.added && diff[i-1] && diff[i-1].removed) {
+            const removedPart = diff[i-1];
+            html += removedPart.value.split('\n').map(line => line ? `<div class="diff-line diff-modified">- ${escapeHtml(line)}</div>` : '').join('');
+            html += part.value.split('\n').map(line => line ? `<div class="diff-line diff-modified">+ ${escapeHtml(line)}</div>` : '').join('');
+        } else if (part.removed && diff[i+1] && diff[i+1].added) {
+            continue;
+        } else {
+            const cls = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-unchanged';
+            const prefix = part.added ? '+ ' : part.removed ? '- ' : '  ';
+            html += part.value.split('\n').map(line => line ? `<div class="diff-line ${cls}">${prefix}${escapeHtml(line)}</div>` : '').join('');
+        }
+    }
+    textCompareResult.innerHTML = html;
+    applyTextFilters();
+}
+
+function applyTextFilters() {
+    const showA = showAdded.checked;
+    const showR = showRemoved.checked;
+    const showM = showModified.checked;
+    textCompareResult.querySelectorAll('.diff-added').forEach(el => el.classList.toggle('hidden', !showA));
+    textCompareResult.querySelectorAll('.diff-removed').forEach(el => el.classList.toggle('hidden', !showR));
+    textCompareResult.querySelectorAll('.diff-modified').forEach(el => el.classList.toggle('hidden', !showM));
+}
 
 function parseJsonSafe(text, which) {
     try {
