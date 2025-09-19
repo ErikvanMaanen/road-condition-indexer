@@ -212,6 +212,19 @@
             background: #6c757d;
             color: white;
         }
+        
+        .input-panel {display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin:20px 0;padding:12px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
+        .input-group {display:flex;flex-direction:column;gap:4px;min-width:240px;flex:1}
+        .input-group label {font-size:12px;font-weight:bold;color:#333}
+        .input-inline {display:flex;gap:6px}
+        .input-inline input[type=text] {flex:1;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:14px}
+        .btn-small {font-size:12px;padding:6px 10px}
+        #camera-section {border:1px dashed #007cba;border-radius:8px;padding:12px;display:none;flex-direction:column;gap:8px;background:#f0f8ff;max-width:420px}
+        #camera-preview {width:100%;border-radius:6px;background:#000;aspect-ratio:4/3;object-fit:cover}
+        #qr-status {font-size:12px;color:#555;min-height:18px}
+        .camera-controls {display:flex;flex-wrap:wrap;gap:8px}
+        .badge {display:inline-block;background:#007cba;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+        .flex-row {display:flex;gap:8px;align-items:center}
     </style>
 </head>
 <body>
@@ -289,6 +302,43 @@
             <button class="btn btn-primary" onclick="updateNote()">Update</button>
         </div>
     </div>
+</div>
+
+<div class="input-panel" id="input-panel">
+    <div class="input-group" style="flex:2">
+        <label for="manual-input">Paste or type URL / Text</label>
+        <div class="input-inline">
+            <input id="manual-input" type="text" placeholder="https://example.com OR any text" />
+            <button class="btn btn-primary btn-small" id="manual-submit">Add</button>
+        </div>
+        <small style="font-size:11px;color:#666">Press Enter to submit. If content is a valid URL it will be treated as link.</small>
+    </div>
+    <div class="input-group">
+        <label for="file-input">Select File</label>
+        <input id="file-input" type="file" />
+        <small style="font-size:11px;color:#666">Single file; larger files may take longer.</small>
+    </div>
+    <div class="input-group" style="max-width:200px">
+        <label>Camera / QR</label>
+        <div class="flex-row">
+            <button class="btn btn-primary btn-small" id="open-camera">Open</button>
+            <button class="btn btn-secondary btn-small" id="close-camera" disabled>Close</button>
+        </div>
+        <small style="font-size:11px;color:#666">Scan QR or capture photo.</small>
+    </div>
+</div>
+
+<div id="camera-section">
+    <div class="flex-row" style="justify-content:space-between;align-items:center">
+        <span><strong>Camera</strong> <span class="badge" id="camera-mode-badge">QR</span></span>
+        <div class="flex-row">
+            <button class="btn btn-small" id="toggle-mode" title="Toggle QR / Photo">Mode</button>
+            <button class="btn btn-small btn-primary" id="capture-button" title="Capture photo" disabled>Capture</button>
+        </div>
+    </div>
+    <video id="camera-preview" playsinline></video>
+    <canvas id="capture-canvas" style="display:none"></canvas>
+    <div id="qr-status">Ready</div>
 </div>
 
 <script>
@@ -388,6 +438,51 @@ function isValidUrl(string) {
     } catch (_) {
         return false;
     }
+}
+
+// Derive a readable object name from a URL.
+// Rules:
+// 1. Use the last non-empty path segment (without query/hash).
+// 2. If no path segment, fall back to hostname.
+// 3. Decode percent-encoding, trim trailing punctuation.
+// 4. Shorten very long names and normalize spacing.
+function extractNameFromUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return 'link';
+    let urlObj;
+    try {
+        urlObj = new URL(rawUrl);
+    } catch (e) {
+        // Not a valid URL per URL constructor; fallback to simple parsing
+        return rawUrl.length > 80 ? rawUrl.substring(0, 77) + '...' : rawUrl;
+    }
+
+    let pathname = urlObj.pathname || '';
+    // Remove trailing slash (but keep root '/')
+    if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
+    let segment = pathname.split('/').filter(Boolean).pop() || urlObj.hostname;
+
+    // Strip query-esque artifacts if somehow included
+    segment = segment.split('?')[0].split('#')[0];
+
+    try { segment = decodeURIComponent(segment); } catch (_) {}
+
+    // Optionally strip common file extensions if they look technical and not descriptive
+    const extMatch = segment.match(/^(.*)\.(html?|php|aspx|jsp|json|txt|xml|htm)$/i);
+    if (extMatch) {
+        segment = extMatch[1];
+    }
+
+    // Replace separators with spaces for readability
+    segment = segment.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!segment) segment = urlObj.hostname;
+
+    // Capitalize first letter (leave rest as-is to preserve abbreviations)
+    segment = segment.charAt(0).toUpperCase() + segment.slice(1);
+
+    // Truncate overly long names
+    if (segment.length > 80) segment = segment.substring(0, 77) + '...';
+
+    return segment;
 }
 
 function processFiles(files) {
@@ -747,6 +842,162 @@ window.onclick = function(event) {
         closeEditNoteModal();
     }
 }
+
+(function augmentSharedPage(){
+    const manualInput = document.getElementById('manual-input');
+    const manualSubmit = document.getElementById('manual-submit');
+    const fileInput = document.getElementById('file-input');
+    const openCameraBtn = document.getElementById('open-camera');
+    const closeCameraBtn = document.getElementById('close-camera');
+    const cameraSection = document.getElementById('camera-section');
+    const cameraPreview = document.getElementById('camera-preview');
+    const captureBtn = document.getElementById('capture-button');
+    const toggleModeBtn = document.getElementById('toggle-mode');
+    const cameraModeBadge = document.getElementById('camera-mode-badge');
+    const qrStatus = document.getElementById('qr-status');
+    const captureCanvas = document.getElementById('capture-canvas');
+
+    let stream = null;
+    let scanning = false;
+    let qrMode = true; // true => QR scan, false => photo capture
+    let barcodeDetector = ("BarcodeDetector" in window) ? new BarcodeDetector({formats:['qr_code','aztec','data_matrix','pdf417']}) : null;
+
+    function handleManualSubmit(){
+        const val = (manualInput.value || '').trim();
+        if(!val) return;
+        if(isValidUrl(val)) {
+            processUrl(val);
+        } else {
+            processText(val);
+        }
+        manualInput.value='';
+    }
+
+    manualSubmit.addEventListener('click', handleManualSubmit);
+    manualInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); handleManualSubmit(); }});
+
+    fileInput.addEventListener('change', (e)=>{
+        const files = e.target.files;
+        if(files && files.length){
+            processFiles(files);
+            fileInput.value='';
+        }
+    });
+
+    openCameraBtn.addEventListener('click', async ()=>{
+        try {
+            openCameraBtn.disabled = true;
+            closeCameraBtn.disabled = false;
+            cameraSection.style.display='flex';
+            stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+            cameraPreview.srcObject = stream;
+            await cameraPreview.play();
+            qrStatus.textContent = qrMode ? 'Scanning for QR codes...' : 'Photo mode ready';
+            if(qrMode) startScanLoop();
+            captureBtn.disabled = qrMode; // only enabled in photo mode
+        } catch(err){
+            qrStatus.textContent = 'Camera error: '+ err.message;
+            openCameraBtn.disabled = false;
+            closeCameraBtn.disabled = true;
+        }
+    });
+
+    closeCameraBtn.addEventListener('click', ()=>{
+        stopCamera();
+    });
+
+    toggleModeBtn.addEventListener('click', ()=>{
+        qrMode = !qrMode;
+        cameraModeBadge.textContent = qrMode ? 'QR' : 'PHOTO';
+        captureBtn.disabled = qrMode;
+        if(qrMode){
+            qrStatus.textContent = 'Scanning for QR codes...';
+            startScanLoop();
+        } else {
+            qrStatus.textContent = 'Photo mode ready';
+        }
+    });
+
+    captureBtn.addEventListener('click', ()=>{
+        if(qrMode) return; // not available
+        if(!stream) return;
+        const trackSettings = stream.getVideoTracks()[0].getSettings();
+        const w = trackSettings.width || 640;
+        const h = trackSettings.height || 480;
+        captureCanvas.width = w;
+        captureCanvas.height = h;
+        const ctx = captureCanvas.getContext('2d');
+        ctx.drawImage(cameraPreview,0,0,w,h);
+        try {
+            const dataUrl = captureCanvas.toDataURL('image/png');
+            const base64Data = dataUrl.split(',')[1];
+            pendingUpload = {
+                object_type: 'file',
+                object_name: 'photo_'+ new Date().toISOString().replace(/[:.]/g,'-') + '.png',
+                object_data: base64Data,
+                file_size: Math.round((base64Data.length * 3)/4),
+                mime_type: 'image/png'
+            };
+            showNoteModal('Photo capture');
+        } catch(err){
+            qrStatus.textContent = 'Capture failed: '+ err.message;
+        }
+    });
+
+    function stopCamera(){
+        if(stream){
+            stream.getTracks().forEach(t=>t.stop());
+            stream = null;
+        }
+        scanning = false;
+        openCameraBtn.disabled = false;
+        closeCameraBtn.disabled = true;
+        cameraSection.style.display='none';
+    }
+
+    async function startScanLoop(){
+        if(!barcodeDetector){
+            qrStatus.textContent = 'QR detection not supported (no BarcodeDetector)';
+            return;
+        }
+        if(scanning) return;
+        scanning = true;
+        while(scanning && qrMode){
+            try {
+                const barcodes = await barcodeDetector.detect(cameraPreview);
+                if(barcodes && barcodes.length){
+                    const code = (barcodes[0].rawValue || '').trim();
+                    qrStatus.textContent = 'QR detected: '+ code.substring(0,60)+(code.length>60?'...':'');
+                    scanning = false;
+                    // Treat code as URL if valid otherwise as text
+                    if(isValidUrl(code)){
+                        processUrl(code);
+                    } else {
+                        processText(code);
+                    }
+                    // Auto close after detection
+                    setTimeout(()=> stopCamera(), 800);
+                    break;
+                } else {
+                    qrStatus.textContent = 'Scanning...';
+                }
+            } catch(err){
+                qrStatus.textContent = 'Scan error: '+ err.message;
+            }
+            await new Promise(r=> setTimeout(r, 500));
+        }
+    }
+
+    // Graceful fallback: if BarcodeDetector unsupported enable photo mode directly
+    if(!barcodeDetector){
+        qrMode = false;
+        cameraModeBadge.textContent = 'PHOTO';
+        captureBtn.disabled = false;
+    }
+
+    // Clean up if page unloads
+    window.addEventListener('beforeunload', stopCamera);
+})();
 </script>
 
 </body>

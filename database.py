@@ -2194,12 +2194,15 @@ class DatabaseManager:
         """Insert a shared object into the database."""
         try:
             with self.get_connection_context() as conn:
+                # NOTE: With some SQL Server drivers (e.g. pymssql) calling commit() can
+                # invalidate the pending result set. Therefore we must fetch the OUTPUT
+                # value BEFORE committing the transaction.
                 result = conn.execute(
                     text(f"""
-                    INSERT INTO {TABLE_SHARED} 
-                    (object_type, object_name, object_data, object_url, note, file_size, mime_type, user_ip, user_agent)
-                    OUTPUT INSERTED.id
-                    VALUES (:object_type, :object_name, :object_data, :object_url, :note, :file_size, :mime_type, :user_ip, :user_agent)
+                        INSERT INTO {TABLE_SHARED} 
+                        (object_type, object_name, object_data, object_url, note, file_size, mime_type, user_ip, user_agent)
+                        OUTPUT INSERTED.id
+                        VALUES (:object_type, :object_name, :object_data, :object_url, :note, :file_size, :mime_type, :user_ip, :user_agent)
                     """),
                     {
                         "object_type": object_type,
@@ -2213,16 +2216,19 @@ class DatabaseManager:
                         "user_agent": user_agent
                     }
                 )
-                # Commit the transaction before attempting to read the OUTPUT row
-                conn.commit()
-                
-                # Safely fetch the inserted row returned by OUTPUT
-                row = result.fetchone()
-                if row is None:
-                    self.log_debug("Failed to retrieve ID of inserted shared object: no row returned", LogLevel.ERROR, LogCategory.DATABASE)
+
+                row = result.fetchone()  # Fetch BEFORE commit
+                if row is None or row[0] is None:
+                    self.log_debug(
+                        "Failed to retrieve ID of inserted shared object: no row returned", 
+                        LogLevel.ERROR, LogCategory.DATABASE
+                    )
                     raise RuntimeError("Failed to retrieve ID of inserted shared object")
 
-                shared_id = row[0]
+                shared_id = int(row[0])
+
+                # Now it's safe to commit
+                conn.commit()
                 
                 self.log_debug(f"Shared object inserted with ID {shared_id}", LogLevel.INFO, LogCategory.DATABASE)
                 return shared_id

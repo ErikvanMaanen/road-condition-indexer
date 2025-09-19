@@ -535,8 +535,8 @@ def startup_init():
     try:
         # SQL Connectivity Tests
         try:
-            # Run SQL connectivity tests with explicit timeout
-            connectivity_report = run_startup_connectivity_tests(timeout_seconds=30, retry_attempts=3)
+            # Run SQL connectivity tests
+            connectivity_report = run_startup_connectivity_tests()
             
             if connectivity_report.overall_status == ConnectivityTestResult.SUCCESS:
                 log_info("✅ SQL connectivity tests passed", LogCategory.STARTUP)

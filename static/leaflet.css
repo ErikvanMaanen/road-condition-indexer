@@ -101,7 +101,9 @@
 	}
 /* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */
 .leaflet-overlay-pane svg {
+	-webkit-user-select: none;
 	-moz-user-select: none;
+	user-select: none;
 	}
 
 .leaflet-pane         { z-index: 400; }
@@ -546,7 +548,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 	}
 
 .leaflet-oldie .leaflet-popup-content-wrapper {
-	-ms-zoom: 1;
+	zoom: 1; /* replaced deprecated -ms-zoom for modern browser compatibility */
 	}
 .leaflet-oldie .leaflet-popup-tip {
 	width: 24px;

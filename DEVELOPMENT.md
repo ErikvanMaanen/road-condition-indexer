@@ -143,7 +143,6 @@ pytest -q
 - **Fast**: No network, database, or external API calls.
 - **Deterministic**: Uses fixed dummy environment vars; no timing or random variability.
 - **Safety**: Never attempts to create engines or touch production resources during unit tests.
-- **Compatibility**: Keeps public symbols (`run_startup_connectivity_tests`, classes & enums) so app code requiring them remains unchanged.
 
 ### Extending Tests (Optional)
 If you later need richer validation:
