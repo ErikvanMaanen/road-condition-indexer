@@ -5,16 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chris - LVGL in MicroPython</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
-        pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
-    </style>
+    <script src="/static/utils.js"></script>
+    <link rel="stylesheet" href="/static/site.css">
 </head>
 <body>
-<nav id="page-links" style="margin-bottom:1rem;">
+<nav id="page-links" class="page-links mb-1">
     <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="shared.html">Shared</a>
+    <a href="tools.html">Tools</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
-<h1>Chris</h1>
+<h1 class="mb-1"><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Chris</h1>
 <p>LVGL (Light and Versatile Graphics Library) is an open-source graphics library designed for embedded systems. In the context of MicroPython, it enables rich graphical user interfaces on microcontrollers.</p>
 <p>The example below demonstrates initializing LVGL and displaying a label:</p>
 <pre><code>import lvgl as lv

@@ -5,51 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Records - Road Condition Indexer</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="/static/utils.js"></script>
     <script src="map-components.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
-        #controls { margin-bottom: 1rem; display:flex; flex-wrap:wrap; gap:0.5rem; }
-        button { padding: 0.5rem 1rem; font-size: 1rem; }
-        #controls input { margin-right: 0.5rem; }
-
-        #log {
-            width: 100%;
-            height: 150px;
-            overflow: auto;
-            border: 1px solid #ccc;
-            margin-bottom: 1rem;
-            white-space: pre;
-        }
-        #debug {
-            width: 100%;
-            height: 150px;
-            margin-top: 1rem;
-        }
-        /* Highlight selected values in all selection options */
-        select[multiple] option:checked, select option:checked {
-            background-color: #007cba !important;
-            color: #fff !important;
-        }
-        select:focus option:checked {
-            outline: 2px solid #007cba;
-        }
-        /* Highlight default option (selected on load) */
-        option.selected-default {
-            background-color: #005a8b !important;
-            color: #fff !important;
-            font-weight: bold;
-        }
-    </style>
+    <!-- Inlined styles removed; migrated into site.css utilities or to be added if missing -->
 </head>
 <body>
-<nav id="page-links" style="margin-bottom:1rem;">
+<nav id="page-links" class="page-links mb-1">
     <a href="/">Main</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Device Records</h1>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Device Records</h1>
 <!-- Hidden maintenance link as a square at bottom right -->
-<a href="maintenance.html" id="maintenance-link" style="position:fixed;bottom:24px;right:24px;width:32px;height:32px;display:block;z-index:9999;opacity:0.2;background:#888;border-radius:6px;text-align:center;line-height:32px;text-decoration:none;font-size:1.5rem;transition:opacity 0.2s;" title="Maintenance">🛠️</a>
+<a href="maintenance.html" id="maintenance-link" class="maintenance-link" title="Maintenance">🛠️</a>
 <script>
 // Show the maintenance link on hover or focus
 const maintLink = document.getElementById('maintenance-link');
@@ -58,30 +27,32 @@ maintLink.addEventListener('mouseleave',()=>maintLink.style.opacity='0.2');
 maintLink.addEventListener('focus',()=>maintLink.style.opacity='1');
 maintLink.addEventListener('blur',()=>maintLink.style.opacity='0.2');
 </script>
-<section id="filter-dev" style="margin-bottom:1rem;">
-    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <select id="deviceId" multiple aria-label="Select devices"></select>
-        <button id="rename-button" style="padding: 0.5rem;">Rename</button>
+<section id="filter-dev" class="mb-1">
+    <div class="flex-row items-center gap-05 mb-05">
+        <select id="deviceId" multiple aria-label="Select devices" class="focus-ring"></select>
+        <button id="rename-button" class="btn btn-secondary btn-small">Rename</button>
     </div>
-    <div id="rename-section" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #ccc; background: #f5f5f5;">
-        <input type="text" id="nickname-input" placeholder="Enter new nickname" style="margin-right: 0.5rem;">
-        <button id="save-rename" style="margin-right: 0.5rem;">Save</button>
-        <button id="cancel-rename">Cancel</button>
+    <div id="rename-section" class="hidden rci-card mb-05">
+        <div class="flex-row items-center gap-05 w-100">
+            <input type="text" id="nickname-input" placeholder="Enter new nickname" class="w-100" />
+            <button id="save-rename" class="btn btn-primary btn-small">Save</button>
+            <button id="cancel-rename" class="btn btn-secondary btn-small">Cancel</button>
+        </div>
     </div>
 </section>
 
 <!-- Include standardized map component -->
 <div id="map-container"></div>
 
-<section id="controls" style="margin-bottom:1rem;">
-    <button id="gpx-button">Generate GPX</button>
-    <button id="refresh-button">Refresh Data</button>
-    <label style="margin-left: 1rem;">
+<section id="controls" class="mb-1 flex flex-wrap gap-05 items-center">
+    <button id="gpx-button" class="btn btn-secondary">Generate GPX</button>
+    <button id="refresh-button" class="btn btn-primary">Refresh Data</button>
+    <label class="ml-20 rci-muted flex items-center gap-035">
         <input type="checkbox" id="auto-refresh" checked> Auto-refresh every 30 seconds
     </label>
-    <a id="gpx-link" style="display:none;">Download GPX</a>
-    <div id="loading" style="display:none; margin-top:1rem;">
-        <progress id="load-progress" value="0" max="0" style="width:100%;"></progress>
+    <a id="gpx-link" class="hidden">Download GPX</a>
+    <div id="loading" class="hidden mt-1 w-100">
+        <progress id="load-progress" value="0" max="0" class="w-100"></progress>
         <span id="load-label"></span>
     </div>
 </section>

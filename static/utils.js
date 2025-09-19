@@ -678,6 +678,76 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDeviceId();
 });
 
+// Theme toggling logic
+(function(){
+  const STORAGE_KEY = 'rci-theme';
+  const PREF_QUERY = '(prefers-color-scheme: dark)';
+
+  function applyTheme(theme){
+    const root = document.documentElement; // <html>
+    if(theme === 'dark') {
+      root.setAttribute('data-theme','dark');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+  }
+
+  function currentStoredTheme(){
+    return localStorage.getItem(STORAGE_KEY);
+  }
+
+  function resolveInitialTheme(){
+    const stored = currentStoredTheme();
+    if(stored === 'dark' || stored === 'light') return stored;
+    // fall back to system preference
+    return window.matchMedia && window.matchMedia(PREF_QUERY).matches ? 'dark' : 'light';
+  }
+
+  function updateToggleLabel(btn, theme){
+    if(!btn) return;
+    const next = theme === 'dark' ? 'Light' : 'Dark';
+    btn.setAttribute('aria-label', `Switch to ${next} mode`);
+    btn.innerHTML = theme === 'dark'
+      ? '☀️ Light'
+      : '🌙 Dark';
+  }
+
+  function initThemeToggle(){
+    const initial = resolveInitialTheme();
+    applyTheme(initial);
+    const btn = document.querySelector('[data-role="theme-toggle"]');
+    updateToggleLabel(btn, initial);
+    if(!btn) return;
+    btn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem(STORAGE_KEY, next);
+      updateToggleLabel(btn, next);
+      // Optional custom event for other scripts
+      window.dispatchEvent(new CustomEvent('rci-theme-changed', { detail: { theme: next }}));
+    });
+    // respond to system changes if user hasn't explicitly chosen
+    if(!currentStoredTheme() && window.matchMedia){
+      try {
+        const mq = window.matchMedia(PREF_QUERY);
+        mq.addEventListener('change', e => {
+          if(currentStoredTheme()) return; // user override takes precedence
+          const mode = e.matches ? 'dark' : 'light';
+          applyTheme(mode);
+          updateToggleLabel(btn, mode);
+        });
+      } catch(_) { /* older browsers */ }
+    }
+  }
+
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initThemeToggle);
+  } else {
+    initThemeToggle();
+  }
+})();
+
 // Export functions to global scope for backward compatibility
 window.LABEL_COUNT = LABEL_COUNT;
 window.ROUGHNESS_NAMES = ROUGHNESS_NAMES;

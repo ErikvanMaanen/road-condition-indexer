@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Maintenance</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
     <script src="/static/utils.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1200px; }
-        #page-links { margin-bottom: 1rem; }
+        /* TODO: Migrate remaining section/log-viewer specific styles into site.css (follow card & collapsible patterns) */
         
         h1 {
             color: #333;
@@ -236,13 +236,14 @@
     </style>
 </head>
 <body>
-<nav id="page-links">
-    <a href="/">Main</a> |
-    <a href="device.html">Device View</a> |
-    <a href="database.html">Database Management</a> |
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
     <a href="tools.html">Tools</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Maintenance</h1>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Maintenance</h1>
 
 <!-- Database Log Viewer (collapsible section) -->
 <div class="section">
@@ -274,7 +275,7 @@
                     <option value="GENERAL">General</option>
                 </select>
                 <label>Device ID:</label>
-                <input type="text" id="log-device-filter" placeholder="Filter by device ID" style="width: 120px;">
+                <input type="text" id="log-device-filter" placeholder="Filter by device ID" class="w-120">
                 <label>Limit:</label>
                 <select id="log-limit">
                     <option value="50">50 entries</option>
@@ -294,7 +295,7 @@
                 <button onclick="clearLogDisplay()" title="Clear Display">🗑️</button>
                 <button onclick="exportLogs()" title="Export CSV">📥</button>
                 <button onclick="toggleAutoRefresh()" id="auto-refresh-btn" title="Toggle Auto-refresh">⏯️</button>
-                <button onclick="archiveLogs()" style="background: #ffc107; color: #000;" title="Archive Debug Logs">�</button>
+                <button onclick="archiveLogs()" class="btn-amber" title="Archive Debug Logs">�</button>
             </div>
         </div>
         <div id="log-stats" class="log-stats">
@@ -312,16 +313,16 @@
         <span class="section-toggle" id="tables-toggle">▶</span>
     </div>
     <div class="section-content" id="tables-content">
-        <div style="margin-bottom: 1rem;">
+    <div class="mb-1rem">
             <button id="refresh-btn">Refresh</button>
-            <button id="verify-schema-btn" style="margin-left: 0.5rem; background: #28a745;">Verify Schema & Data</button>
+            <button id="verify-schema-btn" class="btn-green ml-20">Verify Schema & Data</button>
         </div>
         <div id="table-list">Loading...</div>
-        <div id="schema-verification-result" style="margin-top:1rem; padding:10px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; display:none;">
+    <div id="schema-verification-result" class="mt-1rem p-10 border rounded-4 bg-alt hidden-initial">
             <h3>Schema & Data Verification Results</h3>
             <div id="verification-content"></div>
         </div>
-        <pre id="table-records" style="white-space:pre;overflow:auto;margin-top:0.5rem;"></pre>
+    <pre id="table-records" class="white-pre overflow-auto mt-05"></pre>
     </div>
 </div>
 
@@ -333,7 +334,9 @@
     </div>
     <div class="section-content" id="fastapi-health-content">
         <button id="fastapi-test-btn">Test FastAPI Server</button>
-        <div id="fastapi-test-result" style="margin-top:1rem; font-family:monospace; background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:10px; min-height:32px;"></div>
+    <div id="fastapi-test-result" class="mt-1rem mono border rounded-4 p-10 bg-alt min-h-32"></div>
+        <div class="section-content" id="fastapi-health-content">
+            <button id="fastapi-test-btn">Test FastAPI Server</button>
     </div>
 </div>
 <script>

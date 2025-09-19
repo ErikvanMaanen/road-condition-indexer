@@ -4,38 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Timezone Conversion Test</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="/static/utils.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        .test-result { 
-            margin: 1rem 0; 
-            padding: 1rem; 
-            border: 1px solid #ccc; 
-            border-radius: 4px; 
-        }
-        .success { background-color: #d4edda; border-color: #c3e6cb; }
-        .error { background-color: #f8d7da; border-color: #f5c6cb; }
-        input { margin: 0.5rem; padding: 0.5rem; }
-        button { margin: 0.5rem; padding: 0.5rem 1rem; }
-    </style>
+    <link rel="stylesheet" href="/static/site.css">
 </head>
 <body>
-    <h1>Timezone Conversion Test</h1>
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="shared.html">Shared</a>
+    <a href="tools.html">Tools</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+    <h1 class="mb-1"><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Timezone Conversion Test</h1>
     
     <h2>Test Timezone Conversion Functions</h2>
-    <div id="test-results"></div>
+    <div id="test-results" class="mt-1"></div>
     
     <h2>Interactive Test</h2>
-    <div>
-        <label>UTC Time: <input type="text" id="utc-input" placeholder="2024-07-28T12:00:00.000Z"></label>
+    <div class="card p-1 mt-1">
+        <label class="block mb-05">UTC Time:
+            <input type="text" id="utc-input" class="w-100" placeholder="2024-07-28T12:00:00.000Z">
+        </label>
         <button onclick="testUtcToAmsterdam()">Convert to Amsterdam</button>
-        <div>Amsterdam Time: <span id="amsterdam-result"></span></div>
+        <div class="mt-05">Amsterdam Time: <span id="amsterdam-result" class="text-accent"></span></div>
     </div>
     
-    <div>
-        <label>Amsterdam Time: <input type="datetime-local" id="amsterdam-input"></label>
+    <div class="card p-1 mt-1">
+        <label class="block mb-05">Amsterdam Time:
+            <input type="datetime-local" id="amsterdam-input" class="w-100">
+        </label>
         <button onclick="testAmsterdamToUtc()">Convert to UTC</button>
-        <div>UTC Time: <span id="utc-result"></span></div>
+        <div class="mt-05">UTC Time: <span id="utc-result" class="text-accent"></span></div>
     </div>
 
     <script>
@@ -67,7 +70,7 @@
                 const success = amsterdamResult === test.expectedAmsterdam && utcBack === test.utc;
                 
                 const div = document.createElement('div');
-                div.className = `test-result ${success ? 'success' : 'error'}`;
+                div.className = `test-result mt-1 p-1 status-${success ? 'success' : 'error'}`;
                 div.innerHTML = `
                     <strong>${test.name}</strong><br>
                     Input UTC: ${test.utc}<br>

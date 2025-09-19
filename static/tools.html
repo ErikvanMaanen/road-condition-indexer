@@ -7,6 +7,7 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="/static/utils.js"></script>
     <link rel="stylesheet" href="/static/vendor/datatables/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="/static/site.css">
     <script src="/static/vendor/jquery/jquery-3.7.1.min.js"></script>
     <script src="/static/vendor/datatables/jquery.dataTables.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsoneditor@10.0.3/dist/jsoneditor.min.css">
@@ -14,72 +15,20 @@
     <link rel="stylesheet" href="/static/lib/simple-json-diff.css">
     <script src="/static/lib/simple-json-diff.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/diff@5.1.0/dist/diff.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 1000px; }
-        #page-links { margin-bottom: 1rem; }
-        .section { border: 1px solid #ddd; border-radius: 4px; margin: 20px 0; background: #f9f9f9; }
-        .section-header { padding: 8px 12px; background: #e9e9e9; border-bottom: 1px solid #ddd; cursor: pointer; font-weight: bold; display: flex; justify-content: space-between; align-items: center; font-size: 1.1em; color: #007cba; }
-        .section-header:hover { background: #ddd; }
-        .section-content { padding: 12px; display: none; }
-        .section-toggle { font-family: monospace; font-size: 1.2em; }
-        #drop-zone { border: 2px dashed #007cba; padding: 20px; text-align: center; border-radius: 4px; margin-bottom: 10px; }
-        #drop-zone.hover { background: #e0f0ff; }
-        #file-input { margin-top: 10px; }
-        #json-drop-zone { border: 2px dashed #007cba; padding: 20px; text-align: center; border-radius: 4px; margin-bottom: 10px; }
-        #json-drop-zone.hover { background: #e0f0ff; }
-        #json-editor { border: 1px solid #ddd; border-radius: 4px; height: 420px; margin-top: 10px; }
-        .compare-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
-        .json-col { display: flex; flex-direction: column; }
-        .json-col h4 { margin: 0 0 .25rem 0; color:#495057; }
-        .json-drop { border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 8px 0; border-radius: 4px; color: #666; }
-        .json-drop.hover { border-color: #007cba; background: #f0f8ff; }
-        .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .diff-panel { border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
-        .diff-header { font-weight: bold; margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; }
-        .diff-controls { margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .diff-controls label { display: flex; align-items: center; font-size: 0.9em; }
-        .diff-content { font-family: 'Courier New', monospace; font-size: 0.9em; }
-        .json-drop { border: 2px dashed #007cba; padding: 12px; text-align:center; border-radius: 4px; margin-bottom: 8px; }
-        .json-drop.hover { background:#e0f0ff; }
-        .result-box { margin-top: 10px; border:1px solid #ddd; border-radius:4px; padding:10px; background:#fff; overflow:auto; max-height:480px; }
-        .mode-group label { margin-right: .75rem; }
-        .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .diff-panel { border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
-        .diff-header { background: #f8f9fa; padding: 8px 12px; font-weight: bold; border-bottom: 1px solid #ddd; }
-        .diff-content { padding: 12px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.4; }
-        .diff-controls { padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; display: flex; gap: 1rem; align-items: center; }
-        .diff-controls label { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9em; cursor: pointer; }
-        .json-object { margin-left: 0; }
-        .json-property { margin: 2px 0; padding: 2px 4px; border-radius: 2px; }
-        .json-key { font-weight: bold; color: #007cba; }
-        .json-value { margin-left: 0.5em; }
-        .json-string { color: #28a745; }
-        .json-number { color: #dc3545; }
-        .json-boolean { color: #6f42c1; }
-        .json-null { color: #6c757d; font-style: italic; }
-        .json-array, .json-nested-object { margin-left: 1em; }
-        .json-bracket { color: #666; font-weight: bold; }
-        .json-expand { cursor: pointer; -webkit-user-select: none; user-select: none; color: #007cba; font-weight: bold; margin-right: 0.25em; }
-        .json-expand:hover { background: #e0f0ff; }
-        .diff-added { background-color: #d4edda; border-left: 3px solid #28a745; }
-        .diff-removed { background-color: #f8d7da; border-left: 3px solid #dc3545; }
-        .diff-modified { background-color: #fff3cd; border-left: 3px solid #ffc107; }
-        .diff-unchanged { background-color: #f8f9fa; }
-        .hidden { display: none !important; }
-        .diff-line { white-space: pre; }
-    </style>
+    <!-- Inline styles migrated to site.css -->
 </head>
 <body>
 
-<nav id="page-links">
-    <a href="/">Main</a> |
-    <a href="device.html">Device View</a> |
-    <a href="database.html">Database Management</a> |
-    <a href="maintenance.html">Maintenance</a> |
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
     <a href="shared.html">Shared</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
 
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Tools</h1>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Tools</h1>
 
 <!-- Calendar Viewer Section -->
 <div class="section">
@@ -88,15 +37,13 @@
         <span class="section-toggle" id="cal-viewer-toggle">▶</span>
     </div>
     <div class="section-content" id="cal-viewer-content">
-        <div id="drop-zone">
-            Drag & drop .cal/.ics files here or
-            <br>
-            <input type="file" id="file-input" accept=".cal,.ics" multiple>
-            <br>
-            <button id="open-btn" disabled>Open</button>
-            <div id="file-list" style="margin-top:8px; font-size:0.9em; color:#555;"></div>
+        <div id="drop-zone" class="json-drop">
+            Drag & drop .cal/.ics files here or<br>
+            <input type="file" id="file-input" accept=".cal,.ics" multiple class="mt-05" aria-label="Select calendar files" title="Select calendar files"><br>
+            <button id="open-btn" disabled class="mt-05">Open</button>
+            <div id="file-list" class="mt-05 text-sm rci-muted"></div>
         </div>
-    <div id="calendar-table"></div>
+        <div id="calendar-table"></div>
     </div>
 </div>
 
@@ -107,9 +54,9 @@
         <span class="section-toggle" id="string-ascii-toggle">▶</span>
     </div>
     <div class="section-content" id="string-ascii-content">
-        <textarea id="ascii-input" rows="3" style="width:100%;" placeholder="Enter text here"></textarea><br>
+    <textarea id="ascii-input" rows="3" class="w-100" placeholder="Enter text here"></textarea><br>
         <button id="ascii-convert-btn">Convert</button>
-        <table id="ascii-table" class="display" style="width:100%; margin-top:1em;">
+    <table id="ascii-table" class="display w-100 mt-1">
             <thead><tr><th>Character</th><th>ASCII Code</th></tr></thead>
             <tbody></tbody>
         </table>
@@ -123,20 +70,20 @@
         <span class="section-toggle" id="json-editor-toggle">▶</span>
     </div>
     <div class="section-content" id="json-editor-content">
-        <div id="json-drop-zone">
+        <div id="json-drop-zone" class="json-drop">
             Drag & drop a .json file here or paste JSON below
         </div>
-        <div style="margin:6px 0;">
-            <input type="file" id="json-file-input" accept=".json,application/json">
-            <span id="json-file-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+        <div class="mt-05 mb-05">
+            <input type="file" id="json-file-input" accept=".json,application/json" aria-label="Select JSON file" title="Select JSON file">
+            <span id="json-file-name" class="text-sm rci-muted ml-20"></span>
         </div>
-        <textarea id="json-text" rows="8" style="width:100%;" placeholder='Paste JSON here...'></textarea>
-        <div style="margin-top:8px; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <textarea id="json-text" rows="8" class="w-100" placeholder='Paste JSON here...'></textarea>
+        <div class="mt-05 flex flex-wrap gap-05">
             <button id="json-load-btn">Load JSON</button>
             <button id="json-download-btn" disabled>Download Edited JSON</button>
             <button id="json-clear-btn">Clear</button>
         </div>
-        <div id="json-editor"></div>
+        <div id="json-editor" class="mt-05 json-editor-container"></div>
     </div>
 </div>
 
@@ -147,27 +94,27 @@
         <span class="section-toggle" id="json-compare-toggle">▶</span>
     </div>
     <div class="section-content" id="json-compare-content">
-        <div class="compare-grid">
+    <div class="compare-grid">
             <div class="json-col">
                 <h4>JSON A</h4>
                 <div id="jsonA-drop" class="json-drop">Drag & drop file A here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="jsonA-file" accept=".json,application/json">
-                    <span id="jsonA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="jsonA-file" accept=".json,application/json" aria-label="Select JSON A file" title="Select JSON A file">
+                    <span id="jsonA-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="jsonA-text" rows="10" style="width:100%;" placeholder='Paste JSON A here...'></textarea>
+                <textarea id="jsonA-text" rows="10" class="w-100" placeholder='Paste JSON A here...'></textarea>
             </div>
             <div class="json-col">
                 <h4>JSON B</h4>
                 <div id="jsonB-drop" class="json-drop">Drag & drop file B here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="jsonB-file" accept=".json,application/json">
-                    <span id="jsonB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="jsonB-file" accept=".json,application/json" aria-label="Select JSON B file" title="Select JSON B file">
+                    <span id="jsonB-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="jsonB-text" rows="10" style="width:100%;" placeholder='Paste JSON B here...'></textarea>
+                <textarea id="jsonB-text" rows="10" class="w-100" placeholder='Paste JSON B here...'></textarea>
             </div>
         </div>
-        <div style="margin-top:8px; display:flex; gap:.75rem; align-items:center; flex-wrap:wrap;" class="mode-group">
+        <div class="mt-05 flex flex-wrap gap-05 items-center mode-group">
             <label><input type="radio" name="compare-mode" value="differences" checked> Differences</label>
             <label><input type="radio" name="compare-mode" value="similarities"> Similarities</label>
             <button id="json-compare-btn">Compare</button>
@@ -183,27 +130,27 @@
         <span class="section-toggle" id="json-merge-toggle">▶</span>
     </div>
     <div class="section-content" id="json-merge-content">
-        <div class="compare-grid">
+    <div class="compare-grid">
             <div class="json-col">
                 <h4>JSON A</h4>
                 <div id="jsonMergeA-drop" class="json-drop">Drag & drop file A here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="jsonMergeA-file" accept=".json,application/json">
-                    <span id="jsonMergeA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="jsonMergeA-file" accept=".json,application/json" aria-label="Select JSON A merge file" title="Select JSON A merge file">
+                    <span id="jsonMergeA-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="jsonMergeA-text" rows="10" style="width:100%;" placeholder='Paste JSON A here...'></textarea>
+                <textarea id="jsonMergeA-text" rows="10" class="w-100" placeholder='Paste JSON A here...'></textarea>
             </div>
             <div class="json-col">
                 <h4>JSON B</h4>
                 <div id="jsonMergeB-drop" class="json-drop">Drag & drop file B here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="jsonMergeB-file" accept=".json,application/json">
-                    <span id="jsonMergeB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="jsonMergeB-file" accept=".json,application/json" aria-label="Select JSON B merge file" title="Select JSON B merge file">
+                    <span id="jsonMergeB-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="jsonMergeB-text" rows="10" style="width:100%;" placeholder='Paste JSON B here...'></textarea>
+                <textarea id="jsonMergeB-text" rows="10" class="w-100" placeholder='Paste JSON B here...'></textarea>
             </div>
         </div>
-        <div style="margin-top:8px; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center;">
+        <div class="mt-05 flex flex-wrap gap-05 items-center">
             <button id="json-merge-btn">Merge</button>
             <button id="json-merge-download-btn" disabled>Download Merged JSON</button>
         </div>
@@ -218,27 +165,27 @@
         <span class="section-toggle" id="text-compare-toggle">▶</span>
     </div>
     <div class="section-content" id="text-compare-content">
-        <div class="compare-grid">
+    <div class="compare-grid">
             <div class="json-col">
                 <h4>Original</h4>
                 <div id="textA-drop" class="json-drop">Drag & drop file A here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="textA-file">
-                    <span id="textA-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="textA-file" aria-label="Select original text file" title="Select original text file">
+                    <span id="textA-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="textA-text" rows="12" style="width:100%;" placeholder="Paste original text here..."></textarea>
+                <textarea id="textA-text" rows="12" class="w-100" placeholder="Paste original text here..."></textarea>
             </div>
             <div class="json-col">
                 <h4>Modified</h4>
                 <div id="textB-drop" class="json-drop">Drag & drop file B here</div>
-                <div style="margin:6px 0;">
-                    <input type="file" id="textB-file">
-                    <span id="textB-name" style="font-size:0.9em;color:#555;margin-left:6px;"></span>
+                <div class="mt-05 mb-05">
+                    <input type="file" id="textB-file" aria-label="Select modified text file" title="Select modified text file">
+                    <span id="textB-name" class="text-sm rci-muted ml-20"></span>
                 </div>
-                <textarea id="textB-text" rows="12" style="width:100%;" placeholder="Paste modified text here..."></textarea>
+                <textarea id="textB-text" rows="12" class="w-100" placeholder="Paste modified text here..."></textarea>
             </div>
         </div>
-        <div class="diff-controls" style="margin-top:8px;">
+        <div class="diff-controls mt-05">
             <label><input type="checkbox" id="show-added" checked> Show Added</label>
             <label><input type="checkbox" id="show-removed" checked> Show Removed</label>
             <label><input type="checkbox" id="show-modified" checked> Show Modified</label>
@@ -255,12 +202,12 @@
     </div>
     <div class="section-content" id="video-downloader-content">
         <div id="video-drop" class="json-drop">Drop or paste a video URL here</div>
-        <div style="margin:6px 0;">
-            <input type="text" id="video-url" style="width:100%;" placeholder="Enter video URL here">
+        <div class="mt-05 mb-05">
+            <input type="text" id="video-url" class="w-100" placeholder="Enter video URL here">
         </div>
         <button id="video-download-btn" disabled>Download</button>
-        <a id="video-download-link" style="display:none;"></a>
-        <div id="video-status" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
+        <a id="video-download-link" class="hidden"></a>
+        <div id="video-status" class="mt-05 text-sm rci-muted"></div>
     </div>
 </div>
 

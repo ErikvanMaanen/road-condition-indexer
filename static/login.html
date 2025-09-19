@@ -1,3 +1,6 @@
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js"></script>
+</head>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -130,22 +133,22 @@
         }
     </style>
 </head>
-<body>
-<div class="login-container">
-    <div class="logo-title">
+<body class="auth-screen" data-page="login">
+<button id="theme-toggle" class="theme-toggle auth-theme-toggle" aria-label="Toggle theme"></button>
+<div class="auth-card" role="main">
+    <div class="auth-logo-title">
         <img src="/static/logo.png" alt="Road Condition Indexer Logo">
         <h1>Road Condition Indexer</h1>
     </div>
-    
-    <form id="login-form" class="login-form" onsubmit="event.preventDefault(); doLogin();">
+    <form id="login-form" class="auth-form" onsubmit="event.preventDefault(); doLogin();" novalidate>
         <h2>Sign In</h2>
         <div class="form-group">
             <label for="pw">Password</label>
-            <input type="password" id="pw" required />
+            <input type="password" id="pw" autocomplete="current-password" required aria-required="true" />
         </div>
-        <button type="submit" class="login-button">Sign In</button>
-        <div id="error-message" class="error-message"></div>
-        <div id="success-message" class="success-message"></div>
+        <button type="submit" class="btn-auth-primary" id="login-submit">Sign In</button>
+        <div id="error-message" class="auth-message error" aria-live="polite"></div>
+        <div id="success-message" class="auth-message success" aria-live="polite"></div>
     </form>
 </div>
 <script>
@@ -168,7 +171,7 @@ function showMessage(message, isError = false) {
 
 async function doLogin() {
     const pw = document.getElementById('pw').value;
-    const submitButton = document.querySelector('button[type="submit"]');
+    const submitButton = document.getElementById('login-submit');
     
     // Hide any previous messages
     document.getElementById('error-message').style.display = 'none';
@@ -215,7 +218,7 @@ async function doLogin() {
     } finally {
         // Re-enable button
         submitButton.disabled = false;
-        submitButton.textContent = 'Sign In';
+    submitButton.textContent = 'Sign In';
     }
 }
 

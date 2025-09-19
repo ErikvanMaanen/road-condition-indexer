@@ -6,27 +6,29 @@
     <title>Solution</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="/static/utils.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0 auto; padding: 1rem; max-width: 800px; }
-        #solution-canvas { border:1px solid #ccc; margin-top:1rem; }
-    </style>
+    <link rel="stylesheet" href="/static/site.css">
 </head>
 <body>
-<nav id="page-links" style="margin-bottom:1rem;">
-    <a href="tools.html">Tools</a> |
+<nav id="page-links" class="page-links mb-1">
     <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="shared.html">Shared</a>
+    <a href="tools.html">Tools</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">Solution</h1>
+<h1 class="mb-1"><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Solution</h1>
 <p>Solving the system of equations:</p>
-<pre style="font-size:1.2em;">
+<pre class="text-md">
     x + y = 6
     x × y = 36
 </pre>
 <p>Substituting <em>y = 6 − x</em> into <em>xy = 36</em> gives <em>x(6 − x) = 36</em>,
 which simplifies to <em>x² − 6x + 36 = 0</em>. Using the quadratic formula,
 <em>x = 3 ± 3√3i</em>. Then <em>y = 6 − x = 3 ∓ 3√3i</em>.</p>
-<div id="solution-text"></div>
-<canvas id="solution-canvas" width="400" height="300"></canvas>
+<div id="solution-text" class="mt-1"></div>
+<canvas id="solution-canvas" width="400" height="300" class="mt-1 border"></canvas>
 <script>
 const sum = 6;
 const product = 36;

@@ -7,238 +7,23 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="/static/utils.js"></script>
     <link rel="stylesheet" href="/static/vendor/datatables/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="/static/site.css">
     <script src="/static/vendor/jquery/jquery-3.7.1.min.js"></script>
     <script src="/static/vendor/datatables/jquery.dataTables.min.js"></script>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0 auto; 
-            padding: 1rem; 
-            max-width: 1200px; 
-        }
-        
-        #page-links { 
-            margin-bottom: 1rem; 
-        }
-        
-        .drop-zone {
-            border: 3px dashed #007cba;
-            border-radius: 8px;
-            padding: 30px;
-            text-align: center;
-            margin: 20px 0;
-            background: #f8f9fa;
-            transition: all 0.3s ease;
-        }
-        
-        .drop-zone.hover {
-            background: #e3f2fd;
-            border-color: #1976d2;
-            transform: scale(1.02);
-        }
-        
-        .drop-zone.dropping {
-            background: #c8e6c9;
-            border-color: #4caf50;
-        }
-        
-        .drop-icon {
-            font-size: 48px;
-            color: #007cba;
-            margin-bottom: 10px;
-        }
-        
-        .drop-text {
-            font-size: 18px;
-            color: #333;
-            margin-bottom: 10px;
-        }
-        
-        .drop-subtext {
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .objects-table-container {
-            margin-top: 30px;
-        }
-        
-        .object-actions {
-            display: flex;
-            gap: 5px;
-        }
-        
-        .btn {
-            padding: 4px 8px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .btn-primary {
-            background: #007cba;
-            color: white;
-        }
-        
-        .btn-warning {
-            background: #ffc107;
-            color: black;
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn:hover {
-            opacity: 0.8;
-        }
-        
-        .status-message {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            display: none;
-        }
-        
-        .status-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .status-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .object-preview {
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        
-        .object-link {
-            color: #007cba;
-            text-decoration: none;
-        }
-        
-        .object-link:hover {
-            text-decoration: underline;
-        }
-        
-        /* Modal styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        
-        .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
-            padding: 20px;
-            border: none;
-            border-radius: 8px;
-            width: 400px;
-            max-width: 90%;
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .modal-title {
-            margin: 0;
-            color: #333;
-        }
-        
-        .close {
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            color: #aaa;
-        }
-        
-        .close:hover {
-            color: #333;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        
-        .form-group textarea {
-            height: 80px;
-            resize: vertical;
-        }
-        
-        .modal-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .input-panel {display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin:20px 0;padding:12px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
-        .input-group {display:flex;flex-direction:column;gap:4px;min-width:240px;flex:1}
-        .input-group label {font-size:12px;font-weight:bold;color:#333}
-        .input-inline {display:flex;gap:6px}
-        .input-inline input[type=text] {flex:1;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:14px}
-        .btn-small {font-size:12px;padding:6px 10px}
-        #camera-section {border:1px dashed #007cba;border-radius:8px;padding:12px;display:none;flex-direction:column;gap:8px;background:#f0f8ff;max-width:420px}
-        #camera-preview {width:100%;border-radius:6px;background:#000;aspect-ratio:4/3;object-fit:cover}
-        #qr-status {font-size:12px;color:#555;min-height:18px}
-        .camera-controls {display:flex;flex-wrap:wrap;gap:8px}
-        .badge {display:inline-block;background:#007cba;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
-        .flex-row {display:flex;gap:8px;align-items:center}
-    </style>
 </head>
 <body>
 
-<nav id="page-links">
-    <a href="/">Main</a> |
-    <a href="device.html">Device View</a> |
-    <a href="database.html">Database Management</a> |
-    <a href="maintenance.html">Maintenance</a> |
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
     <a href="tools.html">Tools</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
 
 <h1>
-    <img src="/static/logo.png" alt="Road Condition Indexer Logo" style="height: 2em; vertical-align: middle; margin-right: 0.5em;">
+    <img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">
     Shared Objects
 </h1>
 
@@ -252,7 +37,7 @@
 
 <div class="objects-table-container">
     <h2>Shared Objects</h2>
-    <table id="objects-table" class="display" style="width:100%">
+    <table id="objects-table" class="display table-full">
         <thead>
             <tr>
                 <th>Timestamp</th>
@@ -305,39 +90,39 @@
 </div>
 
 <div class="input-panel" id="input-panel">
-    <div class="input-group" style="flex:2">
+    <div class="input-group input-group--wide">
         <label for="manual-input">Paste or type URL / Text</label>
         <div class="input-inline">
             <input id="manual-input" type="text" placeholder="https://example.com OR any text" />
             <button class="btn btn-primary btn-small" id="manual-submit">Add</button>
         </div>
-        <small style="font-size:11px;color:#666">Press Enter to submit. If content is a valid URL it will be treated as link.</small>
+    <small class="rci-muted">Press Enter to submit. If content is a valid URL it will be treated as link.</small>
     </div>
     <div class="input-group">
         <label for="file-input">Select File</label>
         <input id="file-input" type="file" />
-        <small style="font-size:11px;color:#666">Single file; larger files may take longer.</small>
+    <small class="rci-muted">Single file; larger files may take longer.</small>
     </div>
-    <div class="input-group" style="max-width:200px">
+    <div class="input-group input-group--compact">
         <label>Camera / QR</label>
         <div class="flex-row">
             <button class="btn btn-primary btn-small" id="open-camera">Open</button>
             <button class="btn btn-secondary btn-small" id="close-camera" disabled>Close</button>
         </div>
-        <small style="font-size:11px;color:#666">Scan QR or capture photo.</small>
+    <small class="rci-muted">Scan QR or capture photo.</small>
     </div>
 </div>
 
 <div id="camera-section">
-    <div class="flex-row" style="justify-content:space-between;align-items:center">
+    <div class="flex-row space-between">
         <span><strong>Camera</strong> <span class="badge" id="camera-mode-badge">QR</span></span>
         <div class="flex-row">
             <button class="btn btn-small" id="toggle-mode" title="Toggle QR / Photo">Mode</button>
             <button class="btn btn-small btn-primary" id="capture-button" title="Capture photo" disabled>Capture</button>
         </div>
     </div>
-    <video id="camera-preview" playsinline></video>
-    <canvas id="capture-canvas" style="display:none"></canvas>
+    <video id="camera-preview" muted></video>
+    <canvas id="capture-canvas"></canvas>
     <div id="qr-status">Ready</div>
 </div>
 

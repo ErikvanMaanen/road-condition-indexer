@@ -250,3 +250,129 @@ The previous suite mixed diagnostics and unit testing, increasing maintenance co
 - Use compression for large responses
 - Implement rate limiting for abuse prevention
 - Monitor response times and optimize slow endpoints
+
+## Frontend Theming & Styling System
+
+All pages now share a centralized design system defined in `static/site.css`. This system replaces prior inline and per‑page embedded styles, enabling consistent light/dark theming, component reuse, and easier accessibility compliance.
+
+### Design Tokens (CSS Custom Properties)
+Defined at `:root` (light) and `[data-theme="dark"]` scopes:
+- Color Core: `--rci-primary`, `--rci-primary-accent`, semantic status colors (`--rci-danger`, `--rci-warning`), success / error surfaces & text (`--rci-success-*`, `--rci-error-*`).
+- Surfaces & Structure: `--rci-bg`, `--rci-bg-alt`, `--rci-surface`, `--rci-surface-alt`, `--rci-border`, `--rci-shadow`.
+- Typography: `--rci-font`, `--rci-text`, `--rci-text-muted`, `--rci-link`.
+- Auth Gradient / Specialized: `--rci-auth-gradient-start`, `--rci-auth-gradient-end`, `--rci-auth-card-bg`, `--rci-auth-card-shadow`.
+- Focus: `--rci-focus-ring` (box‑shadow applied on focusable elements via `.focus-ring:focus`).
+
+When adding new tokens:
+1. Prefer semantic naming (e.g. `--rci-danger-accent`) over direct hues (`--rci-red-500`).
+2. Define BOTH light and dark values (place dark mode inside `[data-theme="dark"]`).
+3. Reference tokens (e.g. `color:var(--rci-text)`) instead of raw hex in component rules.
+
+### Theme Switching
+Handled in shared JavaScript (`utils.js`):
+1. Reads persisted preference from `localStorage` key `theme`.
+2. Falls back to system preference via `matchMedia('(prefers-color-scheme: dark)')`.
+3. Applies `document.documentElement.dataset.theme = 'dark' | 'light'`.
+4. Toggle buttons use the `.theme-toggle` class and simply invert the stored value.
+
+To add a toggle to a new page:
+```html
+<button id="themeToggle" class="theme-toggle" type="button">Toggle Theme</button>
+<script>/* ensure utils.js loaded globally */</script>
+```
+If the shared nav partial already injects it, do not duplicate.
+
+### Utility Classes (Selected)
+Spacing & Layout: `.mb-1`, `.mb-05`, `.mt-05`, `.mt-1`, `.flex`, `.flex-wrap`, `.flex-1`, `.gap-05`, `.gap-035`, `.items-center`, `.w-100`, `.w-120`, `.w-80`, `.w-60`, `.inline-block`, `.mr-05`, `.ml-05`.
+Containers / Surfaces: `.rci-card`, `.panel-soft`, `.border`, `.rounded-4`, `.bg-surface`, `.bg-alt`, `.json-editor-container`.
+Typography: `.mono`, `.mono-tiny`, `.text-sm`, `.text-xs`, `.white-pre`.
+Visibility / State: `.hidden`, `.hidden-initial` (script will reveal), `.status-message`, `.status-success`, `.status-error`.
+Auth / Theming: `.auth-screen`, `.auth-card`, `.theme-toggle`, `.focus-ring`.
+
+Principles:
+- Utilities stay atomic; avoid combining unrelated concerns (e.g., no multi‑property catch‑alls).
+- If a pattern is used ≥3 times and is semantic ("panel", "card"), promote it to a component class.
+- Use utilities for layout tweaks; component classes own structural styling.
+
+### Component Patterns
+Implemented components (not exhaustive):
+- Modal: `.modal`, `.modal-content` (shared surface, tokenized border/shadow).
+- Collapsible Sections: `.section`, `.section-header`, `.section-content` (Tools page & logs/settings panels reuse pattern).
+- Time Range Slider: `.time-range-*` classes (range handles, track, labels) fully tokenized.
+- Logs Table: `.logs-table`, `.log-level.*`, `.log-filters` (monospace rows + sticky header).
+- Diff Viewer: `.diff-panel`, `.diff-added|removed|modified|unchanged` (light/dark adaptive backgrounds with high contrast borders).
+- JSON Tree: `.json-*` with semantic color classes for data types.
+- Map Component: `#map`, `.fullscreen-btn`, roughness filter layout (`#roughness-filter-container`, `.range-filter`, `.range-display`).
+- Auth Layout: `.auth-screen`, `.auth-card`, `.auth-message` variants (supports dark mode automatically via tokens).
+
+When creating a new component:
+1. Start with semantic container class (e.g., `.statistics-panel`).
+2. Use child element classes for structure (`.statistics-panel-header`, `.statistics-panel-body`).
+3. Use only token refs and existing utilities; avoid new hardcoded color values.
+4. Consider required states (hover, focus, expanded) up front to avoid inline patches later.
+
+### Extending Dark Mode
+Most components inherit automatically. Only define dark overrides when the light palette uses translucent or very light backgrounds that would lose contrast on dark surfaces.
+
+Pattern for overrides:
+```css
+[data-theme="dark"] .my-component { background:var(--rci-surface-alt); }
+```
+Avoid duplicating properties that already inherit appropriately.
+
+### Accessibility Guidelines
+Contrast Targets:
+- Text vs background: WCAG AA (≥ 4.5:1 for normal text, ≥ 3:1 for large / UI inactive states acceptable with context).
+- Interactive states (buttons, toggles, links) must have a visible :hover and :focus style distinct from rest state.
+
+Implemented Features:
+- Focus ring via `.focus-ring` + `--rci-focus-ring` shadow.
+- Color alone not used for log severity (border-left + level badge label text).
+- Selects and file inputs in tools & logs panels include `aria-label` when no `<label>` present.
+- Status messages have both color and icon potential (future enhancement: add inline SVGs if needed).
+
+Recommended Testing Steps:
+1. Temporarily force dark mode: `document.documentElement.dataset.theme='dark'`.
+2. Tab through interactive elements verifying ring visibility on low-contrast displays.
+3. Use a contrast checker on primary text vs `--rci-surface` and badge backgrounds.
+4. Zoom to 200% to confirm layout integrity (flex & grid components should wrap gracefully).
+
+### Adding New Utilities
+Add only if:
+- The style is small (1–2 properties) AND
+- It appears or is projected to appear in ≥3 distinct components.
+Prefer semantic component evolution over a proliferation of one-off utilities.
+
+### Removing Legacy Inline Styles
+All major pages/partials have been cleaned. If new inline styles are introduced during rapid prototyping, migrate them into either:
+- A component class (preferred if tightly coupled to a feature) OR
+- An existing utility combination.
+
+### Example: Creating a New Panel
+```html
+<div class="statistics-panel rci-card mb-1">
+   <div class="statistics-panel-header flex-row space-between">
+      <h3 class="m-0">Live Metrics</h3>
+      <button class="btn btn-small focus-ring" type="button">Refresh</button>
+   </div>
+   <div class="statistics-panel-body mono text-sm">Loading…</div>
+</div>
+```
+```css
+.statistics-panel-header { border-bottom:1px solid var(--rci-border); padding:4px 8px; }
+.statistics-panel-body { padding:8px; }
+```
+
+### Performance Considerations
+- Centralized stylesheet reduces duplicate CSS bytes and improves caching.
+- Avoid expensive universal selectors (`*`) or deep descendant chains in new additions.
+- Group related component rules; keep token declarations flat (no nested calc chains) for faster render.
+
+### Lint / Consistency Checklist
+- No hex colors outside token blocks.
+- Component selectors prefixed or scoped to prevent collision with vendor libs (`.rci-*` for generic utilities/patterns).
+- Light/Dark parity verified (if a light token is added, dark counterpart must be added unless intentionally identical).
+
+---
+This section will evolve as new UI modules are added. Treat `site.css` as the canonical design layer; keep JS strictly for behavior, not presentation.
+
