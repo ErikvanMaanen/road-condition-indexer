@@ -221,6 +221,18 @@ select { padding:.5rem; font-size:1rem; border:1px solid var(--rci-border); bord
 .memo-manual textarea:focus { outline:none; box-shadow:var(--rci-focus-ring); border-color:var(--rci-primary); }
 .memo-manual-btn { align-self:flex-start; padding:0.6rem 1.2rem; border:none; border-radius:var(--rci-radius); background:var(--rci-primary); color:#fff; cursor:pointer; font-weight:600; box-shadow:var(--rci-shadow); transition:transform .2s ease, box-shadow .2s ease; }
 .memo-manual-btn:hover:not(:disabled) { transform:translateY(-1px); }
+.memo-transcription { display:flex; flex-direction:column; gap:0.75rem; width:100%; }
+.memo-transcription-header h3 { margin:0; font-size:1.1rem; }
+.memo-transcription-form { display:flex; flex-direction:column; gap:0.6rem; width:100%; }
+.memo-transcription-form input[type="file"], .memo-transcription-form input[type="url"] { border:1px solid var(--rci-border); border-radius:var(--rci-radius); padding:0.65rem 0.75rem; font-size:1rem; background:var(--rci-surface); color:var(--rci-text); }
+.memo-transcription-form input[type="url"]:focus { outline:none; box-shadow:var(--rci-focus-ring); border-color:var(--rci-primary); }
+.memo-transcription-separator { text-align:center; color:var(--rci-text-muted); font-weight:600; }
+.memo-transcription-result { display:none; border:1px solid var(--rci-border); border-radius:var(--rci-radius); padding:0.75rem; background:var(--rci-surface-alt); white-space:pre-wrap; line-height:1.5; box-shadow:var(--rci-shadow); }
+.memo-transcription-result.is-visible { display:block; }
+.memo-transcription-segment { margin-bottom:0.5rem; }
+.memo-transcription-segment:last-child { margin-bottom:0; }
+.memo-transcription-speaker { font-weight:600; display:block; margin-bottom:0.15rem; }
+.memo-transcription-time { font-size:0.85rem; color:var(--rci-text-muted); margin-left:0.35rem; }
 .memo-card-list { display:flex; flex-direction:column; gap:1rem; }
 .memo-card { border:1px solid var(--rci-border); border-radius:var(--rci-radius); padding:1rem; background:var(--rci-surface); box-shadow:var(--rci-shadow); transition:box-shadow .2s ease, transform .2s ease; }
 .memo-card--highlight { box-shadow:0 0 0 3px rgba(0,124,186,0.35); transform:translateY(-2px); }

@@ -44,6 +44,23 @@
             <textarea id="memo-manual-input" rows="3" placeholder="Schrijf hier je memo..."></textarea>
             <button id="memo-manual-save" type="button" class="memo-manual-btn focus-ring">Memo opslaan</button>
         </div>
+        <div class="memo-divider" role="presentation">of</div>
+        <div class="memo-transcription" aria-labelledby="memo-transcription-heading">
+            <div class="memo-transcription-header">
+                <h3 id="memo-transcription-heading">Audio of video transcriberen</h3>
+                <p class="memo-description">Upload een audio- of videobestand of plak een URL om automatisch een memo te maken met sprekerherkenning.</p>
+            </div>
+            <form id="memo-transcription-form" class="memo-transcription-form">
+                <label for="memo-file-input" class="memo-label">Upload een bestand</label>
+                <input id="memo-file-input" type="file" accept="audio/*,video/*">
+                <div class="memo-transcription-separator" role="presentation">of</div>
+                <label for="memo-url-input" class="memo-label">Gebruik een URL</label>
+                <input id="memo-url-input" type="url" placeholder="https://voorbeeld.nl/bestand.mp3">
+                <button id="memo-transcription-submit" type="submit" class="memo-manual-btn focus-ring">Transcriberen</button>
+            </form>
+            <div id="memo-transcription-status" class="status-message" role="status" aria-live="polite"></div>
+            <div id="memo-transcription-result" class="memo-transcription-result" aria-live="polite"></div>
+        </div>
         <div id="memo-status" class="status-message" role="status" aria-live="polite"></div>
     </section>
 

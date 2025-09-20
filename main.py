@@ -38,6 +38,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import urlparse
 
 import pytz
 
@@ -52,7 +53,9 @@ warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
 import numpy as np
 import requests
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import (Depends, FastAPI, File, Form, HTTPException, Query,
+                     Request, UploadFile)
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import (FileResponse, RedirectResponse, Response,
                                StreamingResponse)
 from fastapi.staticfiles import StaticFiles
@@ -67,6 +70,8 @@ from database import (TABLE_ARCHIVE_LOGS, TABLE_BIKE_DATA,
 from log_utils import (DEBUG_LOG, LogCategory, LogLevel, format_display_time,
                        get_utc_timestamp, log_debug, log_error, log_info,
                        log_warning)
+from transcription import (TranscriptionConfigError, TranscriptionFailedError,
+                           TranscriptionService, TranscriptionServiceError)
 # Import SQL connectivity testing
 from tests.sql_connectivity_tests import (ConnectivityTestResult,
                                           run_startup_connectivity_tests)
@@ -95,6 +100,8 @@ from database import db_manager
 # We remove the dependency and keep a generic streaming downloader below.
 
 BASE_DIR = Path(__file__).resolve().parent
+
+transcription_service = TranscriptionService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2370,6 +2377,94 @@ class MemoUpdateRequest(BaseModel):
     content: str = Field(..., description="Updated memo text")
 
 
+class SpeakerSegment(BaseModel):
+    speaker: str = Field(..., description="Sprekerlabel voor dit segment")
+    start: Optional[float] = Field(
+        None, description="Starttijd van het segment in seconden"
+    )
+    end: Optional[float] = Field(
+        None, description="Eindtijd van het segment in seconden"
+    )
+    text: str = Field(..., description="Transcriptie voor deze spreker")
+
+
+def _normalise_speaker_label(raw_label: Optional[Union[str, int, float]], index: int) -> str:
+    if raw_label is None:
+        return f"Spreker {index + 1}"
+    if isinstance(raw_label, (int, float)):
+        return f"Spreker {int(raw_label) + 1}"
+    label = str(raw_label).strip()
+    if not label:
+        return f"Spreker {index + 1}"
+    match = re.search(r"(\d+)", label)
+    if match:
+        value = int(match.group(1))
+        if label.upper().startswith("SPEAKER_"):
+            value += 1
+        return f"Spreker {value}"
+    return label
+
+
+def _ms_to_seconds(value: Any) -> Optional[float]:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number > 1000:
+        number = number / 1000.0
+    return round(number, 3)
+
+
+def _build_transcription_segments(payload: Dict[str, Any]) -> Tuple[str, List[SpeakerSegment]]:
+    utterances = payload.get("utterances")
+    segments: List[SpeakerSegment] = []
+    if isinstance(utterances, list):
+        for index, utterance in enumerate(utterances):
+            if not isinstance(utterance, dict):
+                continue
+            text = str(utterance.get("text") or "").strip()
+            if not text:
+                continue
+            speaker_label = _normalise_speaker_label(utterance.get("speaker"), index)
+            segment = SpeakerSegment(
+                speaker=speaker_label,
+                start=_ms_to_seconds(utterance.get("start")),
+                end=_ms_to_seconds(utterance.get("end")),
+                text=text,
+            )
+            segments.append(segment)
+
+    if segments:
+        combined = "\n".join(f"{segment.speaker}: {segment.text}" for segment in segments).strip()
+        if combined:
+            return combined, segments
+
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        raise TranscriptionFailedError("Transcriptie bevat geen tekst")
+    default_segment = SpeakerSegment(speaker="Spreker 1", text=text)
+    return f"Spreker 1: {text}", [default_segment]
+
+
+_ALLOWED_MEDIA_PREFIXES = ("audio/", "video/")
+
+
+def _normalise_source_url(url: str) -> str:
+    value = url.strip()
+    if not value:
+        raise ValueError("URL mag niet leeg zijn")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Voer een geldige URL in (http/https)")
+    return value
+
+
+def _ensure_media_type(upload: UploadFile) -> None:
+    content_type = upload.content_type or ""
+    if not content_type.lower().startswith(_ALLOWED_MEDIA_PREFIXES):
+        raise ValueError("Alleen audio- of videobestanden worden ondersteund")
+
+
 @app.post("/api/shared")
 def create_shared_object(request: SharedObjectRequest, http_request: Request):
     """Create a new shared object."""
@@ -2464,6 +2559,84 @@ def delete_shared_object(shared_id: int, dep: None = Depends(password_dependency
 
 
 # Memo management endpoints
+@app.post("/api/memos/transcribe")
+async def transcribe_memo(
+    media: Optional[UploadFile] = File(
+        None, description="Audio- of videobestand voor transcriptie"
+    ),
+    source_url: Optional[str] = Form(
+        None, description="Optioneel: publieke URL naar audio of video"
+    ),
+):
+    url_value = (source_url or "").strip()
+    if media is None and not url_value:
+        raise HTTPException(status_code=400, detail="Upload een bestand of vul een URL in")
+
+    if media is not None:
+        try:
+            _ensure_media_type(media)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    normalized_url: Optional[str] = None
+    if media is None and url_value:
+        try:
+            normalized_url = _normalise_source_url(url_value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    temp_path: Optional[Path] = None
+    try:
+        if media is not None:
+            suffix = Path(media.filename or "media").suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                while True:
+                    chunk = await media.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    tmp_file.write(chunk)
+                temp_path = Path(tmp_file.name)
+            await media.close()
+            raw_payload = await run_in_threadpool(
+                transcription_service.transcribe,
+                file_path=temp_path,
+                source_url=None,
+            )
+        else:
+            raw_payload = await run_in_threadpool(
+                transcription_service.transcribe,
+                file_path=None,
+                source_url=normalized_url,
+            )
+
+        content, segments = _build_transcription_segments(raw_payload)
+        memo = db_manager.create_memo(content)
+        log_info("Transcriptie opgeslagen als nieuwe memo")
+        return {
+            "status": "ok",
+            "memo": memo,
+            "segments": [segment.model_dump() for segment in segments],
+            "transcript": content,
+        }
+    except HTTPException:
+        raise
+    except TranscriptionConfigError as exc:
+        log_error(f"Transcriptie mislukt vanwege configuratie: {exc}")
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (TranscriptionServiceError, ValueError, FileNotFoundError) as exc:
+        log_error(f"Transcriptieservice gaf een fout: {exc}")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - onverwachte fout
+        log_error(f"Onverwachte transcriptiefout: {exc}")
+        raise HTTPException(status_code=500, detail="Transcriptie mislukt") from exc
+    finally:
+        if temp_path is not None and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
 @app.post("/api/memos")
 def create_memo(request: MemoCreateRequest):
     """Create a new memo entry."""
