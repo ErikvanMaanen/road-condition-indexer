@@ -1,5 +1,6 @@
 """Unit tests for memo endpoint logic without HTTP dependencies."""
 
+import asyncio
 import os
 from typing import List, Optional
 
@@ -105,3 +106,45 @@ def test_update_memo_not_found(memo_app):
     with pytest.raises(HTTPException) as exc:
         main.update_memo(999, main.MemoUpdateRequest(content='Bestaat niet'))
     assert exc.value.status_code == 404
+
+
+def test_transcribe_memo_requires_input(memo_app):
+    main, _ = memo_app
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.transcribe_memo(media=None, source_url=None))
+    assert exc.value.status_code == 400
+
+
+def test_transcribe_memo_with_url(monkeypatch, memo_app):
+    main, stub = memo_app
+
+    class StubTranscriptionService:
+        def transcribe(self, *, file_path=None, source_url=None):
+            assert file_path is None
+            assert source_url == 'https://example.com/audio.mp3'
+            return {
+                'text': 'Hallo allemaal',
+                'utterances': [
+                    {
+                        'speaker': 'SPEAKER_00',
+                        'text': 'Hallo',
+                        'start': 0,
+                        'end': 1500
+                    },
+                    {
+                        'speaker': 'SPEAKER_01',
+                        'text': 'Goedemorgen',
+                        'start': 1500,
+                        'end': 3200
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(main, 'transcription_service', StubTranscriptionService())
+
+    result = asyncio.run(main.transcribe_memo(media=None, source_url='https://example.com/audio.mp3'))
+
+    assert result['status'] == 'ok'
+    assert 'memo' in result
+    assert stub._memos[0]['content'].startswith('Spreker 1: Hallo')
+    assert len(result['segments']) == 2

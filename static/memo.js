@@ -2,7 +2,8 @@
   'use strict';
 
   const state = {
-    memos: []
+    memos: [],
+    isTranscribing: false
   };
 
   const recordButton = document.getElementById('memo-record-btn');
@@ -10,9 +11,16 @@
   const manualInput = document.getElementById('memo-manual-input');
   const manualSaveButton = document.getElementById('memo-manual-save');
   const statusEl = document.getElementById('memo-status');
+  const transcriptionForm = document.getElementById('memo-transcription-form');
+  const transcriptionStatusEl = document.getElementById('memo-transcription-status');
+  const transcriptionResultEl = document.getElementById('memo-transcription-result');
+  const transcriptionFileInput = document.getElementById('memo-file-input');
+  const transcriptionUrlInput = document.getElementById('memo-url-input');
+  const transcriptionSubmitButton = document.getElementById('memo-transcription-submit');
   const memoListEl = document.getElementById('memo-list');
 
   let statusTimeoutId = null;
+  let transcriptionStatusTimeoutId = null;
 
   async function copyTextToClipboard(text) {
     const value = typeof text === 'string' ? text : '';
@@ -132,6 +140,136 @@
     }
   }
 
+  function showTranscriptionStatus(message, type = 'info') {
+    if (!transcriptionStatusEl) {
+      return;
+    }
+
+    transcriptionStatusEl.textContent = message;
+    transcriptionStatusEl.style.display = 'block';
+    transcriptionStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+
+    const className = type === 'success'
+      ? 'status-success'
+      : type === 'error'
+        ? 'status-error'
+        : type === 'warning'
+          ? 'status-warning'
+          : '';
+
+    if (className) {
+      transcriptionStatusEl.classList.add(className);
+    }
+
+    if (transcriptionStatusTimeoutId) {
+      window.clearTimeout(transcriptionStatusTimeoutId);
+    }
+
+    transcriptionStatusTimeoutId = window.setTimeout(() => {
+      transcriptionStatusEl.style.display = 'none';
+      transcriptionStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+      transcriptionStatusTimeoutId = null;
+    }, 7000);
+  }
+
+  function clearTranscriptionFeedback() {
+    if (transcriptionStatusTimeoutId) {
+      window.clearTimeout(transcriptionStatusTimeoutId);
+      transcriptionStatusTimeoutId = null;
+    }
+    if (transcriptionStatusEl) {
+      transcriptionStatusEl.textContent = '';
+      transcriptionStatusEl.style.display = 'none';
+      transcriptionStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+    }
+    if (transcriptionResultEl) {
+      transcriptionResultEl.classList.remove('is-visible');
+      transcriptionResultEl.innerHTML = '';
+    }
+  }
+
+  function formatTranscriptionTime(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return null;
+    }
+    const totalSeconds = Math.max(0, value);
+    const minutes = Math.floor(totalSeconds / 60);
+    const secondsFloat = totalSeconds - (minutes * 60);
+    const seconds = Math.floor(secondsFloat);
+    const remainder = secondsFloat - seconds;
+    let formatted = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    if (remainder > 0.05) {
+      const decimals = Math.round(remainder * 10);
+      formatted += `.${String(decimals).padStart(1, '0')}`;
+    }
+    return formatted;
+  }
+
+  function renderTranscriptionResult(segments, fallbackText) {
+    if (!transcriptionResultEl) {
+      return;
+    }
+
+    transcriptionResultEl.innerHTML = '';
+
+    const items = Array.isArray(segments) ? segments : [];
+    if (items.length) {
+      items.forEach((segment) => {
+        if (!segment || typeof segment.text !== 'string' || !segment.text.trim()) {
+          return;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'memo-transcription-segment';
+
+        const speaker = document.createElement('span');
+        speaker.className = 'memo-transcription-speaker';
+        speaker.textContent = segment.speaker || 'Spreker';
+
+        const timeParts = [];
+        if (typeof segment.start === 'number') {
+          const startText = formatTranscriptionTime(segment.start);
+          if (startText) {
+            timeParts.push(startText);
+          }
+        }
+        if (typeof segment.end === 'number') {
+          const endText = formatTranscriptionTime(segment.end);
+          if (endText) {
+            if (timeParts.length) {
+              timeParts.push(`– ${endText}`);
+            } else {
+              timeParts.push(endText);
+            }
+          }
+        }
+        if (timeParts.length) {
+          const time = document.createElement('span');
+          time.className = 'memo-transcription-time';
+          time.textContent = timeParts.join(' ');
+          speaker.appendChild(time);
+        }
+
+        const text = document.createElement('p');
+        text.textContent = segment.text.trim();
+
+        wrapper.appendChild(speaker);
+        wrapper.appendChild(text);
+        transcriptionResultEl.appendChild(wrapper);
+      });
+    }
+
+    if (!transcriptionResultEl.childNodes.length) {
+      const content = typeof fallbackText === 'string' && fallbackText.trim()
+        ? fallbackText.trim()
+        : 'Geen transcript beschikbaar.';
+      const paragraph = document.createElement('p');
+      paragraph.textContent = content;
+      transcriptionResultEl.appendChild(paragraph);
+    }
+
+    transcriptionResultEl.classList.add('is-visible');
+  }
+
   function renderMemos() {
     if (!memoListEl) {
       return;
@@ -154,6 +292,101 @@
     });
 
     memoListEl.appendChild(fragment);
+  }
+
+  function getSelectedTranscriptionFile() {
+    if (!transcriptionFileInput || !transcriptionFileInput.files || !transcriptionFileInput.files.length) {
+      return null;
+    }
+    return transcriptionFileInput.files[0];
+  }
+
+  async function handleTranscriptionSubmit(event) {
+    event.preventDefault();
+    if (!transcriptionForm || state.isTranscribing) {
+      return;
+    }
+
+    const file = getSelectedTranscriptionFile();
+    const urlValue = transcriptionUrlInput ? transcriptionUrlInput.value.trim() : '';
+
+    if (!file && !urlValue) {
+      showTranscriptionStatus('Upload een audio-/videobestand of vul een URL in.', 'warning');
+      return;
+    }
+
+    const formData = new FormData();
+    if (file) {
+      formData.append('media', file);
+    }
+    if (urlValue) {
+      formData.append('source_url', urlValue);
+    }
+
+    clearTranscriptionFeedback();
+    showTranscriptionStatus('Transcriptie gestart…', 'info');
+    state.isTranscribing = true;
+
+    if (transcriptionSubmitButton) {
+      transcriptionSubmitButton.disabled = true;
+      transcriptionSubmitButton.textContent = 'Transcriberen…';
+    }
+
+    try {
+      const response = await fetch('/api/memos/transcribe', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.status !== 'ok') {
+        const detail = data && (data.detail || data.message);
+        throw new Error(detail || 'Transcriptie mislukt.');
+      }
+
+      if (!data.memo) {
+        throw new Error('Ongeldig antwoord van de server.');
+      }
+
+      const newMemo = Object.assign({}, data.memo, { __highlight: true });
+      state.memos.unshift(newMemo);
+      renderMemos();
+
+      const segments = Array.isArray(data.segments) ? data.segments : [];
+      renderTranscriptionResult(segments, data.transcript || newMemo.content || '');
+
+      const copied = await copyTextToClipboard(newMemo.content);
+      if (copied) {
+        showStatus('Transcriptie opgeslagen en gekopieerd naar klembord.', 'success');
+      } else {
+        showStatus('Transcriptie opgeslagen als memo.', 'success');
+      }
+      showTranscriptionStatus('Transcriptie voltooid en memo opgeslagen.', 'success');
+
+      if (transcriptionForm) {
+        transcriptionForm.reset();
+      }
+      if (transcriptionFileInput) {
+        transcriptionFileInput.value = '';
+      }
+    } catch (error) {
+      console.error('Transcriptie van memo mislukt', error);
+      showTranscriptionStatus(error.message || 'Transcriptie mislukt.', 'error');
+      showStatus(error.message || 'Transcriptie mislukt.', 'error');
+    } finally {
+      state.isTranscribing = false;
+      if (transcriptionSubmitButton) {
+        transcriptionSubmitButton.disabled = false;
+        transcriptionSubmitButton.textContent = 'Transcriberen';
+      }
+    }
+  }
+
+  function setupTranscriptionUpload() {
+    if (!transcriptionForm) {
+      return;
+    }
+    transcriptionForm.addEventListener('submit', handleTranscriptionSubmit);
   }
 
   function createMemoCard(memo) {
@@ -562,6 +795,7 @@
 
   function init() {
     setupManualControls();
+    setupTranscriptionUpload();
     setupSpeechRecording();
     loadMemos();
   }
