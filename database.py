@@ -63,6 +63,7 @@ TABLE_ARCHIVE_LOGS = "RCI_archive_logs"
 TABLE_USER_ACTIONS = "RCI_user_actions"
 TABLE_SHARED = "RCI_shared"
 TABLE_MEMOS = "RCI_memos"
+TABLE_MEMO_ARCHIVE = "memo_archive"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -475,6 +476,23 @@ class DatabaseManager:
                     content NVARCHAR(MAX) NOT NULL,
                     created_at DATETIME2 DEFAULT SYSUTCDATETIME(),
                     updated_at DATETIME2 DEFAULT SYSUTCDATETIME()
+                )
+            END
+        """))
+
+        # Create memo archive table for soft-deleted memos
+        conn.execute(text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_MEMO_ARCHIVE}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_MEMO_ARCHIVE} (
+                    id INT IDENTITY PRIMARY KEY,
+                    memo_id INT NOT NULL,
+                    content NVARCHAR(MAX) NOT NULL,
+                    created_at DATETIME2 NOT NULL,
+                    updated_at DATETIME2 NOT NULL,
+                    archived_at DATETIME2 DEFAULT SYSUTCDATETIME()
                 )
             END
         """))
@@ -2342,6 +2360,19 @@ class DatabaseManager:
                     mapping[key] = value.astimezone(pytz.UTC).isoformat()
         return mapping
 
+    def _serialize_memo_archive_row(self, row: Any) -> Dict[str, Any]:
+        """Convert an archived memo row to a JSON-serializable dictionary."""
+        mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
+
+        for key in ("created_at", "updated_at", "archived_at"):
+            value = mapping.get(key)
+            if isinstance(value, datetime):
+                if value.tzinfo is None:
+                    mapping[key] = value.replace(tzinfo=pytz.UTC).isoformat()
+                else:
+                    mapping[key] = value.astimezone(pytz.UTC).isoformat()
+        return mapping
+
     def create_memo(self, content: str) -> Dict[str, Any]:
         """Insert a new memo and return the stored record."""
         try:
@@ -2446,6 +2477,67 @@ class DatabaseManager:
 
         except Exception as exc:
             self.log_debug(f"Failed to update memo {memo_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def archive_memo(self, memo_id: int) -> Optional[Dict[str, Any]]:
+        """Move a memo to the archive table and remove it from the active list."""
+        try:
+            with self.get_connection_context() as conn:
+                memo_result = conn.execute(
+                    text(f"""
+                        SELECT id, content, created_at, updated_at
+                        FROM {TABLE_MEMOS}
+                        WHERE id = :memo_id
+                    """),
+                    {"memo_id": memo_id},
+                )
+
+                memo_row = memo_result.fetchone()
+                if memo_row is None:
+                    conn.rollback()
+                    return None
+
+                memo_values = (
+                    memo_row._mapping if hasattr(memo_row, "_mapping") else memo_row
+                )
+
+                archive_result = conn.execute(
+                    text(f"""
+                        INSERT INTO {TABLE_MEMO_ARCHIVE} (memo_id, content, created_at, updated_at)
+                        OUTPUT INSERTED.id, INSERTED.memo_id, INSERTED.content,
+                               INSERTED.created_at, INSERTED.updated_at, INSERTED.archived_at
+                        VALUES (:memo_id, :content, :created_at, :updated_at)
+                    """),
+                    {
+                        "memo_id": memo_values["id"],
+                        "content": memo_values["content"],
+                        "created_at": memo_values["created_at"],
+                        "updated_at": memo_values["updated_at"],
+                    },
+                )
+
+                archive_row = archive_result.fetchone()
+                if archive_row is None:
+                    conn.rollback()
+                    raise RuntimeError("Archiving memo failed: no archive row returned")
+
+                conn.execute(
+                    text(f"DELETE FROM {TABLE_MEMOS} WHERE id = :memo_id"),
+                    {"memo_id": memo_id},
+                )
+
+                conn.commit()
+
+                archived_memo = self._serialize_memo_archive_row(archive_row)
+                self.log_debug(
+                    f"Memo {memo_id} archived",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE,
+                )
+                return archived_memo
+
+        except Exception as exc:
+            self.log_debug(f"Failed to archive memo {memo_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
             raise
 
 

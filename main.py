@@ -2682,6 +2682,21 @@ def update_memo(memo_id: int, request: MemoUpdateRequest):
         raise HTTPException(status_code=500, detail=f"Failed to update memo: {str(exc)}")
 
 
+@app.delete("/api/memos/{memo_id}")
+def delete_memo(memo_id: int):
+    """Archive an existing memo instead of deleting it permanently."""
+    try:
+        archived = db_manager.archive_memo(memo_id)
+        if archived is None:
+            raise HTTPException(status_code=404, detail="Memo niet gevonden")
+        return {"status": "ok", "archived": archived}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to archive memo {memo_id}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to archive memo: {str(exc)}")
+
+
 @app.get("/shared.html")
 def read_shared(request: Request):
     """Serve the shared objects page."""

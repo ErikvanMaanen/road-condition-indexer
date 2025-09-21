@@ -37,6 +37,7 @@ class StubMemoDB:
                 'updated_at': '2024-01-01T08:00:00+00:00',
             },
         ]
+        self._archived: List[dict] = []
 
     def get_memos(self, limit: Optional[int] = None):
         if limit:
@@ -62,11 +63,29 @@ class StubMemoDB:
                 return memo
         return None
 
+    def archive_memo(self, memo_id: int) -> Optional[dict]:
+        for index, memo in enumerate(self._memos):
+            if memo['id'] == memo_id:
+                archived = {
+                    'id': len(self._archived) + 1,
+                    'memo_id': memo['id'],
+                    'content': memo['content'],
+                    'created_at': memo['created_at'],
+                    'updated_at': memo['updated_at'],
+                    'archived_at': '2024-01-05T10:00:00+00:00',
+                }
+                self._archived.append(archived)
+                self._memos.pop(index)
+                return archived
+        return None
+
 
 @pytest.fixture()
 def memo_app(monkeypatch):
     import importlib
+    from fastapi.dependencies import utils as fastapi_utils
 
+    monkeypatch.setattr(fastapi_utils, 'ensure_multipart_is_installed', lambda: None)
     main = importlib.import_module('main')
     stub = StubMemoDB()
     monkeypatch.setattr(main, 'db_manager', stub)
@@ -105,6 +124,21 @@ def test_update_memo_not_found(memo_app):
     main, _ = memo_app
     with pytest.raises(HTTPException) as exc:
         main.update_memo(999, main.MemoUpdateRequest(content='Bestaat niet'))
+    assert exc.value.status_code == 404
+
+
+def test_delete_memo_archives(memo_app):
+    main, stub = memo_app
+    result = main.delete_memo(1)
+    assert result['status'] == 'ok'
+    assert stub._archived[-1]['memo_id'] == 1
+    assert all(memo['id'] != 1 for memo in stub._memos)
+
+
+def test_delete_memo_not_found(memo_app):
+    main, _ = memo_app
+    with pytest.raises(HTTPException) as exc:
+        main.delete_memo(999)
     assert exc.value.status_code == 404
 
 
