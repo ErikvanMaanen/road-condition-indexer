@@ -435,6 +435,12 @@
     editButton.textContent = '✏️ Bewerken';
     actions.appendChild(editButton);
 
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'memo-delete-btn focus-ring';
+    deleteButton.textContent = '🗑️ Verwijderen';
+    actions.appendChild(deleteButton);
+
     header.appendChild(timestamps);
     header.appendChild(actions);
 
@@ -557,6 +563,39 @@
       } finally {
         saveButton.disabled = false;
         saveButton.textContent = 'Opslaan';
+      }
+    });
+
+    deleteButton.addEventListener('click', async () => {
+      const confirmed = window.confirm('Weet je zeker dat je deze memo wilt archiveren?');
+      if (!confirmed) {
+        return;
+      }
+
+      const originalText = deleteButton.textContent;
+      deleteButton.disabled = true;
+      deleteButton.textContent = 'Verwijderen…';
+
+      try {
+        const response = await fetch(`/api/memos/${memo.id}`, {
+          method: 'DELETE'
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.status !== 'ok') {
+          const detail = data && (data.detail || data.message);
+          throw new Error(detail || 'Onbekende fout bij het archiveren van de memo.');
+        }
+
+        state.memos = state.memos.filter((existing) => existing.id !== memo.id);
+        renderMemos();
+        showStatus('Memo verplaatst naar archief.', 'success');
+      } catch (error) {
+        console.error('Failed to archive memo', error);
+        showStatus(error.message || 'Archiveren mislukt.', 'error');
+      } finally {
+        deleteButton.disabled = false;
+        deleteButton.textContent = originalText;
       }
     });
 
