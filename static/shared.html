@@ -652,6 +652,27 @@ window.onclick = function(event) {
     const qrStatus = document.getElementById('qr-status');
     const captureCanvas = document.getElementById('capture-canvas');
 
+    function logShareEvent(message, level = 'INFO', error = null) {
+        const prefix = '[Shared] ';
+        const logMessage = `${prefix}${message}`;
+        const category = 'Shared';
+
+        if (typeof addMessage === 'function') {
+            addMessage(logMessage, level, category, error || undefined);
+        } else if (typeof addLog === 'function') {
+            addLog(logMessage, category, level);
+        }
+
+        const consoleMethod = level === 'ERROR' ? 'error' : level === 'WARNING' ? 'warn' : 'info';
+        if (typeof console !== 'undefined' && typeof console[consoleMethod] === 'function') {
+            if (error) {
+                console[consoleMethod](logMessage, error);
+            } else {
+                console[consoleMethod](logMessage);
+            }
+        }
+    }
+
     let stream = null;
     let scanning = false;
     let qrMode = true; // true => QR scan, false => photo capture
@@ -659,10 +680,14 @@ window.onclick = function(event) {
     if("BarcodeDetector" in window){
         try {
             barcodeDetector = new BarcodeDetector({formats:['qr_code','aztec','data_matrix','pdf417']});
+            logShareEvent('BarcodeDetector initialized successfully.');
         } catch(err){
             console.warn('BarcodeDetector initialization failed', err);
             barcodeDetector = null;
+            logShareEvent(`BarcodeDetector initialization failed: ${err && err.message ? err.message : 'Unknown error'}`, 'WARNING', err);
         }
+    } else {
+        logShareEvent('BarcodeDetector API not available in this browser.', 'WARNING');
     }
 
     function handleManualSubmit(){
@@ -715,21 +740,26 @@ window.onclick = function(event) {
     openCameraBtn.addEventListener('click', async ()=>{
         if(stream){
             // Already open; ignore duplicate click
+            logShareEvent('Camera open requested but stream already active; ignoring duplicate request.', 'WARNING');
             return;
         }
         try {
             // Feature detection
             if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-                qrStatus.textContent = 'Camera unsupported in this browser';
+                logShareEvent('Camera API not available: navigator.mediaDevices.getUserMedia missing.', 'ERROR');
+                qrStatus.textContent = 'Camera not supported in this browser/environment.';
                 return;
             }
+            logShareEvent(`Camera open requested. Mode: ${qrMode ? 'QR' : 'Photo'}. Secure context: ${window.isSecureContext}`);
             qrStatus.textContent = 'Requesting camera permission...';
             openCameraBtn.disabled = true;
             closeCameraBtn.disabled = false;
             cameraSection.style.display='flex';
             stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+            logShareEvent('Camera stream opened successfully.');
             cameraPreview.srcObject = stream;
             await cameraPreview.play();
+            logShareEvent('Camera preview playback started.');
             qrStatus.textContent = qrMode ? 'Scanning for QR codes...' : 'Photo mode ready';
             if(qrMode) startScanLoop();
             captureBtn.disabled = qrMode; // only enabled in photo mode
@@ -742,10 +772,12 @@ window.onclick = function(event) {
             openCameraBtn.disabled = false;
             closeCameraBtn.disabled = true;
             cameraSection.style.display='none';
+            logShareEvent(`Camera open failed (${err && err.name ? err.name : 'UnknownError'}): ${msg}`, 'ERROR', err);
         }
     });
 
     closeCameraBtn.addEventListener('click', ()=>{
+        logShareEvent('Close camera requested by user.');
         stopCamera();
     });
 
@@ -756,14 +788,17 @@ window.onclick = function(event) {
         if(qrMode){
             qrStatus.textContent = 'Scanning for QR codes...';
             startScanLoop();
+            logShareEvent('Camera mode toggled to QR scanning.');
         } else {
             qrStatus.textContent = 'Photo mode ready';
+            logShareEvent('Camera mode toggled to Photo capture.');
         }
     });
 
     captureBtn.addEventListener('click', ()=>{
         if(qrMode) return; // not available
         if(!stream) return;
+        logShareEvent('Photo capture requested.');
         const trackSettings = stream.getVideoTracks()[0].getSettings();
         const w = trackSettings.width || 640;
         const h = trackSettings.height || 480;
@@ -782,8 +817,10 @@ window.onclick = function(event) {
                 mime_type: 'image/png'
             };
             showNoteModal('Photo capture');
+            logShareEvent('Photo captured and prepared for upload.');
         } catch(err){
             qrStatus.textContent = 'Capture failed: '+ err.message;
+            logShareEvent(`Photo capture failed: ${err.message}`, 'ERROR', err);
         }
     });
 
@@ -791,6 +828,7 @@ window.onclick = function(event) {
         if(stream){
             stream.getTracks().forEach(t=>t.stop());
             stream = null;
+            logShareEvent('Camera stream stopped.');
         }
         scanning = false;
         openCameraBtn.disabled = false;
@@ -801,10 +839,12 @@ window.onclick = function(event) {
     async function startScanLoop(){
         if(!barcodeDetector){
             qrStatus.textContent = 'QR detection not supported (no BarcodeDetector)';
+            logShareEvent('QR detection loop aborted: BarcodeDetector unavailable.', 'WARNING');
             return;
         }
         if(scanning) return;
         scanning = true;
+        logShareEvent('QR scanning loop started.');
         while(scanning && qrMode){
             try {
                 const barcodes = await barcodeDetector.detect(cameraPreview);
@@ -812,10 +852,13 @@ window.onclick = function(event) {
                     const code = (barcodes[0].rawValue || '').trim();
                     qrStatus.textContent = 'QR detected: '+ code.substring(0,60)+(code.length>60?'...':'');
                     scanning = false;
+                    logShareEvent(`QR code detected (${code.length} characters).`);
                     // Treat code as URL if valid otherwise as text
                     if(isValidUrl(code)){
+                        logShareEvent('Detected QR treated as URL.');
                         processUrl(code);
                     } else {
+                        logShareEvent('Detected QR treated as plain text.');
                         processText(code);
                     }
                     // Auto close after detection
@@ -826,8 +869,12 @@ window.onclick = function(event) {
                 }
             } catch(err){
                 qrStatus.textContent = 'Scan error: '+ err.message;
+                logShareEvent(`QR scanning error: ${err.message}`, 'ERROR', err);
             }
             await new Promise(r=> setTimeout(r, 500));
+        }
+        if(!qrMode){
+            logShareEvent('QR scanning loop exited because mode changed.');
         }
     }
 
@@ -837,10 +884,53 @@ window.onclick = function(event) {
         cameraModeBadge.textContent = 'PHOTO';
         captureBtn.disabled = false;
         qrStatus.textContent = 'Photo mode ready (QR detection not supported)';
+        logShareEvent('Defaulting to photo mode because BarcodeDetector is unavailable.');
     }
 
     // Clean up if page unloads
     window.addEventListener('beforeunload', stopCamera);
+
+    function runCameraDiagnostics(){
+        logShareEvent('Running camera diagnostics...');
+        const diagnostics = {
+            secureContext: window.isSecureContext,
+            hasMediaDevices: !!(navigator.mediaDevices),
+            hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+            hasEnumerateDevices: !!(navigator.mediaDevices && navigator.mediaDevices.enumerateDevices),
+            hasBarcodeDetector: !!(window.BarcodeDetector),
+            userAgent: navigator.userAgent
+        };
+        logShareEvent(`Diagnostics snapshot: ${JSON.stringify(diagnostics)}`);
+
+        if(!window.isSecureContext){
+            logShareEvent('Warning: Page is not served over a secure context (HTTPS). Camera access may be blocked.', 'WARNING');
+        }
+        if(!diagnostics.hasMediaDevices){
+            logShareEvent('navigator.mediaDevices is unavailable. Camera access will not work.', 'ERROR');
+        } else if(!diagnostics.hasGetUserMedia){
+            logShareEvent('navigator.mediaDevices.getUserMedia is unavailable. Camera access will not work.', 'ERROR');
+        }
+        if(!diagnostics.hasBarcodeDetector){
+            logShareEvent('BarcodeDetector API missing; QR scanning will not be available.', 'WARNING');
+        }
+    }
+
+    function simulateCameraErrorLogging(){
+        const simulatedErrors = [
+            {name: 'NotAllowedError', message: 'User has not granted camera permissions.'},
+            {name: 'NotFoundError', message: 'No camera device detected.'},
+            {name: 'NotReadableError', message: 'Camera is already in use by another application.'}
+        ];
+        simulatedErrors.forEach(simErr => {
+            const error = new Error(simErr.message);
+            error.name = simErr.name;
+            logShareEvent(`Simulated camera error (${simErr.name}): ${simErr.message}`, 'ERROR', error);
+        });
+    }
+
+    logShareEvent('Shared objects page enhancements initialized.');
+    runCameraDiagnostics();
+    simulateCameraErrorLogging();
 });
 </script>
 
