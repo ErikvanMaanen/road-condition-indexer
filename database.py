@@ -64,6 +64,8 @@ TABLE_USER_ACTIONS = "RCI_user_actions"
 TABLE_SHARED = "RCI_shared"
 TABLE_MEMOS = "RCI_memos"
 TABLE_MEMO_ARCHIVE = "memo_archive"
+TABLE_MONITORS = "RCI_monitors"
+TABLE_MONITOR_RESULTS = "RCI_monitor_results"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -493,6 +495,53 @@ class DatabaseManager:
                     created_at DATETIME2 NOT NULL,
                     updated_at DATETIME2 NOT NULL,
                     archived_at DATETIME2 DEFAULT SYSUTCDATETIME()
+                )
+            END
+        """))
+
+        # Create monitors table for service monitoring configuration
+        conn.execute(text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_MONITORS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_MONITORS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    name NVARCHAR(150) NOT NULL,
+                    service_type NVARCHAR(50) NOT NULL,
+                    target NVARCHAR(2000) NOT NULL,
+                    url_check_type NVARCHAR(20),
+                    polling_interval_seconds INT NOT NULL,
+                    config NVARCHAR(MAX),
+                    notes NVARCHAR(1000),
+                    last_status NVARCHAR(20),
+                    last_message NVARCHAR(1000),
+                    last_checked_at DATETIME2,
+                    created_at DATETIME2 DEFAULT SYSUTCDATETIME(),
+                    updated_at DATETIME2 DEFAULT SYSUTCDATETIME()
+                )
+            END
+        """))
+
+        # Create monitor results table for polling outcomes
+        conn.execute(text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_MONITOR_RESULTS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_MONITOR_RESULTS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    monitor_id INT NOT NULL,
+                    checked_at DATETIME2 DEFAULT SYSUTCDATETIME(),
+                    status NVARCHAR(20) NOT NULL,
+                    is_available BIT,
+                    response_time_ms INT,
+                    status_code INT,
+                    content_hash NVARCHAR(128),
+                    change_detected BIT,
+                    message NVARCHAR(1000),
+                    details NVARCHAR(MAX),
+                    FOREIGN KEY (monitor_id) REFERENCES {TABLE_MONITORS}(id) ON DELETE CASCADE
                 )
             END
         """))
@@ -1914,7 +1963,12 @@ class DatabaseManager:
                 TABLE_DEBUG_LOG,
                 TABLE_DEVICE_NICKNAMES,
                 TABLE_BIKE_SOURCE_DATA,
-                TABLE_USER_ACTIONS
+                TABLE_USER_ACTIONS,
+                TABLE_SHARED,
+                TABLE_MEMOS,
+                TABLE_MEMO_ARCHIVE,
+                TABLE_MONITORS,
+                TABLE_MONITOR_RESULTS
             ]
             
             # Check if all expected tables exist
@@ -2373,6 +2427,51 @@ class DatabaseManager:
                     mapping[key] = value.astimezone(pytz.UTC).isoformat()
         return mapping
 
+    def _serialize_monitor_row(self, row: Any) -> Dict[str, Any]:
+        """Convert a monitor configuration row to a JSON-serializable dict."""
+        mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
+
+        for key in ("created_at", "updated_at", "last_checked_at"):
+            value = mapping.get(key)
+            if isinstance(value, datetime):
+                if value.tzinfo is None:
+                    mapping[key] = value.replace(tzinfo=pytz.UTC).isoformat()
+                else:
+                    mapping[key] = value.astimezone(pytz.UTC).isoformat()
+
+        config_value = mapping.get("config")
+        if isinstance(config_value, str) and config_value:
+            try:
+                mapping["config"] = json.loads(config_value)
+            except json.JSONDecodeError:
+                mapping["config"] = {"raw": config_value}
+        elif config_value in (None, ""):
+            mapping["config"] = {}
+
+        return mapping
+
+    def _serialize_monitor_result_row(self, row: Any) -> Dict[str, Any]:
+        """Convert a monitor result row to JSON-serializable dict."""
+        mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
+
+        timestamp = mapping.get("checked_at")
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                mapping["checked_at"] = timestamp.replace(tzinfo=pytz.UTC).isoformat()
+            else:
+                mapping["checked_at"] = timestamp.astimezone(pytz.UTC).isoformat()
+
+        details_value = mapping.get("details")
+        if isinstance(details_value, str) and details_value:
+            try:
+                mapping["details"] = json.loads(details_value)
+            except json.JSONDecodeError:
+                mapping["details"] = {"raw": details_value}
+        elif details_value in (None, ""):
+            mapping["details"] = {}
+
+        return mapping
+
     def create_memo(self, content: str) -> Dict[str, Any]:
         """Insert a new memo and return the stored record."""
         try:
@@ -2538,6 +2637,414 @@ class DatabaseManager:
 
         except Exception as exc:
             self.log_debug(f"Failed to archive memo {memo_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    # ------------------------------------------------------------------
+    # Monitor management
+    # ------------------------------------------------------------------
+
+    def create_monitor(
+        self,
+        name: str,
+        service_type: str,
+        target: str,
+        url_check_type: Optional[str],
+        polling_interval_seconds: int,
+        config: Optional[Dict[str, Any]] = None,
+        notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Insert a new monitor configuration."""
+        config_json = json.dumps(config or {}, ensure_ascii=False) if config else None
+
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO {TABLE_MONITORS} (
+                            name, service_type, target, url_check_type,
+                            polling_interval_seconds, config, notes
+                        )
+                        OUTPUT INSERTED.id, INSERTED.name, INSERTED.service_type,
+                               INSERTED.target, INSERTED.url_check_type,
+                               INSERTED.polling_interval_seconds, INSERTED.config,
+                               INSERTED.notes, INSERTED.last_status, INSERTED.last_message,
+                               INSERTED.last_checked_at, INSERTED.created_at, INSERTED.updated_at
+                        VALUES (
+                            :name, :service_type, :target, :url_check_type,
+                            :polling_interval_seconds, :config, :notes
+                        )
+                        """
+                    ),
+                    {
+                        "name": name,
+                        "service_type": service_type,
+                        "target": target,
+                        "url_check_type": url_check_type,
+                        "polling_interval_seconds": polling_interval_seconds,
+                        "config": config_json,
+                        "notes": notes,
+                    },
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    raise RuntimeError("Failed to insert monitor: no row returned")
+
+                conn.commit()
+
+                monitor = self._serialize_monitor_row(row)
+                self.log_debug(
+                    f"Monitor created with ID {monitor['id']}",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE,
+                )
+                return monitor
+
+        except Exception as exc:
+            self.log_debug(f"Failed to create monitor: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def update_monitor(
+        self,
+        monitor_id: int,
+        name: str,
+        service_type: str,
+        target: str,
+        url_check_type: Optional[str],
+        polling_interval_seconds: int,
+        config: Optional[Dict[str, Any]] = None,
+        notes: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update an existing monitor."""
+        config_json = json.dumps(config or {}, ensure_ascii=False) if config else None
+
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        UPDATE {TABLE_MONITORS}
+                        SET
+                            name = :name,
+                            service_type = :service_type,
+                            target = :target,
+                            url_check_type = :url_check_type,
+                            polling_interval_seconds = :polling_interval_seconds,
+                            config = :config,
+                            notes = :notes,
+                            updated_at = SYSUTCDATETIME()
+                        OUTPUT INSERTED.id, INSERTED.name, INSERTED.service_type,
+                               INSERTED.target, INSERTED.url_check_type,
+                               INSERTED.polling_interval_seconds, INSERTED.config,
+                               INSERTED.notes, INSERTED.last_status, INSERTED.last_message,
+                               INSERTED.last_checked_at, INSERTED.created_at, INSERTED.updated_at
+                        WHERE id = :monitor_id
+                        """
+                    ),
+                    {
+                        "monitor_id": monitor_id,
+                        "name": name,
+                        "service_type": service_type,
+                        "target": target,
+                        "url_check_type": url_check_type,
+                        "polling_interval_seconds": polling_interval_seconds,
+                        "config": config_json,
+                        "notes": notes,
+                    },
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    conn.rollback()
+                    return None
+
+                conn.commit()
+
+                monitor = self._serialize_monitor_row(row)
+                self.log_debug(
+                    f"Monitor {monitor_id} updated",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE,
+                )
+                return monitor
+
+        except Exception as exc:
+            self.log_debug(f"Failed to update monitor {monitor_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def delete_monitor(self, monitor_id: int) -> bool:
+        """Delete a monitor and associated results."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"DELETE FROM {TABLE_MONITORS} WHERE id = :monitor_id"),
+                    {"monitor_id": monitor_id},
+                )
+
+                conn.commit()
+
+                deleted = result.rowcount > 0
+                if deleted:
+                    self.log_debug(
+                        f"Monitor {monitor_id} deleted",
+                        LogLevel.INFO,
+                        LogCategory.DATABASE,
+                    )
+                else:
+                    self.log_debug(
+                        f"Monitor {monitor_id} not found for deletion",
+                        LogLevel.WARNING,
+                        LogCategory.DATABASE,
+                    )
+                return deleted
+
+        except Exception as exc:
+            self.log_debug(f"Failed to delete monitor {monitor_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def get_monitor(self, monitor_id: int) -> Optional[Dict[str, Any]]:
+        """Return a monitor configuration by ID."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"SELECT * FROM {TABLE_MONITORS} WHERE id = :monitor_id"),
+                    {"monitor_id": monitor_id},
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    return None
+
+                return self._serialize_monitor_row(row)
+
+        except Exception as exc:
+            self.log_debug(f"Failed to fetch monitor {monitor_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def get_monitors(
+        self,
+        include_recent: bool = False,
+        recent_limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        """Return all monitors, optionally with recent results."""
+        recent_limit = max(1, min(recent_limit, 200))
+
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(f"SELECT * FROM {TABLE_MONITORS} ORDER BY name")
+                )
+                monitors = [self._serialize_monitor_row(row) for row in result.fetchall()]
+
+            if include_recent and monitors:
+                for monitor in monitors:
+                    monitor["recent_results"] = self.get_monitor_results(
+                        monitor["id"], recent_limit
+                    )
+            else:
+                for monitor in monitors:
+                    monitor["recent_results"] = []
+
+            return monitors
+
+        except Exception as exc:
+            self.log_debug("Failed to fetch monitors: %s" % exc, LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def get_monitor_results(self, monitor_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return recent monitor results for a given monitor."""
+        limit = max(1, min(limit, 500))
+
+        try:
+            query = text(
+                f"""
+                SELECT TOP {limit}
+                    id, monitor_id, checked_at, status, is_available,
+                    response_time_ms, status_code, content_hash,
+                    change_detected, message, details
+                FROM {TABLE_MONITOR_RESULTS}
+                WHERE monitor_id = :monitor_id
+                ORDER BY checked_at DESC, id DESC
+                """
+            )
+
+            with self.get_connection_context() as conn:
+                result = conn.execute(query, {"monitor_id": monitor_id})
+                rows = result.fetchall()
+
+            return [self._serialize_monitor_result_row(row) for row in rows]
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to fetch monitor results for {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
+            raise
+
+    def get_latest_monitor_result(self, monitor_id: int) -> Optional[Dict[str, Any]]:
+        """Return the latest result entry for a monitor."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        SELECT TOP 1
+                            id, monitor_id, checked_at, status, is_available,
+                            response_time_ms, status_code, content_hash,
+                            change_detected, message, details
+                        FROM {TABLE_MONITOR_RESULTS}
+                        WHERE monitor_id = :monitor_id
+                        ORDER BY checked_at DESC, id DESC
+                        """
+                    ),
+                    {"monitor_id": monitor_id},
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    return None
+
+                return self._serialize_monitor_result_row(row)
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to fetch latest monitor result for {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
+            raise
+
+    def get_latest_monitor_hash(self, monitor_id: int) -> Optional[str]:
+        """Return the most recent non-empty content hash for a monitor."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        SELECT TOP 1 content_hash
+                        FROM {TABLE_MONITOR_RESULTS}
+                        WHERE monitor_id = :monitor_id AND content_hash IS NOT NULL AND content_hash <> ''
+                        ORDER BY checked_at DESC, id DESC
+                        """
+                    ),
+                    {"monitor_id": monitor_id},
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    return None
+
+                mapping = row._mapping if hasattr(row, "_mapping") else row
+                return mapping["content_hash"]
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to fetch latest monitor hash for {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
+            raise
+
+    def record_monitor_result(
+        self,
+        monitor_id: int,
+        status: str,
+        is_available: Optional[bool],
+        response_time_ms: Optional[int],
+        status_code: Optional[int] = None,
+        content_hash: Optional[str] = None,
+        change_detected: Optional[bool] = None,
+        message: Optional[str] = None,
+        details: Optional[Union[str, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Insert a monitor result entry and update monitor metadata."""
+        if isinstance(details, (dict, list)):
+            details_json = json.dumps(details, ensure_ascii=False)
+        else:
+            details_json = details
+
+        if message and len(message) > 1000:
+            message = message[:1000]
+
+        params = {
+            "monitor_id": monitor_id,
+            "status": status,
+            "is_available": None if is_available is None else int(bool(is_available)),
+            "response_time_ms": response_time_ms,
+            "status_code": status_code,
+            "content_hash": content_hash,
+            "change_detected": None if change_detected is None else int(bool(change_detected)),
+            "message": message,
+            "details": details_json,
+        }
+
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO {TABLE_MONITOR_RESULTS} (
+                            monitor_id, status, is_available, response_time_ms,
+                            status_code, content_hash, change_detected, message, details
+                        )
+                        OUTPUT INSERTED.id, INSERTED.monitor_id, INSERTED.checked_at,
+                               INSERTED.status, INSERTED.is_available,
+                               INSERTED.response_time_ms, INSERTED.status_code,
+                               INSERTED.content_hash, INSERTED.change_detected,
+                               INSERTED.message, INSERTED.details
+                        VALUES (
+                            :monitor_id, :status, :is_available, :response_time_ms,
+                            :status_code, :content_hash, :change_detected, :message, :details
+                        )
+                        """
+                    ),
+                    params,
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    raise RuntimeError("Failed to insert monitor result: no row returned")
+
+                mapping = row._mapping if hasattr(row, "_mapping") else row
+
+                conn.execute(
+                    text(
+                        f"""
+                        UPDATE {TABLE_MONITORS}
+                        SET
+                            last_status = :status,
+                            last_message = :message,
+                            last_checked_at = :checked_at,
+                            updated_at = SYSUTCDATETIME()
+                        WHERE id = :monitor_id
+                        """
+                    ),
+                    {
+                        "status": mapping["status"],
+                        "message": mapping["message"],
+                        "checked_at": mapping["checked_at"],
+                        "monitor_id": monitor_id,
+                    },
+                )
+
+                conn.commit()
+
+                result_mapping = self._serialize_monitor_result_row(row)
+                self.log_debug(
+                    f"Monitor {monitor_id} result recorded with status {status}",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE,
+                )
+                return result_mapping
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to record result for monitor {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
             raise
 
 
