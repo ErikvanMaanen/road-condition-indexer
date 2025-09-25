@@ -118,6 +118,9 @@
         <div class="mt-05 flex flex-wrap gap-05 items-center mode-group">
             <label><input type="radio" name="compare-mode" value="differences" checked> Differences</label>
             <label><input type="radio" name="compare-mode" value="similarities"> Similarities</label>
+            <span class="mode-divider" aria-hidden="true"></span>
+            <label><input type="checkbox" id="json-sort-objects" checked> Sort object keys</label>
+            <label><input type="checkbox" id="json-sort-arrays"> Sort arrays</label>
             <button id="json-compare-btn">Compare</button>
         </div>
         <div id="json-compare-result" class="result-box jsondiffpatch-visualdiff"></div>
@@ -477,6 +480,10 @@ const jsonAText = document.getElementById('jsonA-text');
 const jsonBText = document.getElementById('jsonB-text');
 const jsonCompareBtn = document.getElementById('json-compare-btn');
 const jsonCompareResult = document.getElementById('json-compare-result');
+const jsonSortObjects = document.getElementById('json-sort-objects');
+const jsonSortArrays = document.getElementById('json-sort-arrays');
+
+let expandIdMap = new Map();
 
 function readFileInto(file, targetTextArea, nameEl) {
     if (!file) { if (nameEl) nameEl.textContent=''; return; }
@@ -506,22 +513,30 @@ jsonCompareBtn.addEventListener('click', () => {
     const mode = (document.querySelector('input[name="compare-mode"]:checked') || {}).value || 'differences';
     const aText = jsonAText.value.trim();
     const bText = jsonBText.value.trim();
-    
-    if (!aText || !bText) { 
-        alert('Please provide both JSON A and JSON B (paste, drop, or choose files).'); 
-        return; 
+
+    if (!aText || !bText) {
+        alert('Please provide both JSON A and JSON B (paste, drop, or choose files).');
+        return;
     }
-    
+
     const parseA = parseJsonSafe(aText, 'JSON A');
     const parseB = parseJsonSafe(bText, 'JSON B');
-    
+
     if (!parseA.ok) { alert(parseA.error); return; }
     if (!parseB.ok) { alert(parseB.error); return; }
-    
+
+    const sortOptions = {
+        sortObjects: !!jsonSortObjects?.checked,
+        sortArrays: !!jsonSortArrays?.checked
+    };
+
+    const preparedA = prepareJsonForComparison(parseA.value, sortOptions);
+    const preparedB = prepareJsonForComparison(parseB.value, sortOptions);
+
     if (mode === 'similarities') {
-        computeAndDisplaySimilarities(parseA.value, parseB.value);
+        computeAndDisplaySimilarities(preparedA, preparedB);
     } else {
-        computeAndDisplayDifferences(parseA.value, parseB.value);
+        computeAndDisplayDifferences(preparedA, preparedB);
     }
 });
 
@@ -682,48 +697,59 @@ function parseJsonSafe(text, which) {
     }
 }
 
-function computeSimilarities(a, b) {
-    if (typeof a !== typeof b) return undefined;
-    if (a === null || b === null) return a === b ? a : undefined;
-    if (Array.isArray(a) && Array.isArray(b)) {
-        const len = Math.min(a.length, b.length);
-        const res = [];
-        for (let i = 0; i < len; i++) {
-            const child = computeSimilarities(a[i], b[i]);
-            if (child !== undefined) res[i] = child;
+function prepareJsonForComparison(value, options) {
+    return sortJsonValue(value, options);
+}
+
+function sortJsonValue(value, options) {
+    if (Array.isArray(value)) {
+        const normalized = value.map(item => sortJsonValue(item, options));
+        if (options.sortArrays) {
+            return normalized.slice().sort(compareArrayValues);
         }
-        // keep only indices that matched
-        return res.filter(v => v !== undefined).length ? res : [];
+        return normalized;
     }
-    if (typeof a === 'object') {
-        const keys = Object.keys(a);
-        const out = {};
-        keys.forEach(k => {
-            if (Object.prototype.hasOwnProperty.call(b, k)) {
-                const child = computeSimilarities(a[k], b[k]);
-                if (child !== undefined) {
-                    if (typeof child === 'object') {
-                        const isArray = Array.isArray(child);
-                        const hasItems = isArray ? child.length > 0 : Object.keys(child).length > 0;
-                        if (hasItems) out[k] = child;
-                    } else {
-                        out[k] = child;
-                    }
-                }
-            }
+
+    if (isObject(value)) {
+        const keys = Object.keys(value);
+        if (options.sortObjects) {
+            keys.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+        }
+        const sorted = {};
+        keys.forEach(key => {
+            sorted[key] = sortJsonValue(value[key], options);
         });
-        return Object.keys(out).length ? out : {};
+        return sorted;
     }
-    return a === b ? a : undefined;
+
+    return value;
+}
+
+function compareArrayValues(a, b) {
+    const aStr = JSON.stringify(a);
+    const bStr = JSON.stringify(b);
+    if (aStr < bStr) return -1;
+    if (aStr > bStr) return 1;
+    return 0;
 }
 
 function computeAndDisplayDifferences(objA, objB) {
     try {
         const diffResult = computeObjectDifferences(objA, objB);
-        displayStructuredDiff(diffResult, 'JSON A', 'JSON B', 'differences');
+        displayStructuredDiff(diffResult, 'Original JSON', 'Modified JSON', 'differences');
     } catch (error) {
         console.error('Difference computation error:', error);
         alert('Failed to compute differences: ' + error.message);
+    }
+}
+
+function computeAndDisplaySimilarities(objA, objB) {
+    try {
+        const diffResult = computeObjectDifferences(objA, objB);
+        displayStructuredDiff(diffResult, 'Original JSON', 'Modified JSON', 'similarities');
+    } catch (error) {
+        console.error('Similarities computation error:', error);
+        alert('Failed to compute similarities: ' + error.message);
     }
 }
 
@@ -734,265 +760,348 @@ function computeObjectDifferences(objA, objB, path = '') {
         modified: [],
         unchanged: []
     };
-    
-    const processedKeys = new Set();
-    
-    // Process all keys from both objects
-    const allKeys = new Set([
-        ...Object.keys(objA || {}),
-        ...Object.keys(objB || {})
-    ]);
-    
-    allKeys.forEach(key => {
-        const currentPath = path ? `${path}.${key}` : key;
-        const valueA = objA && objA.hasOwnProperty(key) ? objA[key] : undefined;
-        const valueB = objB && objB.hasOwnProperty(key) ? objB[key] : undefined;
-        
-        if (valueA === undefined && valueB !== undefined) {
-            result.added.push({ path: currentPath, key, value: valueB, type: getValueType(valueB) });
-        } else if (valueA !== undefined && valueB === undefined) {
-            result.removed.push({ path: currentPath, key, value: valueA, type: getValueType(valueA) });
-        } else if (valueA !== undefined && valueB !== undefined) {
-            if (deepEqual(valueA, valueB)) {
-                result.unchanged.push({ path: currentPath, key, value: valueA, type: getValueType(valueA) });
-            } else {
-                if (isObject(valueA) && isObject(valueB)) {
-                    const nestedDiff = computeObjectDifferences(valueA, valueB, currentPath);
-                    result.modified.push({ 
-                        path: currentPath, 
-                        key, 
-                        valueA, 
-                        valueB, 
-                        type: 'object',
-                        nested: nestedDiff 
-                    });
-                } else {
-                    result.modified.push({ 
-                        path: currentPath, 
-                        key, 
-                        valueA, 
-                        valueB, 
-                        typeA: getValueType(valueA),
-                        typeB: getValueType(valueB)
-                    });
-                }
-            }
+
+    const keysA = getKeysForComparison(objA);
+    const keysB = getKeysForComparison(objB);
+    const combinedKeys = new Set([...keysA, ...keysB]);
+    combinedKeys.forEach(key => {
+        const valueA = getValueFromContainer(objA, key);
+        const valueB = getValueFromContainer(objB, key);
+        const inA = valueA !== undefined;
+        const inB = valueB !== undefined;
+        const isArrayContext = Array.isArray(objA) || Array.isArray(objB);
+        const currentPath = buildPath(path, key, isArrayContext);
+
+        if (!inA && inB) {
+            result.added.push({
+                path: currentPath,
+                key,
+                isArrayKey: isArrayContext,
+                value: valueB,
+                type: getValueType(valueB)
+            });
+            return;
         }
-        
-        processedKeys.add(key);
+
+        if (inA && !inB) {
+            result.removed.push({
+                path: currentPath,
+                key,
+                isArrayKey: isArrayContext,
+                value: valueA,
+                type: getValueType(valueA)
+            });
+            return;
+        }
+
+        if (!inA && !inB) {
+            return;
+        }
+
+        if (deepEqual(valueA, valueB)) {
+            result.unchanged.push({
+                path: currentPath,
+                key,
+                isArrayKey: isArrayContext,
+                value: valueA,
+                type: getValueType(valueA)
+            });
+            return;
+        }
+
+        if (isComparableContainer(valueA) && isComparableContainer(valueB)) {
+            result.modified.push({
+                path: currentPath,
+                key,
+                isArrayKey: isArrayContext,
+                valueA,
+                valueB,
+                type: Array.isArray(valueA) || Array.isArray(valueB) ? 'array' : 'object',
+                nested: computeObjectDifferences(valueA, valueB, currentPath)
+            });
+            return;
+        }
+
+        result.modified.push({
+            path: currentPath,
+            key,
+            isArrayKey: isArrayContext,
+            valueA,
+            valueB,
+            typeA: getValueType(valueA),
+            typeB: getValueType(valueB)
+        });
     });
-    
+
     return result;
 }
 
-function computeAndDisplaySimilarities(objA, objB) {
-    try {
-        const diffResult = computeObjectDifferences(objA, objB);
-        displayStructuredDiff(diffResult, 'JSON A (Common)', 'JSON B (Common)', 'similarities');
-    } catch (error) {
-        console.error('Similarities computation error:', error);
-        alert('Failed to compute similarities: ' + error.message);
+function getKeysForComparison(value) {
+    if (Array.isArray(value)) {
+        return value.map((_, index) => index);
     }
+    if (isObject(value)) {
+        return Object.keys(value);
+    }
+    return [];
+}
+
+function getValueFromContainer(container, key) {
+    if (Array.isArray(container)) {
+        return key < container.length ? container[key] : undefined;
+    }
+    if (isObject(container)) {
+        return Object.prototype.hasOwnProperty.call(container, key) ? container[key] : undefined;
+    }
+    return undefined;
+}
+
+function buildPath(base, key, isArrayContext) {
+    if (base === '') {
+        return isArrayContext ? `[${key}]` : String(key);
+    }
+    return isArrayContext ? `${base}[${key}]` : `${base}.${key}`;
+}
+
+function isComparableContainer(value) {
+    return value !== null && typeof value === 'object';
 }
 
 function displayStructuredDiff(diffResult, leftTitle, rightTitle, mode) {
-    const leftPanel = createStructuredDiffPanel(diffResult, leftTitle, 'left', mode);
-    const rightPanel = createStructuredDiffPanel(diffResult, rightTitle, 'right', mode);
-    
+    expandIdMap = new Map();
+    const defaults = mode === 'similarities'
+        ? { unchanged: true, modified: false, added: false, removed: false }
+        : { unchanged: true, modified: true, added: true, removed: true };
+
     jsonCompareResult.innerHTML = `
-        <div class="side-by-side">
-            ${leftPanel}
-            ${rightPanel}
+        <div class="diff-wrapper">
+            <div class="diff-visibility-controls" role="group" aria-label="JSON diff visibility">
+                <label><input type="checkbox" id="json-show-unchanged" ${defaults.unchanged ? 'checked' : ''}> Show unchanged</label>
+                <label><input type="checkbox" id="json-show-modified" ${defaults.modified ? 'checked' : ''}> Show changed</label>
+                <label><input type="checkbox" id="json-show-added" ${defaults.added ? 'checked' : ''}> Show added</label>
+                <label><input type="checkbox" id="json-show-removed" ${defaults.removed ? 'checked' : ''}> Show removed</label>
+            </div>
+            <div class="diff-columns">
+                <div class="diff-column" data-side="left">
+                    <div class="diff-column-header">${leftTitle}</div>
+                    <div class="diff-column-content" data-side-content="left">
+                        ${renderDiffContent(diffResult, 'left', mode)}
+                    </div>
+                </div>
+                <div class="diff-column" data-side="right">
+                    <div class="diff-column-header">${rightTitle}</div>
+                    <div class="diff-column-content" data-side-content="right">
+                        ${renderDiffContent(diffResult, 'right', mode)}
+                    </div>
+                </div>
+            </div>
         </div>
     `;
-    
-    // Add event listeners for expand/collapse and visibility controls
-    setupDiffControls();
+
+    setupDiffVisibilityControls(jsonCompareResult, mode);
+    setupDiffInteractions(jsonCompareResult);
 }
 
-function createStructuredDiffPanel(diffResult, title, side, mode) {
-    const controls = `
-        <div class="diff-controls">
-            <label><input type="checkbox" class="toggle-unchanged" checked> Show Unchanged</label>
-            <label><input type="checkbox" class="toggle-modified" checked> Show Modified</label>
-            <label><input type="checkbox" class="toggle-added" checked> Show Added</label>
-            <label><input type="checkbox" class="toggle-removed" checked> Show Removed</label>
-        </div>
-    `;
-    
-    const content = renderDiffContent(diffResult, side, mode);
-    
-    return `
-        <div class="diff-panel">
-            <div class="diff-header">${title}</div>
-            ${controls}
-            <div class="diff-content">${content}</div>
-        </div>
-    `;
-}
-
-function renderDiffContent(diffResult, side, mode) {
-    let html = '<div class="json-object">';
-    
-    // Render in order: unchanged, modified, added, removed
+function renderDiffContent(diffResult, side, mode, depth = 0) {
     const sections = [
-        { items: diffResult.unchanged, type: 'unchanged', label: 'Unchanged' },
-        { items: diffResult.modified, type: 'modified', label: 'Modified' },
-        { items: diffResult.added, type: 'added', label: 'Added' },
-        { items: diffResult.removed, type: 'removed', label: 'Removed' }
+        { items: diffResult.unchanged, type: 'unchanged' },
+        { items: diffResult.modified, type: 'modified' },
+        { items: diffResult.added, type: 'added' },
+        { items: diffResult.removed, type: 'removed' }
     ];
-    
+
+    let html = `<div class="json-group${depth === 0 ? ' json-group-root' : ''}">`;
     sections.forEach(section => {
-        if (section.items.length > 0) {
-            section.items.forEach(item => {
-                html += renderDiffItem(item, section.type, side);
-            });
-        }
+        if (!section.items || section.items.length === 0) return;
+        section.items.forEach(item => {
+            html += renderDiffItem(item, section.type, side, mode, depth);
+        });
     });
-    
     html += '</div>';
     return html;
 }
 
-function renderDiffItem(item, diffType, side) {
-    const cssClass = `diff-${diffType}`;
-    let content = '';
-    
+function renderDiffItem(item, diffType, side, mode, depth) {
+    const cssClass = `json-property diff-${diffType}`;
+    const keyLabel = item.isArrayKey ? `[${item.key}]` : `"${escapeHtml(String(item.key))}"`;
+
     if (diffType === 'modified' && item.nested) {
-        // Nested object modification
-        const expandId = `expand-${generateId()}`;
-        content = `
-            <div class="json-property ${cssClass}">
-                <span class="json-expand" onclick="toggleExpand('${expandId}')">▶</span>
-                <span class="json-key">"${item.key}"</span>: 
-                <span class="json-bracket">{</span>
-                <div id="${expandId}" class="json-nested-object hidden">
-                    ${renderDiffContent(item.nested, side, 'differences')}
+        const bracketOpen = item.type === 'array' ? '[' : '{';
+        const bracketClose = item.type === 'array' ? ']' : '}';
+        const nodeId = getExpandId(item.path, 'diff');
+        const valueForPreview = side === 'left' ? item.valueA : item.valueB;
+        const previewLabel = summarizeValue(valueForPreview, item.type);
+        return `
+            <div class="${cssClass}" data-diff-type="${diffType}">
+                <button type="button" class="json-expand" data-toggle="${nodeId}" aria-expanded="false" aria-label="Toggle ${keyLabel}">▶</button>
+                <span class="json-key">${keyLabel}</span>:
+                <span class="json-bracket">${bracketOpen}</span>
+                <span class="json-preview" data-preview="${nodeId}">${previewLabel}</span>
+                <div class="json-nested ${item.type === 'array' ? 'json-array' : 'json-object'} hidden" data-children="${nodeId}">
+                    ${renderDiffContent(item.nested, side, mode, depth + 1)}
                 </div>
-                <span class="json-bracket">}</span>
-            </div>
-        `;
-    } else if (diffType === 'modified') {
-        // Simple value modification
-        const value = side === 'left' ? item.valueA : item.valueB;
-        content = `
-            <div class="json-property ${cssClass}">
-                <span class="json-key">"${item.key}"</span>: ${formatValue(value)}
-            </div>
-        `;
-    } else {
-        // Added, removed, or unchanged
-        content = `
-            <div class="json-property ${cssClass}">
-                <span class="json-key">"${item.key}"</span>: ${formatValue(item.value)}
+                <span class="json-bracket">${bracketClose}</span>
             </div>
         `;
     }
-    
-    return content;
+
+    const value = diffType === 'modified'
+        ? (side === 'left' ? item.valueA : item.valueB)
+        : item.value;
+
+    return `
+        <div class="${cssClass}" data-diff-type="${diffType}">
+            <span class="json-key">${keyLabel}</span>: ${formatValue(value, item.path)}
+        </div>
+    `;
 }
 
-function formatValue(value) {
+function formatValue(value, path) {
     if (value === null) {
         return '<span class="json-null">null</span>';
     }
-    
-    const type = typeof value;
-    
-    if (type === 'string') {
-        return `<span class="json-string">"${escapeHtml(value)}"</span>`;
-    } else if (type === 'number') {
-        return `<span class="json-number">${value}</span>`;
-    } else if (type === 'boolean') {
-        return `<span class="json-boolean">${value}</span>`;
-    } else if (Array.isArray(value)) {
-        const expandId = `expand-${generateId()}`;
-        const preview = value.length <= 3 ? 
-            `[${value.map(formatValue).join(', ')}]` : 
-            `[${value.slice(0, 2).map(formatValue).join(', ')}, ... (+${value.length - 2} more)]`;
-        
+
+    if (Array.isArray(value)) {
+        const nodeId = getExpandId(`${path}|array`, 'value');
+        const previewLabel = summarizeValue(value, 'array');
         return `
-            <span class="json-expand" onclick="toggleExpand('${expandId}')">▶</span>
+            <button type="button" class="json-expand" data-toggle="${nodeId}" aria-expanded="false" aria-label="Toggle ${path || 'array'}">▶</button>
             <span class="json-bracket">[</span>
-            <span id="${expandId}-preview">${preview}</span>
-            <div id="${expandId}" class="json-array hidden">
-                ${value.map((item, index) => `<div class="json-property"><span class="json-key">[${index}]</span>: ${formatValue(item)}</div>`).join('')}
+            <span class="json-preview" data-preview="${nodeId}">${previewLabel}</span>
+            <div class="json-array hidden" data-children="${nodeId}">
+                ${value.map((item, index) => `<div class="json-property"><span class="json-key">[${index}]</span>: ${formatValue(item, `${path}[${index}]`)}</div>`).join('')}
             </div>
             <span class="json-bracket">]</span>
         `;
-    } else if (type === 'object') {
-        const expandId = `expand-${generateId()}`;
+    }
+
+    if (isObject(value)) {
+        const nodeId = getExpandId(`${path}|object`, 'value');
         const keys = Object.keys(value);
-        const preview = keys.length <= 2 ? 
-            `{${keys.map(k => `"${k}": ${formatValue(value[k])}`).join(', ')}}` :
-            `{"${keys[0]}": ${formatValue(value[keys[0]])}, ... (+${keys.length - 1} more)}`;
-        
+        const previewLabel = summarizeValue(value, 'object');
         return `
-            <span class="json-expand" onclick="toggleExpand('${expandId}')">▶</span>
+            <button type="button" class="json-expand" data-toggle="${nodeId}" aria-expanded="false" aria-label="Toggle ${path || 'object'}">▶</button>
             <span class="json-bracket">{</span>
-            <span id="${expandId}-preview">${preview}</span>
-            <div id="${expandId}" class="json-nested-object hidden">
-                ${keys.map(k => `<div class="json-property"><span class="json-key">"${k}"</span>: ${formatValue(value[k])}</div>`).join('')}
+            <span class="json-preview" data-preview="${nodeId}">${previewLabel}</span>
+            <div class="json-object hidden" data-children="${nodeId}">
+                ${keys.map(key => `<div class="json-property"><span class="json-key">"${escapeHtml(key)}"</span>: ${formatValue(value[key], path ? `${path}.${key}` : key)}</div>`).join('')}
             </div>
             <span class="json-bracket">}</span>
         `;
     }
-    
+
+    if (typeof value === 'string') {
+        return `<span class="json-string">"${escapeHtml(value)}"</span>`;
+    }
+
+    if (typeof value === 'number') {
+        return `<span class="json-number">${value}</span>`;
+    }
+
+    if (typeof value === 'boolean') {
+        return `<span class="json-boolean">${value}</span>`;
+    }
+
     return escapeHtml(String(value));
 }
 
-function setupDiffControls() {
-    // Add event listeners for visibility toggles
-    document.querySelectorAll('.toggle-unchanged').forEach(checkbox => {
-        checkbox.addEventListener('change', () => {
-            toggleDiffType('unchanged', checkbox.checked);
-        });
-    });
-    
-    document.querySelectorAll('.toggle-modified').forEach(checkbox => {
-        checkbox.addEventListener('change', () => {
-            toggleDiffType('modified', checkbox.checked);
-        });
-    });
-    
-    document.querySelectorAll('.toggle-added').forEach(checkbox => {
-        checkbox.addEventListener('change', () => {
-            toggleDiffType('added', checkbox.checked);
-        });
-    });
-    
-    document.querySelectorAll('.toggle-removed').forEach(checkbox => {
-        checkbox.addEventListener('change', () => {
-            toggleDiffType('removed', checkbox.checked);
-        });
-    });
-}
-
-function toggleDiffType(type, show) {
-    const elements = document.querySelectorAll(`.diff-${type}`);
-    elements.forEach(el => {
-        if (show) {
-            el.classList.remove('hidden');
-        } else {
-            el.classList.add('hidden');
-        }
-    });
-}
-
-function toggleExpand(elementId) {
-    const element = document.getElementById(elementId);
-    const expander = element.previousElementSibling;
-    const preview = document.getElementById(elementId + '-preview');
-    
-    if (element.classList.contains('hidden')) {
-        element.classList.remove('hidden');
-        expander.textContent = '▼';
-        if (preview) preview.style.display = 'none';
-    } else {
-        element.classList.add('hidden');
-        expander.textContent = '▶';
-        if (preview) preview.style.display = 'inline';
+function summarizeValue(value, fallbackType) {
+    if (Array.isArray(value)) {
+        return value.length ? `Array(${value.length})` : '[]';
     }
+    if (isObject(value)) {
+        const keys = Object.keys(value);
+        return keys.length ? `Object(${keys.length})` : '{}';
+    }
+    if (value === null) {
+        return 'null';
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.length > 18 ? `${escapeHtml(value.slice(0, 18))}&hellip;` : escapeHtml(value);
+        return `"${trimmed}"`;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return escapeHtml(String(value));
+    }
+    return fallbackType === 'array' ? 'Array' : fallbackType === 'object' ? 'Object' : '';
+}
+
+function getExpandId(path, suffix = '') {
+    const key = `${path || 'root'}|${suffix}`;
+    if (!expandIdMap.has(key)) {
+        expandIdMap.set(key, `node-${generateId()}`);
+    }
+    return expandIdMap.get(key);
+}
+
+function setupDiffVisibilityControls(container, mode) {
+    const controls = container.querySelector('.diff-visibility-controls');
+    if (!controls) return;
+    const config = [
+        { selector: '#json-show-unchanged', type: 'unchanged' },
+        { selector: '#json-show-modified', type: 'modified' },
+        { selector: '#json-show-added', type: 'added' },
+        { selector: '#json-show-removed', type: 'removed' }
+    ];
+
+    config.forEach(({ selector, type }) => {
+        const checkbox = controls.querySelector(selector);
+        if (!checkbox) return;
+        const apply = () => toggleDiffType(container, type, checkbox.checked);
+        checkbox.addEventListener('change', apply);
+        apply();
+    });
+}
+
+function toggleDiffType(container, type, show) {
+    container.querySelectorAll(`.diff-${type}`).forEach(el => {
+        el.classList.toggle('hidden', !show);
+    });
+}
+
+function setupDiffInteractions(container) {
+    container.querySelectorAll('[data-toggle]').forEach(button => {
+        button.addEventListener('click', () => {
+            toggleNode(container, button.getAttribute('data-toggle'));
+        });
+    });
+
+    syncScrollContainers(container);
+}
+
+function toggleNode(container, nodeId) {
+    const sections = container.querySelectorAll(`[data-children="${nodeId}"]`);
+    if (!sections.length) return;
+    const shouldExpand = Array.from(sections).some(section => section.classList.contains('hidden'));
+    sections.forEach(section => {
+        section.classList.toggle('hidden', !shouldExpand);
+    });
+    container.querySelectorAll(`[data-preview="${nodeId}"]`).forEach(preview => {
+        preview.classList.toggle('hidden', shouldExpand);
+    });
+    container.querySelectorAll(`[data-toggle="${nodeId}"]`).forEach(toggle => {
+        toggle.textContent = shouldExpand ? '▼' : '▶';
+        toggle.setAttribute('aria-expanded', shouldExpand);
+    });
+}
+
+function syncScrollContainers(container) {
+    const contents = Array.from(container.querySelectorAll('.diff-column-content'));
+    if (contents.length < 2) return;
+    let syncing = false;
+    contents.forEach(current => {
+        current.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            const { scrollTop, scrollLeft } = current;
+            contents.forEach(other => {
+                if (other === current) return;
+                other.scrollTop = scrollTop;
+                other.scrollLeft = scrollLeft;
+            });
+            syncing = false;
+        });
+    });
 }
 
 // Video Downloader logic
@@ -1109,8 +1218,6 @@ function deepEqual(a, b) {
     return false;
 }
 
-// Global function for expand/collapse (accessible from onclick)
-window.toggleExpand = toggleExpand;
 </script>
 
 </body>
