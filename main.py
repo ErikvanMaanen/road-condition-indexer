@@ -31,13 +31,14 @@ def load_environment_config():
 load_environment_config()
 import asyncio
 import hashlib
+import json
 import math
 import re
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
 from urllib.parse import urlparse
 
 import pytz
@@ -102,6 +103,183 @@ from database import db_manager
 BASE_DIR = Path(__file__).resolve().parent
 
 transcription_service = TranscriptionService()
+
+MONITOR_SERVICE_TYPES = [
+    {"id": "http", "label": "HTTP"},
+    {"id": "https", "label": "HTTPS"},
+    {"id": "url", "label": "Generic URL"},
+    {"id": "tcp", "label": "TCP Port"},
+    {"id": "udp", "label": "UDP Port"},
+    {"id": "ping", "label": "ICMP Ping"},
+    {"id": "dns", "label": "DNS Lookup"},
+    {"id": "smtp", "label": "SMTP"},
+    {"id": "imap", "label": "IMAP"},
+    {"id": "pop3", "label": "POP3"},
+    {"id": "ftp", "label": "FTP"},
+    {"id": "sftp", "label": "SFTP"},
+    {"id": "ssh", "label": "SSH"},
+]
+
+SUPPORTED_URL_CHECK_TYPES = ["availability", "change"]
+
+MONITOR_SERVICE_IDS = {service["id"] for service in MONITOR_SERVICE_TYPES}
+
+
+POLLING_INTERVAL_UNITS: Dict[str, int] = {
+    "seconds": 1,
+    "minutes": 60,
+    "hours": 3600,
+    "days": 86400,
+}
+
+
+def calculate_polling_interval_seconds(value: int, unit: str) -> int:
+    """Convert polling configuration to seconds."""
+    if value <= 0:
+        raise ValueError("Polling interval value must be positive")
+
+    unit_key = unit.lower()
+    if unit_key not in POLLING_INTERVAL_UNITS:
+        raise ValueError(f"Unsupported polling interval unit: {unit}")
+
+    seconds = value * POLLING_INTERVAL_UNITS[unit_key]
+    if seconds > 86400 * 365:
+        raise ValueError("Polling interval is unreasonably large")
+    return seconds
+
+
+def normalize_monitor_target(service_type: str, target: str) -> str:
+    """Normalize monitor targets for supported services."""
+    cleaned_target = target.strip()
+    if not cleaned_target:
+        raise ValueError("Monitor target mag niet leeg zijn")
+
+    lowered_type = service_type.lower()
+
+    if lowered_type in {"http", "https"}:
+        if not cleaned_target.startswith("http://") and not cleaned_target.startswith("https://"):
+            cleaned_target = f"{lowered_type}://{cleaned_target}"
+    elif lowered_type == "url":
+        parsed = urlparse(cleaned_target)
+        if not parsed.scheme:
+            cleaned_target = f"http://{cleaned_target}"
+
+    return cleaned_target
+
+
+def perform_url_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute an HTTP/HTTPS availability or change detection check."""
+    target_url = normalize_monitor_target(monitor["service_type"], monitor["target"])
+    config = monitor.get("config") or {}
+    timeout = config.get("timeout", 15)
+
+    start_time = time.perf_counter()
+    try:
+        response = requests.get(
+            target_url,
+            timeout=min(max(float(timeout), 1.0), 60.0),
+            headers={
+                "User-Agent": config.get(
+                    "user_agent",
+                    "RCI-Monitor/1.0 (+https://road-condition-indexer.local)",
+                )
+            },
+        )
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        is_available = response.status_code < 400
+        content_bytes = response.content or b""
+        content_hash = hashlib.sha256(content_bytes).hexdigest()
+
+        message = f"HTTP {response.status_code}"
+        status = "success" if is_available else "failure"
+        change_detected = False
+
+        if monitor.get("url_check_type") == "change" and is_available:
+            previous_hash = db_manager.get_latest_monitor_hash(monitor["id"])
+            if previous_hash and previous_hash != content_hash:
+                change_detected = True
+                status = "warning"
+                message += " · Inhoud gewijzigd"
+
+        details = {
+            "status_code": response.status_code,
+            "content_length": len(content_bytes),
+            "url": target_url,
+        }
+
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status=status,
+            is_available=is_available,
+            response_time_ms=duration_ms,
+            status_code=response.status_code,
+            content_hash=content_hash,
+            change_detected=change_detected,
+            message=message,
+            details=details,
+        )
+
+    except requests.RequestException as exc:
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        message = str(exc)
+        details = {"error": message, "url": target_url}
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="failure",
+            is_available=False,
+            response_time_ms=duration_ms,
+            status_code=None,
+            content_hash=None,
+            change_detected=False,
+            message=message[:1000],
+            details=details,
+        )
+
+
+def perform_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Run a monitor check immediately and record the result."""
+    service_type = monitor.get("service_type", "").lower()
+    if service_type in {"http", "https", "url"}:
+        return perform_url_monitor_check(monitor)
+
+    raise ValueError(
+        "Directe controles worden momenteel alleen ondersteund voor HTTP/HTTPS/URL-monitors"
+    )
+
+
+def humanize_polling_interval(seconds: int) -> str:
+    """Return a human readable polling interval string."""
+    if seconds <= 0:
+        return "Onbekend"
+
+    units = [
+        (86400, "day", "days"),
+        (3600, "hour", "hours"),
+        (60, "minute", "minutes"),
+        (1, "second", "seconds"),
+    ]
+
+    for unit_seconds, singular, plural in units:
+        if seconds % unit_seconds == 0:
+            value = seconds // unit_seconds
+            label = singular if value == 1 else plural
+            return f"Every {value} {label}"
+
+    return f"Every {seconds} seconds"
+
+
+def enrich_monitor_payload(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach derived metadata to monitor payloads."""
+    seconds = int(monitor.get("polling_interval_seconds") or 0)
+    monitor["polling_interval"] = {
+        "seconds": seconds,
+        "display": humanize_polling_interval(seconds),
+    }
+    monitor["service_label"] = next(
+        (entry["label"] for entry in MONITOR_SERVICE_TYPES if entry["id"] == monitor.get("service_type")),
+        monitor.get("service_type"),
+    )
+    return monitor
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -412,6 +590,14 @@ def read_memo_page(request: Request):
     if not is_authenticated(request):
         return RedirectResponse(url="/static/login.html?next=/memo.html")
     return FileResponse(BASE_DIR / "static" / "memo.html")
+
+
+@app.get("/monitor.html")
+def read_monitor_page(request: Request):
+    """Serve the monitor management page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/monitor.html")
+    return FileResponse(BASE_DIR / "static" / "monitor.html")
 
 
 @app.get("/logs-partial.html")
@@ -974,6 +1160,17 @@ class DeviceDeletionEntry(BaseModel):
 
 class VideoDownloadRequest(BaseModel):
     url: str
+
+
+class MonitorRequest(BaseModel):
+    name: str = Field(..., max_length=150)
+    service_type: str = Field(..., max_length=50)
+    target: str = Field(..., max_length=2000)
+    polling_value: int = Field(..., gt=0, le=1_000_000)
+    polling_unit: Literal["seconds", "minutes", "hours", "days"]
+    url_check_type: Optional[Literal["availability", "change"]] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    config: Optional[Dict[str, Any]] = None
 
 
 @app.delete("/nickname")
@@ -2349,9 +2546,178 @@ def set_thresholds(settings: ThresholdSettings, dep: None = Depends(password_dep
         "freq_min": settings.freq_min,
         "freq_max": settings.freq_max,
     })
-    
+
     log_info(f"Threshold settings updated: {current_thresholds}")
     return {"status": "ok", "thresholds": current_thresholds}
+
+
+@app.get("/api/monitors/metadata")
+def get_monitor_metadata(dep: None = Depends(password_dependency)):
+    """Return metadata to initialize the monitor UI."""
+    return {
+        "status": "ok",
+        "services": MONITOR_SERVICE_TYPES,
+        "url_check_types": SUPPORTED_URL_CHECK_TYPES,
+        "polling_units": list(POLLING_INTERVAL_UNITS.keys()),
+    }
+
+
+@app.get("/api/monitors")
+def list_monitors(
+    include_history: bool = Query(False, description="Include recent results"),
+    history_limit: int = Query(20, ge=1, le=200, description="Number of historical records"),
+    dep: None = Depends(password_dependency),
+):
+    """Return configured monitors."""
+    try:
+        monitors = db_manager.get_monitors(include_recent=include_history, recent_limit=history_limit)
+        enriched = [enrich_monitor_payload(monitor) for monitor in monitors]
+        return {"status": "ok", "monitors": enriched}
+    except Exception as exc:
+        log_error(f"Failed to fetch monitors: {exc}")
+        raise HTTPException(status_code=500, detail="Monitors ophalen mislukt") from exc
+
+
+def _prepare_monitor_payload(request: MonitorRequest) -> Dict[str, Any]:
+    service_type = request.service_type.lower().strip()
+    if service_type not in MONITOR_SERVICE_IDS:
+        raise HTTPException(status_code=400, detail="Onbekend monitortype")
+
+    url_check_type = request.url_check_type
+    if url_check_type and url_check_type not in SUPPORTED_URL_CHECK_TYPES:
+        raise HTTPException(status_code=400, detail="Onbekende URL-controlemodus")
+
+    if service_type not in {"http", "https", "url"}:
+        url_check_type = None
+
+    try:
+        polling_seconds = calculate_polling_interval_seconds(request.polling_value, request.polling_unit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        target = normalize_monitor_target(service_type, request.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    config_payload: Dict[str, Any] = {}
+    if request.config:
+        for key, value in request.config.items():
+            if value not in (None, "", []):
+                config_payload[key] = value
+
+    return {
+        "name": request.name.strip(),
+        "service_type": service_type,
+        "target": target,
+        "url_check_type": url_check_type,
+        "polling_interval_seconds": polling_seconds,
+        "config": config_payload,
+        "notes": request.notes.strip() if request.notes else None,
+    }
+
+
+@app.post("/api/monitors")
+def create_monitor_endpoint(request: MonitorRequest, dep: None = Depends(password_dependency)):
+    payload = _prepare_monitor_payload(request)
+
+    try:
+        monitor = db_manager.create_monitor(**payload)
+        return {"status": "ok", "monitor": enrich_monitor_payload(monitor)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to create monitor: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor aanmaken mislukt") from exc
+
+
+@app.put("/api/monitors/{monitor_id}")
+def update_monitor_endpoint(
+    monitor_id: int,
+    request: MonitorRequest,
+    dep: None = Depends(password_dependency),
+):
+    payload = _prepare_monitor_payload(request)
+
+    try:
+        monitor = db_manager.update_monitor(monitor_id=monitor_id, **payload)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        return {"status": "ok", "monitor": enrich_monitor_payload(monitor)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to update monitor {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor bijwerken mislukt") from exc
+
+
+@app.delete("/api/monitors/{monitor_id}")
+def delete_monitor_endpoint(monitor_id: int, dep: None = Depends(password_dependency)):
+    try:
+        deleted = db_manager.delete_monitor(monitor_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to delete monitor {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor verwijderen mislukt") from exc
+
+
+@app.get("/api/monitors/{monitor_id}")
+def get_monitor_endpoint(monitor_id: int, dep: None = Depends(password_dependency)):
+    try:
+        monitor = db_manager.get_monitor(monitor_id)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        return {"status": "ok", "monitor": enrich_monitor_payload(monitor)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to fetch monitor {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor ophalen mislukt") from exc
+
+
+@app.get("/api/monitors/{monitor_id}/logs")
+def get_monitor_logs(
+    monitor_id: int,
+    limit: int = Query(100, ge=1, le=500),
+    dep: None = Depends(password_dependency),
+):
+    try:
+        monitor = db_manager.get_monitor(monitor_id)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        results = db_manager.get_monitor_results(monitor_id, limit)
+        return {
+            "status": "ok",
+            "monitor": enrich_monitor_payload(monitor),
+            "results": results,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to fetch monitor logs for {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitorlog ophalen mislukt") from exc
+
+
+@app.post("/api/monitors/{monitor_id}/run")
+def run_monitor_now(monitor_id: int, dep: None = Depends(password_dependency)):
+    try:
+        monitor = db_manager.get_monitor(monitor_id)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+
+        result = perform_monitor_check(monitor)
+        return {"status": "ok", "result": result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        log_error(f"Monitor {monitor_id} run failed: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor uitvoeren mislukt") from exc
 
 
 # Shared objects management endpoints

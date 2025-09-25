@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" integrity="sha384-xw+leChX2NDSSSXoqV4bqKu7p710RYtyTCG9a5NmL5euj5cPNWW5UZ+4TL7CBrzE" crossorigin="anonymous" defer></script>
+    <script src="/static/monitor.js" defer></script>
+</head>
+<body>
+
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="tools.html">Tools</a>
+    <a href="monitor.html" aria-current="page">Monitor</a>
+    <a href="shared.html">Shared</a>
+    <a href="memo.html">Memo's</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+<header class="monitor-page-header">
+    <h1 id="monitor-title" class="monitor-title">
+        <img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">
+        Monitor
+    </h1>
+    <p class="monitor-subtitle rci-muted">Configureer servicebewaking, voer handmatige controles uit en bekijk recente resultaten.</p>
+</header>
+
+<main class="monitor-layout" aria-labelledby="monitor-title">
+    <section class="monitor-form rci-card" aria-labelledby="monitor-form-heading">
+        <div class="monitor-section-header">
+            <h2 id="monitor-form-heading">Nieuwe monitor toevoegen</h2>
+            <p class="rci-muted">Ondersteunt HTTP(S), URL-wijzigingsdetectie en veelgebruikte netwerkservices.</p>
+        </div>
+        <form id="monitor-form" class="monitor-form-grid" novalidate>
+            <div class="monitor-form-row">
+                <label for="monitor-name">Naam<span aria-hidden="true">*</span></label>
+                <input id="monitor-name" name="name" type="text" required placeholder="Bijvoorbeeld API-status" autocomplete="off">
+            </div>
+
+            <div class="monitor-inline-group">
+                <div class="monitor-form-row">
+                    <label for="monitor-service">Service<span aria-hidden="true">*</span></label>
+                    <select id="monitor-service" name="service" required></select>
+                </div>
+                <div class="monitor-form-row">
+                    <label for="monitor-target">Doel<span aria-hidden="true">*</span></label>
+                    <input id="monitor-target" name="target" type="text" required placeholder="URL, host of resource">
+                </div>
+            </div>
+
+            <div id="monitor-url-options" class="monitor-inline-group hidden" aria-hidden="true">
+                <div class="monitor-form-row">
+                    <label for="monitor-url-check">URL-controle</label>
+                    <select id="monitor-url-check" name="urlCheck">
+                        <option value="availability">Beschikbaarheid</option>
+                        <option value="change">Wijziging detecteren</option>
+                    </select>
+                </div>
+                <div class="monitor-form-row">
+                    <label for="monitor-timeout">Timeout (seconden)</label>
+                    <input id="monitor-timeout" name="timeout" type="number" min="1" max="60" step="1" placeholder="15">
+                </div>
+            </div>
+
+            <div class="monitor-inline-group">
+                <div class="monitor-form-row">
+                    <label for="monitor-interval-value">Polling-interval<span aria-hidden="true">*</span></label>
+                    <div class="monitor-interval-group">
+                        <input id="monitor-interval-value" name="intervalValue" type="number" min="1" value="5" required>
+                        <select id="monitor-interval-unit" name="intervalUnit">
+                            <option value="minutes">Minuten</option>
+                            <option value="seconds">Seconden</option>
+                            <option value="hours">Uren</option>
+                            <option value="days">Dagen</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="monitor-port-wrapper" class="monitor-form-row">
+                    <label for="monitor-port">Poort</label>
+                    <input id="monitor-port" name="port" type="number" min="1" max="65535" placeholder="Bijvoorbeeld 443">
+                </div>
+            </div>
+
+            <div class="monitor-form-row">
+                <label for="monitor-notes">Notitie</label>
+                <textarea id="monitor-notes" name="notes" rows="3" placeholder="Extra details of instructies"></textarea>
+            </div>
+
+            <div class="monitor-actions">
+                <button type="submit" class="focus-ring">Opslaan</button>
+                <button type="button" id="monitor-cancel-edit" class="secondary-button focus-ring hidden">Annuleren</button>
+                <button type="button" id="monitor-refresh" class="secondary-button focus-ring">Vernieuwen</button>
+            </div>
+            <div id="monitor-form-status" class="status-message" role="status" aria-live="polite"></div>
+        </form>
+    </section>
+
+    <section class="monitor-list rci-card" aria-labelledby="monitor-list-heading">
+        <div class="monitor-section-header">
+            <h2 id="monitor-list-heading">Actieve monitors</h2>
+            <p class="rci-muted">Bekijk status, histogrammen en laatste controles.</p>
+        </div>
+        <div id="monitor-list" class="monitor-card-grid" aria-live="polite" aria-busy="false"></div>
+        <div id="monitor-empty" class="monitor-empty rci-muted" role="status">Er zijn nog geen monitors geconfigureerd.</div>
+    </section>
+</main>
+
+<div id="monitor-log-overlay" class="monitor-log-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="monitor-log-title">
+    <div class="monitor-log-panel rci-card">
+        <div class="monitor-log-header">
+            <h2 id="monitor-log-title">Monitorlog</h2>
+            <button type="button" id="monitor-log-close" class="secondary-button focus-ring">Sluiten</button>
+        </div>
+        <div id="monitor-log-content" class="monitor-log-content" aria-live="polite"></div>
+    </div>
+</div>
+
+</body>
+</html>
