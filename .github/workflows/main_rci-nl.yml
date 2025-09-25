@@ -2,9 +2,15 @@ name: Build & deploy – rci‑nl
 
 on:
   push:
-    branches: [ main ]          # every commit created on main (i.e. merges)
+    branches: [ main ]          # direct pushes / human-merged PRs
 
   workflow_dispatch:            # optional manual run
+
+  # Run after auto-merge workflow creates a merge commit (its push is
+  # suppressed from triggering other workflows because it uses GITHUB_TOKEN)
+  workflow_run:
+    workflows: ["Auto-merge pull requests into main"]
+    types: [completed]
 
 jobs:
   build:
