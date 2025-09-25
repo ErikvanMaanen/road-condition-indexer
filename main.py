@@ -1,4 +1,8 @@
 import os
+import platform
+import shutil
+import socket
+import subprocess
 import time
 import warnings
 
@@ -124,6 +128,18 @@ SUPPORTED_URL_CHECK_TYPES = ["availability", "change"]
 
 MONITOR_SERVICE_IDS = {service["id"] for service in MONITOR_SERVICE_TYPES}
 
+MONITOR_PORT_DEFAULTS: Dict[str, int] = {
+    "tcp": 80,
+    "udp": 53,
+    "smtp": 25,
+    "imap": 143,
+    "pop3": 110,
+    "ftp": 21,
+    "sftp": 22,
+    "ssh": 22,
+    "dns": 53,
+}
+
 
 POLLING_INTERVAL_UNITS: Dict[str, int] = {
     "seconds": 1,
@@ -236,14 +252,208 @@ def perform_url_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
         )
 
 
+def _resolve_monitor_timeout(config: Dict[str, Any], default: float = 5.0) -> float:
+    """Return a sanitized timeout value for network checks."""
+    raw_timeout = config.get("timeout") if isinstance(config, dict) else None
+    try:
+        if raw_timeout is not None:
+            timeout_value = float(raw_timeout)
+            if timeout_value > 0:
+                return min(max(timeout_value, 0.5), 60.0)
+    except (TypeError, ValueError):
+        pass
+    return default
+
+
+def _resolve_monitor_port(monitor: Dict[str, Any]) -> int:
+    """Resolve the port value for a port-based monitor."""
+    config = monitor.get("config") or {}
+    port_value = config.get("port")
+    if port_value is None:
+        port_value = MONITOR_PORT_DEFAULTS.get(monitor.get("service_type"))
+
+    try:
+        port_number = int(port_value)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        raise ValueError("Ongeldige poortconfiguratie voor monitor")
+
+    if not (1 <= port_number <= 65535):
+        raise ValueError("Poort moet tussen 1 en 65535 liggen")
+    return port_number
+
+
+def perform_ping_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Run an ICMP ping check for the given monitor target."""
+    target = monitor.get("target")
+    if not target:
+        raise ValueError("Monitor target mag niet leeg zijn")
+
+    config = monitor.get("config") or {}
+    timeout = _resolve_monitor_timeout(config, default=5.0)
+
+    ping_executable = shutil.which("ping")
+    if not ping_executable:
+        raise ValueError("Ping-programma niet gevonden op het systeem")
+
+    system_name = platform.system().lower()
+    if system_name == "windows":
+        count_flag = "-n"
+        timeout_flag = "-w"
+        timeout_value = str(int(timeout * 1000))
+    else:
+        count_flag = "-c"
+        timeout_flag = "-W"
+        timeout_value = str(int(math.ceil(timeout)))
+
+    command = [
+        ping_executable,
+        count_flag,
+        "1",
+        timeout_flag,
+        timeout_value,
+        target,
+    ]
+
+    start_time = time.perf_counter()
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        success = result.returncode == 0
+        output = result.stdout.strip() or result.stderr.strip()
+        message = output.splitlines()[-1] if output else "Ping uitgevoerd"
+
+        details = {
+            "command": " ".join(command),
+            "output": output,
+            "target": target,
+        }
+
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="success" if success else "failure",
+            is_available=success,
+            response_time_ms=duration_ms,
+            message=message[:200],
+            details=details,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="failure",
+            is_available=False,
+            response_time_ms=duration_ms,
+            message=str(exc)[:200],
+            details={"error": str(exc), "target": target},
+        )
+
+
+def perform_port_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Run a TCP-based connectivity check for the configured port."""
+    target = monitor.get("target")
+    if not target:
+        raise ValueError("Monitor target mag niet leeg zijn")
+
+    config = monitor.get("config") or {}
+    timeout = _resolve_monitor_timeout(config, default=5.0)
+    port_number = _resolve_monitor_port(monitor)
+
+    start_time = time.perf_counter()
+    try:
+        with socket.create_connection((target, port_number), timeout=timeout):
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        message = f"Poort {port_number} bereikbaar"
+        details = {"target": target, "port": port_number}
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="success",
+            is_available=True,
+            response_time_ms=duration_ms,
+            message=message,
+            details=details,
+        )
+    except OSError as exc:
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        message = f"Verbinding mislukt: {exc}"
+        details = {"target": target, "port": port_number, "error": str(exc)}
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="failure",
+            is_available=False,
+            response_time_ms=duration_ms,
+            message=message[:200],
+            details=details,
+        )
+
+
+def perform_dns_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
+    """Perform a DNS lookup for the configured host."""
+    target = monitor.get("target")
+    if not target:
+        raise ValueError("Monitor target mag niet leeg zijn")
+
+    config = monitor.get("config") or {}
+    timeout = _resolve_monitor_timeout(config, default=5.0)
+
+    start_time = time.perf_counter()
+    try:
+        previous_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(timeout)
+        try:
+            # Use getaddrinfo with AI_ADDRCONFIG for broad compatibility
+            addresses = socket.getaddrinfo(target, None, proto=socket.IPPROTO_TCP)
+        finally:
+            socket.setdefaulttimeout(previous_timeout)
+
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        unique_addresses = sorted({info[4][0] for info in addresses if info and info[4]})
+
+        message = f"{len(unique_addresses)} resultaat" if len(unique_addresses) == 1 else f"{len(unique_addresses)} resultaten"
+        details = {"target": target, "addresses": unique_addresses, "timeout": timeout}
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="success" if unique_addresses else "failure",
+            is_available=bool(unique_addresses),
+            response_time_ms=duration_ms,
+            message=message,
+            details=details,
+        )
+    except socket.gaierror as exc:
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        details = {"target": target, "error": exc.args[1] if len(exc.args) > 1 else str(exc)}
+        return db_manager.record_monitor_result(
+            monitor_id=monitor["id"],
+            status="failure",
+            is_available=False,
+            response_time_ms=duration_ms,
+            message=str(exc)[:200],
+            details=details,
+        )
+
+
 def perform_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
     """Run a monitor check immediately and record the result."""
     service_type = monitor.get("service_type", "").lower()
     if service_type in {"http", "https", "url"}:
         return perform_url_monitor_check(monitor)
 
+    if service_type == "ping":
+        return perform_ping_monitor_check(monitor)
+
+    if service_type in {"tcp", "smtp", "imap", "pop3", "ftp", "sftp", "ssh"}:
+        return perform_port_monitor_check(monitor)
+
+    if service_type == "dns":
+        return perform_dns_monitor_check(monitor)
+
     raise ValueError(
-        "Directe controles worden momenteel alleen ondersteund voor HTTP/HTTPS/URL-monitors"
+        "Directe controles worden momenteel alleen ondersteund voor HTTP/HTTPS/URL, ping, TCP en DNS-monitors"
     )
 
 

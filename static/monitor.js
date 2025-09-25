@@ -34,7 +34,19 @@
     };
 
     const PORT_SERVICE_TYPES = new Set(['tcp', 'udp', 'smtp', 'imap', 'pop3', 'ftp', 'sftp', 'ssh', 'dns']);
-    const ACTIVE_RUN_TYPES = new Set(['http', 'https', 'url']);
+    const URL_SERVICE_TYPES = new Set(['http', 'https', 'url']);
+    const ACTIVE_RUN_TYPES = new Set([
+        ...URL_SERVICE_TYPES,
+        'ping',
+        'tcp',
+        'smtp',
+        'imap',
+        'pop3',
+        'ftp',
+        'sftp',
+        'ssh',
+        'dns',
+    ]);
 
     const DEFAULT_PORT_PLACEHOLDERS = {
         smtp: '25',
@@ -98,7 +110,7 @@
     }
 
     function toggleUrlOptions(serviceType) {
-        const shouldShow = ACTIVE_RUN_TYPES.has(serviceType);
+        const shouldShow = URL_SERVICE_TYPES.has(serviceType);
         toggleElement(elements.urlOptions, shouldShow);
         if (elements.urlCheck) {
             elements.urlCheck.value = 'availability';
