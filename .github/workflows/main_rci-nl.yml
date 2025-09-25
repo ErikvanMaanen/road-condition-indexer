@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]          # direct pushes / human-merged PRs
 
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]          # ensure workflow also runs when a PR is merged
+
   workflow_dispatch:            # optional manual run
 
   # Run after auto-merge workflow creates a merge commit (its push is
@@ -16,6 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions: { contents: read }
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
 
     steps:
       - uses: actions/checkout@v4

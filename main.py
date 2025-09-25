@@ -70,11 +70,11 @@ from database import (TABLE_ARCHIVE_LOGS, TABLE_BIKE_DATA,
 from log_utils import (DEBUG_LOG, LogCategory, LogLevel, format_display_time,
                        get_utc_timestamp, log_debug, log_error, log_info,
                        log_warning)
-from transcription import (TranscriptionConfigError, TranscriptionFailedError,
-                           TranscriptionService, TranscriptionServiceError)
 # Import SQL connectivity testing
 from tests.sql_connectivity_tests import (ConnectivityTestResult,
                                           run_startup_connectivity_tests)
+from transcription import (TranscriptionConfigError, TranscriptionFailedError,
+                           TranscriptionService, TranscriptionServiceError)
 
 if TYPE_CHECKING:
     from azure.identity import ClientSecretCredential
@@ -2442,7 +2442,7 @@ def _build_transcription_segments(payload: Dict[str, Any]) -> Tuple[str, List[Sp
     text = str(payload.get("text") or "").strip()
     if not text:
         raise TranscriptionFailedError("Transcriptie bevat geen tekst")
-    default_segment = SpeakerSegment(speaker="Spreker 1", text=text)
+    default_segment = SpeakerSegment(speaker="Spreker 1", start=None, end=None, text=text)
     return f"Spreker 1: {text}", [default_segment]
 
 
