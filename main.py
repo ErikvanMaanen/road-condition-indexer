@@ -105,6 +105,8 @@ from database import db_manager
 # We remove the dependency and keep a generic streaming downloader below.
 
 BASE_DIR = Path(__file__).resolve().parent
+BUNDLED_PING_DIR = BASE_DIR / "bin"
+BUNDLED_PING_NAMES = ("ping", "ping.py")
 
 transcription_service = TranscriptionService()
 
@@ -268,6 +270,81 @@ def _resolve_monitor_timeout(config: Dict[str, Any], default: float = 5.0) -> fl
     return default
 
 
+def _find_ping_executable(config: Dict[str, Any]) -> Optional[str]:
+    """Locate a usable ping executable on the current system."""
+
+    candidate_values: List[str] = []
+
+    if isinstance(config, dict):
+        for key in ("ping_path", "ping_executable"):
+            value = config.get(key)
+            if isinstance(value, str) and value.strip():
+                candidate_values.append(value.strip())
+
+    env_candidates = [
+        os.environ.get("PING_EXECUTABLE"),
+        os.environ.get("PING_PATH"),
+    ]
+    candidate_values.extend(filter(None, env_candidates))
+
+    for candidate in candidate_values:
+        try:
+            expanded = Path(candidate).expanduser().resolve()
+        except OSError:
+            continue
+        if expanded.is_file() and os.access(expanded, os.X_OK):
+            return str(expanded)
+
+    system_name = platform.system().lower()
+    search_names: List[str] = ["ping"]
+    fallback_paths: List[str] = []
+
+    bundled_candidates = [
+        BUNDLED_PING_DIR / name for name in BUNDLED_PING_NAMES
+    ]
+
+    for bundled in bundled_candidates:
+        if bundled.is_file() and os.access(bundled, os.X_OK):
+            return str(bundled.resolve())
+
+    if system_name == "windows":
+        search_names.append("ping.exe")
+        system_root = Path(os.environ.get("SystemRoot", "C:\\Windows"))
+        windir = Path(os.environ.get("WINDIR", "C:\\Windows"))
+        fallback_paths.extend(
+            [
+                str(system_root / "System32"),
+                str(system_root / "Sysnative"),
+                str(windir / "System32"),
+            ]
+        )
+    else:
+        search_names.extend(["ping6"])
+        fallback_paths.extend(
+            [
+                "/bin",
+                "/sbin",
+                "/usr/bin",
+                "/usr/sbin",
+                "/usr/local/bin",
+                "/usr/local/sbin",
+            ]
+        )
+
+    path_env = os.environ.get("PATH", "")
+    project_bin = str(BUNDLED_PING_DIR.resolve())
+    combined_path = os.pathsep.join(
+        list(dict.fromkeys(filter(None, [path_env, project_bin] + fallback_paths)))
+    )
+
+    for name in search_names:
+        located = shutil.which(name, path=combined_path)
+        if located:
+            return located
+
+    return None
+
+
 def _resolve_monitor_port(monitor: Dict[str, Any]) -> int:
     """Resolve the port value for a port-based monitor."""
     config = monitor.get("config") or {}
@@ -294,7 +371,7 @@ def perform_ping_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
     config = monitor.get("config") or {}
     timeout = _resolve_monitor_timeout(config, default=5.0)
 
-    ping_executable = shutil.which("ping")
+    ping_executable = _find_ping_executable(config)
     if not ping_executable:
         raise ValueError("Ping-programma niet gevonden op het systeem")
 
