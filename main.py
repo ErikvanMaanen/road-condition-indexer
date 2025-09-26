@@ -40,7 +40,7 @@ import math
 import re
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
 from urllib.parse import urlparse
@@ -107,6 +107,9 @@ from database import db_manager
 BASE_DIR = Path(__file__).resolve().parent
 
 transcription_service = TranscriptionService()
+
+_monitor_scheduler_stop: Optional[asyncio.Event] = None
+_monitor_scheduler_task: Optional[asyncio.Task] = None
 
 MONITOR_SERVICE_TYPES = [
     {"id": "http", "label": "HTTP"},
@@ -491,22 +494,134 @@ def enrich_monitor_payload(monitor: Dict[str, Any]) -> Dict[str, Any]:
     )
     return monitor
 
+
+def _parse_monitor_timestamp(value: Optional[str]) -> Optional[datetime]:
+    """Return a UTC aware datetime for monitor bookkeeping."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=pytz.UTC)
+    return parsed.astimezone(pytz.UTC)
+
+
+def _next_scheduled_run(monitor: Dict[str, Any]) -> Optional[datetime]:
+    """Return the timestamp when the monitor should run next."""
+    try:
+        interval = int(monitor.get("polling_interval_seconds") or 0)
+    except (TypeError, ValueError):
+        return None
+    if interval <= 0:
+        return None
+
+    last_checked = _parse_monitor_timestamp(monitor.get("last_checked_at"))
+    if last_checked is None:
+        return datetime.utcnow().replace(tzinfo=pytz.UTC)
+    return last_checked + timedelta(seconds=interval)
+
+
+async def _wait_with_stop(event: asyncio.Event, timeout: float) -> None:
+    """Sleep for ``timeout`` seconds or until the event is set."""
+    if timeout <= 0:
+        return
+    try:
+        await asyncio.wait_for(event.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        pass
+
+
+async def _monitor_scheduler_loop(stop_event: asyncio.Event) -> None:
+    """Background loop that executes due monitor checks."""
+    log_info("Monitor scheduler started", LogCategory.GENERAL)
+    while not stop_event.is_set():
+        try:
+            monitors = db_manager.get_monitors(include_recent=False)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            log_error(f"Failed to load monitors for scheduler: {exc}")
+            await _wait_with_stop(stop_event, 60.0)
+            continue
+
+        now = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        due_monitors: List[Dict[str, Any]] = []
+        next_run_at: Optional[datetime] = None
+
+        for monitor in monitors:
+            scheduled_for = _next_scheduled_run(monitor)
+            if scheduled_for is None:
+                continue
+            if scheduled_for <= now:
+                due_monitors.append(monitor)
+            elif next_run_at is None or scheduled_for < next_run_at:
+                next_run_at = scheduled_for
+
+        if due_monitors:
+            due_monitors.sort(
+                key=lambda item: _parse_monitor_timestamp(item.get("last_checked_at"))
+                or datetime.fromtimestamp(0, tz=pytz.UTC)
+            )
+            for monitor in due_monitors:
+                if stop_event.is_set():
+                    break
+                try:
+                    await run_in_threadpool(perform_monitor_check, monitor)
+                except ValueError as exc:
+                    log_warning(
+                        f"Skipping monitor {monitor.get('id')}: {exc}",
+                        LogCategory.GENERAL,
+                    )
+                except Exception as exc:  # pragma: no cover - runtime safety
+                    log_error(f"Automatic run for monitor {monitor.get('id')} failed: {exc}")
+                await _wait_with_stop(stop_event, 0.5)
+            continue
+
+        if next_run_at is None:
+            await _wait_with_stop(stop_event, 30.0)
+        else:
+            wait_seconds = max(5.0, (next_run_at - now).total_seconds())
+            await _wait_with_stop(stop_event, wait_seconds)
+
+    log_info("Monitor scheduler stopped", LogCategory.GENERAL)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    global _monitor_scheduler_stop, _monitor_scheduler_task
+
     try:
         startup_init()
         print("✅ Application startup completed successfully")
     except Exception as e:
         print(f"⚠️ Startup warning (continuing): {e}")
-        # Don't raise the exception - let the app start even if there are warnings
-    yield
-    # Shutdown
+
+    _monitor_scheduler_stop = asyncio.Event()
+    _monitor_scheduler_task = asyncio.create_task(_monitor_scheduler_loop(_monitor_scheduler_stop))
+
     try:
-        print("🔄 Application shutdown initiated")
-        # Add any cleanup logic here if needed
-    except Exception as e:
-        print(f"⚠️ Shutdown warning: {e}")
+        yield
+    finally:
+        if _monitor_scheduler_stop is not None:
+            _monitor_scheduler_stop.set()
+
+        try:
+            print("🔄 Application shutdown initiated")
+        except Exception as e:
+            print(f"⚠️ Shutdown warning: {e}")
+
+        if _monitor_scheduler_task is not None:
+            try:
+                await _monitor_scheduler_task
+            except asyncio.CancelledError:
+                pass
+
+        _monitor_scheduler_stop = None
+        _monitor_scheduler_task = None
 
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 
