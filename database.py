@@ -303,12 +303,23 @@ class DatabaseManager:
             with self.get_connection_context() as conn:
                 self.log_debug("Creating SQL Server tables", LogLevel.DEBUG, LogCategory.DATABASE)
                 self._create_sqlserver_tables(conn)
-                
+
                 conn.commit()
-                
+
                 total_time = (time.time() - start_time) * 1000
                 self.log_debug(f"Table initialization completed successfully in {total_time:.2f}ms", LogLevel.INFO, LogCategory.DATABASE)
-                
+
+            # Ensure at least one example monitor exists so the UI works out-of-the-box
+            try:
+                self.ensure_example_monitor_exists()
+            except Exception as monitor_exc:
+                # Do not fail startup if we cannot create the example monitor
+                self.log_debug(
+                    f"Failed to ensure example monitor exists: {monitor_exc}",
+                    LogLevel.ERROR,
+                    LogCategory.DATABASE,
+                )
+
         except Exception as exc:
             total_time = (time.time() - start_time) * 1000
             self.log_debug(f"Database init error: {exc}", LogLevel.ERROR, LogCategory.DATABASE, include_stack=True)
@@ -2642,6 +2653,43 @@ class DatabaseManager:
     # ------------------------------------------------------------------
     # Monitor management
     # ------------------------------------------------------------------
+
+    def ensure_example_monitor_exists(self) -> None:
+        """Create a sample HTTPS monitor when no monitors are configured."""
+        with self.get_connection_context() as conn:
+            result = conn.execute(
+                text(f"SELECT TOP 1 id FROM {TABLE_MONITORS}"),
+            )
+            if result.fetchone():
+                self.log_debug(
+                    "Skipping example monitor creation; entries already exist",
+                    LogLevel.DEBUG,
+                    LogCategory.DATABASE,
+                )
+                return
+
+        example_name = "Voorbeeld: Microsoft.com beschikbaarheid"
+        example_target = "https://www.microsoft.com"
+        example_config = {"timeout": 10, "expected_status": 200}
+
+        monitor = self.create_monitor(
+            name=example_name,
+            service_type="https",
+            target=example_target,
+            url_check_type="availability",
+            polling_interval_seconds=300,
+            config=example_config,
+            notes=(
+                "Automatisch aangemaakte monitor om te laten zien hoe een HTTPS-controle werkt. "
+                "Het systeem controleert elke 5 minuten of microsoft.com bereikbaar is."
+            ),
+        )
+
+        self.log_debug(
+            f"Example monitor created with ID {monitor['id']} targeting {example_target}",
+            LogLevel.INFO,
+            LogCategory.DATABASE,
+        )
 
     def create_monitor(
         self,
