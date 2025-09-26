@@ -344,6 +344,11 @@
             const responseTime = typeof latest?.response_time_ms === 'number' ? `${latest.response_time_ms} ms` : '—';
             const availability = latest?.is_available == null ? '—' : latest.is_available ? 'Ja' : 'Nee';
             const changeCount = summarizeResults(monitor.recent_results || []).change;
+            const hasHistory = (monitor.recent_results || []).length > 0;
+            const chartClasses = ['monitor-chart'];
+            if (!hasHistory) {
+                chartClasses.push('monitor-chart-empty');
+            }
 
             card.innerHTML = `
                 <div class="monitor-card-header">
@@ -353,7 +358,7 @@
                     </div>
                     <span class="monitor-status ${statusClass}">${escapeHtml(statusLabel)}</span>
                 </div>
-                <div class="monitor-card-body">
+                <div class="monitor-card-main">
                     <dl class="monitor-meta">
                         <div>
                             <dt>Doel</dt>
@@ -376,12 +381,14 @@
                             <dd>${escapeHtml(responseTime)}</dd>
                         </div>
                     </dl>
+                    <div class="${chartClasses.join(' ')}" aria-hidden="${hasHistory ? 'false' : 'true'}">
+                        <canvas aria-label="Beschikbaarheids-histogram" role="img"></canvas>
+                        <p class="monitor-chart-meta rci-muted">Wijzigingen gedetecteerd: ${changeCount}</p>
+                    </div>
+                </div>
+                <div class="monitor-card-info">
                     <p class="monitor-message">${escapeHtml(lastMessage)}</p>
                     ${monitor.notes ? `<p class="monitor-notes rci-muted">${escapeHtml(monitor.notes)}</p>` : ''}
-                </div>
-                <div class="monitor-chart" aria-hidden="${(monitor.recent_results || []).length ? 'false' : 'true'}">
-                    <canvas aria-label="Beschikbaarheids-histogram" role="img"></canvas>
-                    <p class="monitor-chart-meta rci-muted">Wijzigingen gedetecteerd: ${changeCount}</p>
                 </div>
                 <div class="monitor-card-actions">
                     <button type="button" class="focus-ring" data-action="edit">Bewerken</button>
@@ -392,7 +399,7 @@
             `;
 
             const canvas = card.querySelector('canvas');
-            if (canvas && (monitor.recent_results || []).length) {
+            if (canvas && hasHistory) {
                 renderHistogram(canvas, monitor);
             }
 
