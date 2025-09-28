@@ -18,6 +18,9 @@ pytz>=2023.3
 # HTTP client for external APIs
 requests>=2.31.0
 
+# HTML content processing for change detection
+beautifulsoup4>=4.12.0
+
 # Azure SDK components (optional - for management features)
 azure-identity>=1.15.0
 azure-mgmt-web>=7.1.0

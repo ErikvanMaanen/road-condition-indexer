@@ -255,6 +255,23 @@
         return summary;
     }
 
+    function renderChangeSummary(details) {
+        if (!details || typeof details.change_summary !== 'string' || !details.change_summary.trim()) {
+            return '';
+        }
+        const referenceTime = details.change_reference_checked_at ? formatDate(details.change_reference_checked_at) : null;
+        const parts = [
+            '<div class="monitor-log-change">',
+            '<div class="monitor-log-change-heading">Wijziging t.o.v. stabiele versie</div>',
+            `<pre class="monitor-log-diff">${escapeHtml(details.change_summary)}</pre>`,
+        ];
+        if (referenceTime) {
+            parts.push(`<div class="monitor-log-change-meta">Referentie: ${escapeHtml(referenceTime)}</div>`);
+        }
+        parts.push('</div>');
+        return parts.join('');
+    }
+
     function getStatusMeta(monitor) {
         const latest = (monitor.recent_results || [])[0] || null;
         const statusValue = (latest && latest.status) || monitor.last_status || 'unknown';
@@ -522,15 +539,42 @@
         }
     }
 
-    function openGraphOverlay(monitor) {
+    async function openGraphOverlay(monitor) {
         if (!elements.graphOverlay) {
             return;
         }
 
         destroyGraphChart();
-        const results = Array.isArray(monitor.recent_results) ? [...monitor.recent_results].reverse() : [];
         if (elements.graphTitle) {
             elements.graphTitle.textContent = `Grafiek · ${monitor.name}`;
+        }
+        if (elements.graphEmpty) {
+            elements.graphEmpty.textContent = 'Grafiek wordt geladen...';
+            elements.graphEmpty.classList.remove('hidden');
+        }
+        if (elements.graphCanvas) {
+            elements.graphCanvas.classList.add('hidden');
+        }
+
+        elements.graphOverlay.classList.remove('hidden');
+        if (elements.graphClose) {
+            elements.graphClose.focus();
+        }
+
+        let results = [];
+        try {
+            const response = await fetch(`/api/monitors/${monitor.id}/history`);
+            if (!response.ok) {
+                throw new Error('Kon monitorhistorie niet ophalen');
+            }
+            const payload = await response.json();
+            results = Array.isArray(payload.results) ? payload.results : [];
+        } catch (error) {
+            console.error(error);
+            if (elements.graphEmpty) {
+                elements.graphEmpty.textContent = 'Kon gegevens niet laden.';
+            }
+            return;
         }
 
         if (!results.length || !elements.graphCanvas) {
@@ -538,101 +582,86 @@
                 elements.graphCanvas.classList.add('hidden');
             }
             if (elements.graphEmpty) {
+                elements.graphEmpty.textContent = 'Geen meetpunten beschikbaar.';
                 elements.graphEmpty.classList.remove('hidden');
             }
-        } else if (typeof Chart !== 'undefined') {
-            if (elements.graphCanvas) {
-                elements.graphCanvas.classList.remove('hidden');
-            }
-            if (elements.graphEmpty) {
-                elements.graphEmpty.classList.add('hidden');
-            }
+            return;
+        }
 
-            const labels = results.map((entry) => formatDate(entry.checked_at));
-            const values = results.map((entry) => {
-                if (typeof entry.response_time_ms === 'number') {
-                    return entry.response_time_ms;
-                }
-                return null;
-            });
-            const colors = results.map((entry) => {
-                const status = (entry.status || '').toLowerCase();
-                if (status === 'success') {
-                    return 'rgba(25,135,84,0.9)';
-                }
-                if (status === 'warning') {
-                    return 'rgba(255,193,7,0.9)';
-                }
-                if (status === 'failure') {
-                    return 'rgba(220,53,69,0.9)';
-                }
-                return 'rgba(108,117,125,0.9)';
-            });
+        if (elements.graphCanvas) {
+            elements.graphCanvas.classList.remove('hidden');
+        }
+        if (elements.graphEmpty) {
+            elements.graphEmpty.classList.add('hidden');
+        }
 
-            const context = elements.graphCanvas.getContext('2d');
-            state.graphChart = new Chart(context, {
-                type: 'line',
-                data: {
-                    labels,
-                    datasets: [
-                        {
-                            label: 'Ping (ms)',
-                            data: values,
-                            borderColor: 'rgba(73,80,87,0.75)',
-                            backgroundColor: 'rgba(73,80,87,0.12)',
-                            pointBackgroundColor: colors,
-                            pointBorderColor: colors,
-                            spanGaps: true,
-                            tension: 0.2,
-                        },
-                    ],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label(context) {
-                                    const value = context.parsed.y;
-                                    const responseText = value == null ? 'n.v.t.' : `${value} ms`;
-                                    const result = results[context.dataIndex];
-                                    const status = (result?.status || '').toUpperCase();
-                                    return `${responseText}${status ? ` · ${status}` : ''}`;
-                                },
+        const labels = results.map((entry) => formatDate(entry.checked_at));
+        const values = results.map((entry) => (typeof entry.response_time_ms === 'number' ? entry.response_time_ms : null));
+        const datasetLabel = monitor.service_type === 'ping' ? 'Ping (ms)' : 'Responstijd (ms)';
+        const colors = results.map((entry) => {
+            const status = (entry.status || '').toLowerCase();
+            if (status === 'success') {
+                return 'rgba(25,135,84,0.9)';
+            }
+            if (status === 'warning') {
+                return 'rgba(255,193,7,0.9)';
+            }
+            if (status === 'failure') {
+                return 'rgba(220,53,69,0.9)';
+            }
+            return 'rgba(108,117,125,0.9)';
+        });
+
+        const context = elements.graphCanvas.getContext('2d');
+        state.graphChart = new Chart(context, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: datasetLabel,
+                        data: values,
+                        borderColor: 'rgba(73,80,87,0.75)',
+                        backgroundColor: 'rgba(73,80,87,0.12)',
+                        pointBackgroundColor: colors,
+                        pointBorderColor: colors,
+                        spanGaps: true,
+                        tension: 0.2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const value = context.parsed.y;
+                                const responseText = value == null ? 'n.v.t.' : `${value} ms`;
+                                const result = results[context.dataIndex];
+                                const status = (result?.status || '').toUpperCase();
+                                return `${responseText}${status ? ` · ${status}` : ''}`;
                             },
                         },
                     },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { maxRotation: 0 },
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(0,0,0,0.08)' },
-                            ticks: { precision: 0 },
-                        },
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxRotation: 0 },
                     },
-                    elements: {
-                        point: { radius: 3 },
+                    y: {
+                        grid: { color: 'rgba(0,0,0,0.08)' },
+                        ticks: { precision: 0 },
                     },
                 },
-            });
-        } else {
-            if (elements.graphCanvas) {
-                elements.graphCanvas.classList.add('hidden');
-            }
-            if (elements.graphEmpty) {
-                elements.graphEmpty.classList.remove('hidden');
-            }
-        }
-
-        elements.graphOverlay.classList.remove('hidden');
-        if (elements.graphClose) {
-            elements.graphClose.focus();
-        }
+                elements: {
+                    point: { radius: 3 },
+                },
+            },
+        });
     }
 
     function closeGraphOverlay() {
@@ -668,13 +697,17 @@
                     const status = escapeHtml((result.status || '').toUpperCase());
                     const available = result.is_available == null ? '—' : result.is_available ? 'Ja' : 'Nee';
                     const responseTime = typeof result.response_time_ms === 'number' ? `${result.response_time_ms} ms` : '—';
+                    const changeSummaryHtml = renderChangeSummary(result.details || {});
                     return `
                         <tr>
                             <td>${escapeHtml(formatDate(result.checked_at))}</td>
                             <td>${status}</td>
                             <td>${escapeHtml(available)}</td>
                             <td>${escapeHtml(responseTime)}</td>
-                            <td>${escapeHtml(result.message || '')}</td>
+                            <td>
+                                ${escapeHtml(result.message || '')}
+                                ${changeSummaryHtml}
+                            </td>
                         </tr>
                     `;
                 })

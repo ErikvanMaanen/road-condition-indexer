@@ -601,6 +601,10 @@ select { padding:.5rem; font-size:1rem; border:1px solid var(--rci-border); bord
 .monitor-log-table th,
 .monitor-log-table td { text-align:left; padding:.6rem .8rem; border-bottom:1px solid var(--rci-border); font-size:.9rem; }
 .monitor-log-table tbody tr:hover { background:var(--rci-bg-alt); }
+.monitor-log-change { margin-top:.5rem; padding:.5rem .6rem; background:var(--rci-surface-alt); border-radius:var(--rci-radius); border:1px solid var(--rci-border); font-size:.8rem; }
+.monitor-log-change-heading { margin:0 0 .35rem; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--rci-text-muted); }
+.monitor-log-diff { margin:0; white-space:pre-wrap; word-break:break-word; font-family:var(--rci-mono-font, "SFMono-Regular", "Consolas", "Liberation Mono", monospace); font-size:.75rem; line-height:1.4; }
+.monitor-log-change-meta { margin-top:.35rem; font-size:.7rem; color:var(--rci-text-muted); }
 .monitor-graph-panel { gap:.75rem; }
 .monitor-graph-canvas { width:100%; height:240px; }
 .monitor-graph-empty { text-align:center; font-size:.85rem; color:var(--rci-text-muted); }
@@ -619,4 +623,5 @@ select { padding:.5rem; font-size:1rem; border:1px solid var(--rci-border); bord
 [data-theme="dark"] .monitor-toggle.is-off { background:#23303a; color:#9fb3c8; border-color:#2f3d47; }
 [data-theme="dark"] .monitor-graph-panel { background:#1f2a33; border:1px solid #2f3d47; }
 [data-theme="dark"] .monitor-log-panel { background:#1f2a33; border:1px solid #2f3d47; }
+[data-theme="dark"] .monitor-log-change { background:#23303a; border-color:#2f3d47; }
 [data-theme="dark"] .monitor-graph-empty { color:#9fb3c8; }
