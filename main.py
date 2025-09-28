@@ -41,6 +41,7 @@ import re
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from html import unescape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
 from urllib.parse import urlparse
@@ -174,6 +175,12 @@ POLLING_INTERVAL_UNITS: Dict[str, int] = {
     "hours": 3600,
     "days": 86400,
 }
+
+SHARED_OBJECT_TITLE_MAX_LENGTH = 500
+SHARED_OBJECT_TITLE_SCAN_LIMIT = 8192
+SHARED_OBJECT_TITLE_TIMEOUT = 5
+SHARED_OBJECT_USER_AGENT = "RCI-SharedObjects/1.0 (+https://road-condition-indexer.local)"
+_PAGE_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
 def calculate_polling_interval_seconds(value: int, unit: str) -> int:
@@ -3288,16 +3295,75 @@ def _ensure_media_type(upload: UploadFile) -> None:
         raise ValueError("Alleen audio- of videobestanden worden ondersteund")
 
 
+def _fetch_page_title(url: Optional[str]) -> Optional[str]:
+    """Retrieve the page title for a URL to use as the shared object name."""
+    if not url:
+        return None
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    try:
+        response = requests.get(
+            url,
+            timeout=SHARED_OBJECT_TITLE_TIMEOUT,
+            headers={"User-Agent": SHARED_OBJECT_USER_AGENT},
+            allow_redirects=True,
+            stream=True,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:  # pragma: no cover - network variability
+        log_warning(
+            f"Failed to fetch page title for shared URL {url}: {exc}",
+            LogCategory.USER_ACTION,
+        )
+        return None
+
+    text_chunks: List[str] = []
+    bytes_read = 0
+    try:
+        for chunk in response.iter_content(chunk_size=2048, decode_unicode=True):
+            if not chunk:
+                continue
+            text_chunks.append(chunk)
+            bytes_read += len(chunk)
+            if bytes_read >= SHARED_OBJECT_TITLE_SCAN_LIMIT:
+                break
+    finally:
+        response.close()
+
+    snippet = "".join(text_chunks)
+    match = _PAGE_TITLE_RE.search(snippet)
+    if not match:
+        return None
+
+    title = unescape(match.group(1) or "")
+    title = re.sub(r"\s+", " ", title).strip()
+    if not title:
+        return None
+
+    if len(title) > SHARED_OBJECT_TITLE_MAX_LENGTH:
+        title = title[: SHARED_OBJECT_TITLE_MAX_LENGTH].rstrip()
+    return title
+
+
 @app.post("/api/shared")
 def create_shared_object(request: SharedObjectRequest, http_request: Request):
     """Create a new shared object."""
     try:
         user_ip = get_client_ip(http_request)
         user_agent = http_request.headers.get("user-agent")
-        
+
+        object_name = request.object_name
+        if request.object_type.lower() == "url":
+            fetched_title = _fetch_page_title(request.object_url or request.object_data)
+            if fetched_title:
+                object_name = fetched_title
+
         shared_id = db_manager.insert_shared_object(
             object_type=request.object_type,
-            object_name=request.object_name,
+            object_name=object_name,
             object_data=request.object_data,
             object_url=request.object_url,
             note=request.note,
