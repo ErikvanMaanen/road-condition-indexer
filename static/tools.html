@@ -216,6 +216,73 @@
     </div>
 </div>
 
+<!-- Base64 Toolkit Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('base64-toolkit')">
+        <span>🧬 Base64 Toolkit</span>
+        <span class="section-toggle" id="base64-toolkit-toggle">▶</span>
+    </div>
+    <div class="section-content" id="base64-toolkit-content">
+        <label for="base64-input" class="sr-only">Base64 input</label>
+        <textarea id="base64-input" rows="5" class="w-100" placeholder="Paste text or Base64 data here..."></textarea>
+        <div class="mt-05 flex flex-wrap gap-05">
+            <button id="base64-encode-btn">Encode ➜</button>
+            <button id="base64-decode-btn">Decode ➜</button>
+            <button id="base64-clear-btn" class="secondary">Clear</button>
+            <button id="base64-copy-btn" class="secondary">Copy Output</button>
+        </div>
+        <label for="base64-output" class="sr-only">Base64 output</label>
+        <textarea id="base64-output" rows="5" class="w-100 mt-05" placeholder="Results will appear here" readonly></textarea>
+        <div id="base64-status" class="mt-05 text-sm rci-muted"></div>
+    </div>
+</div>
+
+<!-- UUID Generator Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('uuid-generator')">
+        <span>🆔 UUID Generator</span>
+        <span class="section-toggle" id="uuid-generator-toggle">▶</span>
+    </div>
+    <div class="section-content" id="uuid-generator-content">
+        <div class="flex flex-wrap gap-05 items-center">
+            <label for="uuid-count" class="sr-only">Number of UUIDs</label>
+            <input type="number" id="uuid-count" min="1" max="50" value="5" class="w-auto" aria-label="Number of UUIDs to generate">
+            <button id="uuid-generate-btn">Generate</button>
+            <button id="uuid-copy-btn" class="secondary" disabled>Copy All</button>
+        </div>
+        <div id="uuid-results" class="mt-05 result-box" aria-live="polite"></div>
+    </div>
+</div>
+
+<!-- Hash Generator Section -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('hash-generator')">
+        <span>🔐 Hash Generator</span>
+        <span class="section-toggle" id="hash-generator-toggle">▶</span>
+    </div>
+    <div class="section-content" id="hash-generator-content">
+        <p class="text-sm rci-muted">Generate secure digests for text or files to share fingerprints or verify changes.</p>
+        <textarea id="hash-text" rows="4" class="w-100" placeholder="Enter text to hash..."></textarea>
+        <div class="mt-05 flex flex-wrap gap-05 items-center">
+            <input type="file" id="hash-file" aria-label="Select file to hash">
+            <span id="hash-file-name" class="text-sm rci-muted"></span>
+        </div>
+        <fieldset class="mt-05 hash-options">
+            <legend class="text-sm">Algorithms</legend>
+            <label><input type="checkbox" name="hash-algo" value="SHA-1" checked> SHA-1</label>
+            <label><input type="checkbox" name="hash-algo" value="SHA-256" checked> SHA-256</label>
+            <label><input type="checkbox" name="hash-algo" value="SHA-384"> SHA-384</label>
+            <label><input type="checkbox" name="hash-algo" value="SHA-512"> SHA-512</label>
+        </fieldset>
+        <div class="mt-05 flex flex-wrap gap-05">
+            <button id="hash-generate-btn">Compute Hashes</button>
+            <button id="hash-clear-btn" class="secondary">Clear</button>
+        </div>
+        <div id="hash-results" class="mt-05"></div>
+        <div id="hash-status" class="mt-05 text-sm rci-muted" aria-live="polite"></div>
+    </div>
+</div>
+
 <script>
 function toggleSection(sectionId) {
     const content = document.getElementById(sectionId + '-content');
@@ -1473,7 +1540,7 @@ function deepEqual(a, b) {
     if (a === b) return true;
     if (a == null || b == null) return false;
     if (typeof a !== typeof b) return false;
-    
+
     if (Array.isArray(a)) {
         if (!Array.isArray(b) || a.length !== b.length) return false;
         for (let i = 0; i < a.length; i++) {
@@ -1481,7 +1548,7 @@ function deepEqual(a, b) {
         }
         return true;
     }
-    
+
     if (typeof a === 'object') {
         const keysA = Object.keys(a);
         const keysB = Object.keys(b);
@@ -1491,8 +1558,252 @@ function deepEqual(a, b) {
         }
         return true;
     }
-    
+
     return false;
+}
+
+// Base64 Toolkit
+const base64Input = document.getElementById('base64-input');
+const base64Output = document.getElementById('base64-output');
+const base64Status = document.getElementById('base64-status');
+const base64EncodeBtn = document.getElementById('base64-encode-btn');
+const base64DecodeBtn = document.getElementById('base64-decode-btn');
+const base64ClearBtn = document.getElementById('base64-clear-btn');
+const base64CopyBtn = document.getElementById('base64-copy-btn');
+
+function updateBase64Status(message, isError = false) {
+    if (!base64Status) return;
+    base64Status.textContent = message;
+    base64Status.classList.toggle('text-error', Boolean(isError));
+}
+
+function encodeTextToBase64(text) {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text);
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary);
+}
+
+function decodeBase64ToText(data) {
+    const binary = atob(data);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    const decoder = new TextDecoder();
+    return decoder.decode(bytes);
+}
+
+base64EncodeBtn.addEventListener('click', () => {
+    try {
+        const input = base64Input.value || '';
+        if (!input) { updateBase64Status('Enter text to encode.'); return; }
+        const encoded = encodeTextToBase64(input);
+        base64Output.value = encoded;
+        updateBase64Status('Encoded text to Base64.');
+    } catch (err) {
+        console.error('Base64 encode failed', err);
+        updateBase64Status('Failed to encode text. Ensure input is valid.', true);
+    }
+});
+
+base64DecodeBtn.addEventListener('click', () => {
+    const input = base64Input.value.trim();
+    if (!input) { updateBase64Status('Enter Base64 data to decode.'); return; }
+    try {
+        const decoded = decodeBase64ToText(input);
+        base64Output.value = decoded;
+        updateBase64Status('Decoded Base64 input.');
+    } catch (err) {
+        console.error('Base64 decode failed', err);
+        updateBase64Status('Invalid Base64 data provided.', true);
+    }
+});
+
+base64ClearBtn.addEventListener('click', () => {
+    base64Input.value = '';
+    base64Output.value = '';
+    updateBase64Status('Cleared Base64 tool.');
+});
+
+base64CopyBtn.addEventListener('click', async () => {
+    if (!base64Output.value) { updateBase64Status('Nothing to copy yet.', true); return; }
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(base64Output.value);
+        } else {
+            base64Output.select();
+            document.execCommand('copy');
+        }
+        updateBase64Status('Copied output to clipboard.');
+    } catch (err) {
+        console.error('Clipboard copy failed', err);
+        updateBase64Status('Unable to copy to clipboard.', true);
+    }
+});
+
+// UUID Generator
+const uuidCountInput = document.getElementById('uuid-count');
+const uuidGenerateBtn = document.getElementById('uuid-generate-btn');
+const uuidResults = document.getElementById('uuid-results');
+const uuidCopyBtn = document.getElementById('uuid-copy-btn');
+
+function generateUuidList(count) {
+    const uuids = [];
+    for (let i = 0; i < count; i++) {
+        if (crypto.randomUUID) {
+            uuids.push(crypto.randomUUID());
+        } else {
+            // Fallback using random values
+            const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+            uuids.push(template.replace(/[xy]/g, c => {
+                const r = crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            }));
+        }
+    }
+    return uuids;
+}
+
+uuidGenerateBtn.addEventListener('click', () => {
+    const count = Math.min(Math.max(parseInt(uuidCountInput.value, 10) || 0, 1), 50);
+    uuidCountInput.value = count;
+    const uuids = generateUuidList(count);
+    const listItems = uuids.map(uuid => `<li><code>${uuid}</code></li>`).join('');
+    uuidResults.innerHTML = `<ul class="uuid-list">${listItems}</ul>`;
+    uuidCopyBtn.disabled = uuids.length === 0;
+    uuidCopyBtn.dataset.uuids = uuids.join('\n');
+});
+
+uuidCopyBtn.addEventListener('click', async () => {
+    const data = uuidCopyBtn.dataset.uuids || '';
+    if (!data) return;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(data);
+        } else {
+            const temp = document.createElement('textarea');
+            temp.value = data;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+        }
+    } catch (err) {
+        alert('Unable to copy UUIDs: ' + err.message);
+    }
+});
+
+// Hash Generator
+const hashText = document.getElementById('hash-text');
+const hashFile = document.getElementById('hash-file');
+const hashFileName = document.getElementById('hash-file-name');
+const hashGenerateBtn = document.getElementById('hash-generate-btn');
+const hashClearBtn = document.getElementById('hash-clear-btn');
+const hashResults = document.getElementById('hash-results');
+const hashStatus = document.getElementById('hash-status');
+
+hashFile.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    hashFileName.textContent = file ? `Selected: ${file.name}` : '';
+});
+
+hashGenerateBtn.addEventListener('click', async () => {
+    const algorithms = Array.from(document.querySelectorAll('input[name="hash-algo"]:checked')).map(el => el.value);
+    if (!algorithms.length) { setHashStatus('Select at least one algorithm.', true); return; }
+    if (!(window.crypto && crypto.subtle && crypto.subtle.digest)) {
+        setHashStatus('Hashing is not supported in this browser environment.', true);
+        return;
+    }
+
+    const file = hashFile.files && hashFile.files[0];
+    let buffer;
+    let label;
+    try {
+        if (file) {
+            buffer = await file.arrayBuffer();
+            label = `File: ${file.name}`;
+        } else {
+            const text = hashText.value;
+            if (!text) { setHashStatus('Provide text or choose a file to hash.', true); return; }
+            buffer = new TextEncoder().encode(text).buffer;
+            label = 'Text input';
+        }
+    } catch (err) {
+        console.error('Failed to read input for hashing', err);
+        setHashStatus('Unable to read input for hashing.', true);
+        return;
+    }
+
+    const digestResults = [];
+    for (const algo of algorithms) {
+        try {
+            const digest = await crypto.subtle.digest(algo, buffer);
+            digestResults.push({ algorithm: algo, hash: bufferToHex(digest) });
+        } catch (err) {
+            console.error('Digest failed for', algo, err);
+            digestResults.push({ algorithm: algo, error: err.message || 'Digest failed' });
+        }
+    }
+
+    renderHashResults(digestResults, label);
+});
+
+hashClearBtn.addEventListener('click', () => {
+    hashText.value = '';
+    hashFile.value = '';
+    hashFileName.textContent = '';
+    hashResults.innerHTML = '';
+    setHashStatus('Hash tool reset.');
+});
+
+hashResults.addEventListener('click', async e => {
+    const button = e.target.closest('[data-copy-hash]');
+    if (!button) return;
+    const hash = button.getAttribute('data-copy-hash');
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(hash);
+        } else {
+            const temp = document.createElement('textarea');
+            temp.value = hash;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+        }
+        setHashStatus('Hash copied to clipboard.');
+    } catch (err) {
+        console.error('Failed to copy hash', err);
+        setHashStatus('Failed to copy hash to clipboard.', true);
+    }
+});
+
+function renderHashResults(results, label) {
+    if (!results.length) { hashResults.innerHTML = ''; return; }
+    let html = `<p class="text-sm"><strong>Source:</strong> ${escapeHtml(label || '')}</p>`;
+    html += '<table class="hash-table">';
+    html += '<thead><tr><th>Algorithm</th><th>Result</th><th></th></tr></thead><tbody>';
+    results.forEach(item => {
+        if (item.error) {
+            html += `<tr><td>${escapeHtml(item.algorithm)}</td><td class="text-error">${escapeHtml(item.error)}</td><td></td></tr>`;
+        } else {
+            html += `<tr><td>${escapeHtml(item.algorithm)}</td><td><code>${item.hash}</code></td><td><button class="secondary" data-copy-hash="${item.hash}">Copy</button></td></tr>`;
+        }
+    });
+    html += '</tbody></table>';
+    hashResults.innerHTML = html;
+    setHashStatus('Hashes computed.');
+}
+
+function setHashStatus(message, isError = false) {
+    if (!hashStatus) return;
+    hashStatus.textContent = message;
+    hashStatus.classList.toggle('text-error', Boolean(isError));
+}
+
+function bufferToHex(buffer) {
+    const bytes = new Uint8Array(buffer);
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 </script>
