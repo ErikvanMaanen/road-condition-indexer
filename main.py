@@ -34,6 +34,7 @@ def load_environment_config():
 
 load_environment_config()
 import asyncio
+import difflib
 import hashlib
 import json
 import math
@@ -59,6 +60,7 @@ warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
 import numpy as np
 import requests
+from bs4 import BeautifulSoup
 from fastapi import (Depends, FastAPI, File, Form, HTTPException, Query,
                      Request, UploadFile)
 from fastapi.concurrency import run_in_threadpool
@@ -145,6 +147,134 @@ MONITOR_PORT_DEFAULTS: Dict[str, int] = {
     "ssh": 22,
     "dns": 53,
 }
+
+MONITOR_SNAPSHOT_MAX_CHARS = 20_000
+_REMOVABLE_SECTION_KEYWORDS = {
+    "banner",
+    "cookie",
+    "advert",
+    "ads",
+    "promo",
+    "breadcrumb",
+    "sidebar",
+    "share",
+    "social",
+    "newsletter",
+}
+
+
+def _decode_bytes_to_text(content_bytes: bytes) -> str:
+    """Decode bytes to text using a best-effort approach."""
+    for encoding in ("utf-8", "utf-16", "latin-1"):
+        try:
+            return content_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content_bytes.decode("utf-8", errors="ignore")
+
+
+def _sanitize_monitor_content(content_bytes: bytes, content_type: Optional[str] = None) -> str:
+    """Extract the primary textual content from a monitored page."""
+    if not content_bytes:
+        return ""
+
+    if content_type and "html" not in content_type.lower():
+        text = _decode_bytes_to_text(content_bytes)
+        return _normalize_snapshot_text(text)
+
+    try:
+        soup = BeautifulSoup(content_bytes, "html.parser")
+    except Exception:
+        text = _decode_bytes_to_text(content_bytes)
+        return _normalize_snapshot_text(text)
+
+    for tag in ("script", "style", "noscript", "iframe", "footer", "nav", "aside", "form"):
+        for element in soup.find_all(tag):
+            element.decompose()
+
+    for element in list(soup.find_all(True)):
+        attributes = []
+        for attr in ("class", "id", "role", "data-testid", "data-component"):
+            value = element.get(attr)
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple, set)):
+                attributes.extend(str(item).lower() for item in value)
+            else:
+                attributes.append(str(value).lower())
+        if any(any(keyword in attr for keyword in _REMOVABLE_SECTION_KEYWORDS) for attr in attributes):
+            element.decompose()
+
+    for element in soup.find_all("time"):
+        element.decompose()
+
+    main_container = None
+    for selector in ("main", "[role='main']", "article", "section#content", "div#content", "section.content", "div.content"):
+        found = soup.select_one(selector)
+        if found:
+            main_container = found
+            break
+
+    if main_container is None:
+        main_container = soup.body or soup
+
+    text = main_container.get_text(separator="\n", strip=True)
+    return _normalize_snapshot_text(text)
+
+
+def _normalize_snapshot_text(text: str) -> str:
+    """Normalize snapshot text by removing noise and harmonising whitespace."""
+    if not text:
+        return ""
+
+    text = unescape(text)
+    lines: List[str] = []
+    for raw_line in text.splitlines():
+        cleaned_line = re.sub(r"\s+", " ", raw_line.strip())
+        cleaned_line = _strip_datetime_fragments(cleaned_line)
+        if not cleaned_line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        lines.append(cleaned_line)
+
+    while lines and lines[-1] == "":
+        lines.pop()
+
+    normalized = "\n".join(lines)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    normalized = normalized.strip()
+    if len(normalized) > MONITOR_SNAPSHOT_MAX_CHARS:
+        normalized = normalized[: MONITOR_SNAPSHOT_MAX_CHARS - 1].rstrip() + "…"
+    return normalized
+
+
+def _strip_datetime_fragments(text: str) -> str:
+    """Remove common date/time fragments from text."""
+    patterns = [
+        r"\b\d{1,2}:\d{2}(?::\d{2})?\b",
+        r"\b\d{4}-\d{2}-\d{2}\b",
+        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
+        r"\b\d{1,2}\s+(?:jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec|january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b",
+        r"\b(?:ma|di|wo|do|vr|za|zo)\s+\d{1,2}\s+\w+\b",
+    ]
+    for pattern in patterns:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def _summarize_text_diff(previous: str, current: str, max_lines: int = 20) -> str:
+    """Produce a concise summary of textual differences."""
+    previous_lines = [line for line in (previous or "").splitlines() if line.strip()]
+    current_lines = [line for line in (current or "").splitlines() if line.strip()]
+    diff = difflib.ndiff(previous_lines, current_lines)
+    summary: List[str] = []
+    for line in diff:
+        if line.startswith(("+", "-")):
+            summary.append(line)
+        if len(summary) >= max_lines:
+            break
+    return "\n".join(summary).strip()
 
 
 def _extract_ping_average_ms(output: str) -> Optional[float]:
@@ -238,24 +368,73 @@ def perform_url_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
         duration_ms = int((time.perf_counter() - start_time) * 1000)
         is_available = response.status_code < 400
         content_bytes = response.content or b""
-        content_hash = hashlib.sha256(content_bytes).hexdigest()
+        raw_content_hash = hashlib.sha256(content_bytes).hexdigest()
+        is_change_monitor = monitor.get("url_check_type") == "change"
+        sanitized_text = _sanitize_monitor_content(
+            content_bytes,
+            response.headers.get("Content-Type"),
+        ) if is_change_monitor else ""
+        sanitized_hash = (
+            hashlib.sha256(sanitized_text.encode("utf-8")).hexdigest()
+            if sanitized_text
+            else None
+        )
+        stored_hash = sanitized_hash or raw_content_hash
 
         message = f"HTTP {response.status_code}"
         status = "success" if is_available else "failure"
         change_detected = False
+        change_reference_snapshot: Optional[Dict[str, Any]] = None
 
-        if monitor.get("url_check_type") == "change" and is_available:
+        if is_change_monitor and is_available:
             previous_hash = db_manager.get_latest_monitor_hash(monitor["id"])
-            if previous_hash and previous_hash != content_hash:
+            if stored_hash and previous_hash and previous_hash != stored_hash:
                 change_detected = True
                 status = "warning"
                 message += " · Inhoud gewijzigd"
+            elif stored_hash and not previous_hash:
+                # First measurement becomes the baseline snapshot.
+                previous_hash = stored_hash
+
+            if change_detected:
+                change_reference_snapshot = db_manager.get_last_stable_monitor_result(
+                    monitor["id"]
+                )
 
         details = {
             "status_code": response.status_code,
             "content_length": len(content_bytes),
             "url": target_url,
+            "raw_content_hash": raw_content_hash,
         }
+
+        if sanitized_hash:
+            details["sanitized_hash"] = sanitized_hash
+        if sanitized_text:
+            details["sanitized_content"] = sanitized_text
+
+        if change_reference_snapshot:
+            previous_details = change_reference_snapshot.get("details") or {}
+            previous_text = previous_details.get("sanitized_content") or ""
+            summary = _summarize_text_diff(previous_text, sanitized_text)
+            if summary:
+                details["change_summary"] = summary
+            else:
+                details["change_summary"] = (
+                    "Pagina komt overeen met de laatste stabiele versie;"
+                    " wijziging kan ongedaan zijn gemaakt."
+                )
+            details["change_reference_checked_at"] = change_reference_snapshot.get(
+                "checked_at"
+            )
+            details["change_reference_hash"] = change_reference_snapshot.get(
+                "content_hash"
+            )
+
+            if sanitized_hash and sanitized_hash == change_reference_snapshot.get("content_hash"):
+                message += " · Terug naar stabiele versie"
+        elif change_detected:
+            details["change_summary"] = "Geen stabiele referentie beschikbaar voor vergelijking."
 
         return db_manager.record_monitor_result(
             monitor_id=monitor["id"],
@@ -263,7 +442,7 @@ def perform_url_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
             is_available=is_available,
             response_time_ms=duration_ms,
             status_code=response.status_code,
-            content_hash=content_hash,
+            content_hash=stored_hash,
             change_detected=change_detected,
             message=message,
             details=details,
@@ -3164,6 +3343,25 @@ def get_monitor_logs(
     except Exception as exc:
         log_error(f"Failed to fetch monitor logs for {monitor_id}: {exc}")
         raise HTTPException(status_code=500, detail="Monitorlog ophalen mislukt") from exc
+
+
+@app.get("/api/monitors/{monitor_id}/history")
+def get_monitor_history(monitor_id: int, dep: None = Depends(password_dependency)):
+    try:
+        monitor = db_manager.get_monitor(monitor_id)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        results = db_manager.get_monitor_results_history(monitor_id)
+        return {
+            "status": "ok",
+            "monitor": enrich_monitor_payload(monitor),
+            "results": results,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to fetch monitor history for {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitorhistorie ophalen mislukt") from exc
 
 
 @app.post("/api/monitors/{monitor_id}/run")

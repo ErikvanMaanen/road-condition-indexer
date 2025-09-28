@@ -2997,6 +2997,35 @@ class DatabaseManager:
             )
             raise
 
+    def get_monitor_results_history(self, monitor_id: int) -> List[Dict[str, Any]]:
+        """Return the complete result history for a monitor."""
+        try:
+            query = text(
+                f"""
+                SELECT
+                    id, monitor_id, checked_at, status, is_available,
+                    response_time_ms, status_code, content_hash,
+                    change_detected, message, details
+                FROM {TABLE_MONITOR_RESULTS}
+                WHERE monitor_id = :monitor_id
+                ORDER BY checked_at ASC, id ASC
+                """
+            )
+
+            with self.get_connection_context() as conn:
+                result = conn.execute(query, {"monitor_id": monitor_id})
+                rows = result.fetchall()
+
+            return [self._serialize_monitor_result_row(row) for row in rows]
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to fetch monitor history for {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
+            raise
+
     def get_latest_monitor_result(self, monitor_id: int) -> Optional[Dict[str, Any]]:
         """Return the latest result entry for a monitor."""
         try:
@@ -3056,6 +3085,40 @@ class DatabaseManager:
         except Exception as exc:
             self.log_debug(
                 f"Failed to fetch latest monitor hash for {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
+            raise
+
+    def get_last_stable_monitor_result(self, monitor_id: int) -> Optional[Dict[str, Any]]:
+        """Return the latest result that did not report a change."""
+        try:
+            query = text(
+                f"""
+                SELECT TOP 1
+                    id, monitor_id, checked_at, status, is_available,
+                    response_time_ms, status_code, content_hash,
+                    change_detected, message, details
+                FROM {TABLE_MONITOR_RESULTS}
+                WHERE monitor_id = :monitor_id
+                  AND content_hash IS NOT NULL AND content_hash <> ''
+                  AND (change_detected IS NULL OR change_detected = 0)
+                ORDER BY checked_at DESC, id DESC
+                """
+            )
+
+            with self.get_connection_context() as conn:
+                result = conn.execute(query, {"monitor_id": monitor_id})
+                row = result.fetchone()
+
+            if row is None:
+                return None
+
+            return self._serialize_monitor_result_row(row)
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to fetch stable monitor snapshot for {monitor_id}: {exc}",
                 LogLevel.ERROR,
                 LogCategory.DATABASE,
             )
