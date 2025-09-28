@@ -64,6 +64,60 @@
         <div id="memo-status" class="status-message" role="status" aria-live="polite"></div>
     </section>
 
+    <section id="memo-camera-section" class="memo-camera rci-card" aria-labelledby="memo-camera-heading">
+        <div class="memo-section-header">
+            <h2 id="memo-camera-heading">Camera &amp; scanner</h2>
+            <p class="memo-description">Gebruik de camera om foto&rsquo;s, QR-codes en video&rsquo;s snel vast te leggen en op te slaan als object.</p>
+        </div>
+        <div class="memo-camera-body">
+            <div class="memo-camera-preview">
+                <video id="memo-camera-preview" class="memo-camera-stream" autoplay playsinline muted></video>
+                <canvas id="memo-photo-canvas" class="memo-photo-canvas" hidden></canvas>
+                <div class="memo-camera-toggle">
+                    <button id="memo-camera-start" type="button" class="memo-camera-btn focus-ring">Camera starten</button>
+                    <button id="memo-camera-stop" type="button" class="memo-camera-btn focus-ring" disabled>Camera stoppen</button>
+                </div>
+            </div>
+            <div class="memo-camera-panels">
+                <article class="memo-camera-panel" aria-labelledby="memo-photo-heading">
+                    <h3 id="memo-photo-heading">Foto maken</h3>
+                    <p class="memo-description">Maak een foto en sla deze direct op als gedeeld object.</p>
+                    <div class="memo-camera-panel-actions">
+                        <button id="memo-photo-capture" type="button" class="memo-camera-btn focus-ring" disabled>📸 Foto nemen</button>
+                        <button id="memo-photo-save" type="button" class="memo-camera-btn focus-ring" disabled>Object opslaan</button>
+                    </div>
+                    <figure class="memo-photo-preview" aria-live="polite">
+                        <img id="memo-photo-preview" alt="Voorbeeld van de vastgelegde foto" hidden>
+                        <figcaption id="memo-photo-meta"></figcaption>
+                    </figure>
+                </article>
+
+                <article class="memo-camera-panel" aria-labelledby="memo-qr-heading">
+                    <h3 id="memo-qr-heading">QR-code scannen</h3>
+                    <p class="memo-description">Start de scanner, richt op een QR-code en sla het resultaat op.</p>
+                    <div class="memo-camera-panel-actions">
+                        <button id="memo-qr-toggle" type="button" class="memo-camera-btn focus-ring" disabled>🔍 QR-scan starten</button>
+                        <button id="memo-qr-save" type="button" class="memo-camera-btn focus-ring" disabled>Resultaat opslaan</button>
+                    </div>
+                    <div id="memo-qr-result" class="memo-qr-result" aria-live="polite"></div>
+                </article>
+
+                <article class="memo-camera-panel" aria-labelledby="memo-video-heading">
+                    <h3 id="memo-video-heading">Video opnemen</h3>
+                    <p class="memo-description">Neem een korte video op en bewaar het fragment als object.</p>
+                    <div class="memo-camera-panel-actions memo-camera-panel-actions--stacked">
+                        <button id="memo-video-record" type="button" class="memo-camera-btn focus-ring" disabled>🎥 Start opname</button>
+                        <button id="memo-video-stop" type="button" class="memo-camera-btn focus-ring" disabled>Stop opname</button>
+                        <button id="memo-video-save" type="button" class="memo-camera-btn focus-ring" disabled>Object opslaan</button>
+                    </div>
+                    <video id="memo-video-preview" class="memo-video-preview" controls playsinline hidden></video>
+                    <p id="memo-video-meta" class="memo-video-meta" aria-live="polite"></p>
+                </article>
+            </div>
+        </div>
+        <div id="memo-camera-status" class="status-message" role="status" aria-live="polite"></div>
+    </section>
+
     <section class="memo-list rci-card" aria-labelledby="memo-list-heading">
         <div class="memo-section-header">
             <h2 id="memo-list-heading">Memo-overzicht</h2>
