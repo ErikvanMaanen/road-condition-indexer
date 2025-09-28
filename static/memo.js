@@ -19,6 +19,47 @@
   const transcriptionSubmitButton = document.getElementById('memo-transcription-submit');
   const memoListEl = document.getElementById('memo-list');
 
+  const cameraSection = document.getElementById('memo-camera-section');
+  const cameraPreviewEl = document.getElementById('memo-camera-preview');
+  const cameraStartButton = document.getElementById('memo-camera-start');
+  const cameraStopButton = document.getElementById('memo-camera-stop');
+  const cameraStatusEl = document.getElementById('memo-camera-status');
+  const photoCanvas = document.getElementById('memo-photo-canvas');
+  const photoCaptureButton = document.getElementById('memo-photo-capture');
+  const photoSaveButton = document.getElementById('memo-photo-save');
+  const photoPreviewImage = document.getElementById('memo-photo-preview');
+  const photoMetaEl = document.getElementById('memo-photo-meta');
+  const qrToggleButton = document.getElementById('memo-qr-toggle');
+  const qrSaveButton = document.getElementById('memo-qr-save');
+  const qrResultEl = document.getElementById('memo-qr-result');
+  const videoRecordButton = document.getElementById('memo-video-record');
+  const videoStopButton = document.getElementById('memo-video-stop');
+  const videoSaveButton = document.getElementById('memo-video-save');
+  const videoPreviewEl = document.getElementById('memo-video-preview');
+  const videoMetaEl = document.getElementById('memo-video-meta');
+
+  const cameraState = {
+    stream: null,
+    startPromise: null,
+    barcodeDetector: null,
+    qrActive: false,
+    qrLastValue: '',
+    qrLastFormat: '',
+    qrScanTimeoutId: null,
+    photoBlob: null,
+    photoPreviewUrl: null,
+    recordedChunks: [],
+    recorder: null,
+    recorderMimeType: '',
+    recordingCancelled: false,
+    videoBlob: null,
+    videoPreviewUrl: null,
+    cameraStatusTimeoutId: null
+  };
+
+  const supportsBarcodeDetector = typeof window !== 'undefined' && typeof window.BarcodeDetector === 'function';
+  const supportsMediaRecorder = typeof window !== 'undefined' && typeof window.MediaRecorder === 'function';
+
   let statusTimeoutId = null;
   let transcriptionStatusTimeoutId = null;
 
@@ -95,6 +136,31 @@
     }
   }
 
+  function formatFileSize(bytes) {
+    const value = typeof bytes === 'number' && Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
+    if (value === 0) {
+      return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+    const size = value / (1024 ** exponent);
+    return `${size.toFixed(size >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+  }
+
+  function formatTimestampForName() {
+    const now = new Date();
+    const parts = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+      String(now.getSeconds()).padStart(2, '0')
+    ];
+    return `${parts[0]}${parts[1]}${parts[2]}-${parts[3]}${parts[4]}${parts[5]}`;
+  }
+
   function showStatus(message, type = 'info') {
     if (!statusEl) {
       return;
@@ -138,6 +204,869 @@
       window.clearTimeout(statusTimeoutId);
       statusTimeoutId = null;
     }
+  }
+
+  function showCameraStatus(message, type = 'info') {
+    if (!cameraStatusEl) {
+      return;
+    }
+
+    cameraStatusEl.textContent = message;
+    cameraStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+    cameraStatusEl.style.display = message ? 'block' : 'none';
+
+    const className = type === 'success'
+      ? 'status-success'
+      : type === 'error'
+        ? 'status-error'
+        : type === 'warning'
+          ? 'status-warning'
+          : '';
+
+    if (className) {
+      cameraStatusEl.classList.add(className);
+    }
+
+    window.clearTimeout(cameraState.cameraStatusTimeoutId);
+    cameraState.cameraStatusTimeoutId = window.setTimeout(() => {
+      if (cameraStatusEl) {
+        cameraStatusEl.style.display = 'none';
+        cameraStatusEl.textContent = '';
+        cameraStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+      }
+      cameraState.cameraStatusTimeoutId = null;
+    }, 6000);
+  }
+
+  function clearCameraStatus() {
+    if (cameraStatusEl) {
+      cameraStatusEl.textContent = '';
+      cameraStatusEl.style.display = 'none';
+      cameraStatusEl.classList.remove('status-success', 'status-error', 'status-warning');
+    }
+    if (cameraState.cameraStatusTimeoutId) {
+      window.clearTimeout(cameraState.cameraStatusTimeoutId);
+      cameraState.cameraStatusTimeoutId = null;
+    }
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      if (!(blob instanceof Blob)) {
+        reject(new Error('Ongeldig bestand.'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          const commaIndex = result.indexOf(',');
+          resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+        } else {
+          reject(new Error('Kon media niet converteren.'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Kon media niet converteren.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function getExtensionFromMime(mimeType) {
+    if (!mimeType || typeof mimeType !== 'string') {
+      return '';
+    }
+    const lower = mimeType.toLowerCase();
+    if (lower.includes('jpeg')) { return 'jpg'; }
+    if (lower.includes('png')) { return 'png'; }
+    if (lower.includes('webp')) { return 'webp'; }
+    if (lower.includes('mp4')) { return 'mp4'; }
+    if (lower.includes('ogg')) { return 'ogg'; }
+    if (lower.includes('webm')) { return 'webm'; }
+    return '';
+  }
+
+  function tryParseUrl(value) {
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+    try {
+      return new URL(value);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function ensureBarcodeDetector() {
+    if (!supportsBarcodeDetector) {
+      return null;
+    }
+    if (!cameraState.barcodeDetector) {
+      try {
+        cameraState.barcodeDetector = new window.BarcodeDetector({
+          formats: ['qr_code', 'aztec', 'data_matrix']
+        });
+      } catch (error) {
+        console.error('Failed to initialise BarcodeDetector', error);
+        cameraState.barcodeDetector = null;
+      }
+    }
+    return cameraState.barcodeDetector;
+  }
+
+  function updateCameraButtons(hasStream) {
+    if (cameraStartButton) {
+      cameraStartButton.disabled = Boolean(hasStream);
+    }
+    if (cameraStopButton) {
+      cameraStopButton.disabled = !hasStream;
+    }
+    if (photoCaptureButton) {
+      photoCaptureButton.disabled = !hasStream;
+    }
+    if (photoSaveButton) {
+      photoSaveButton.disabled = !cameraState.photoBlob;
+    }
+    if (qrToggleButton) {
+      qrToggleButton.disabled = !hasStream || !supportsBarcodeDetector;
+      if (!supportsBarcodeDetector) {
+        qrToggleButton.textContent = 'QR-scanner niet ondersteund';
+      }
+    }
+    if (qrSaveButton) {
+      qrSaveButton.disabled = !cameraState.qrLastValue;
+    }
+    const isRecording = cameraState.recorder && cameraState.recorder.state === 'recording';
+    if (videoRecordButton) {
+      videoRecordButton.disabled = !hasStream || !supportsMediaRecorder || isRecording;
+      if (!supportsMediaRecorder) {
+        videoRecordButton.textContent = 'Video niet ondersteund';
+      }
+    }
+    if (videoStopButton) {
+      videoStopButton.disabled = !isRecording;
+    }
+    if (videoSaveButton) {
+      videoSaveButton.disabled = !cameraState.videoBlob;
+    }
+  }
+
+  async function ensureCameraStream() {
+    if (cameraState.stream) {
+      updateCameraButtons(true);
+      return cameraState.stream;
+    }
+
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      showCameraStatus('Camera wordt niet ondersteund op dit apparaat.', 'error');
+      return null;
+    }
+
+    if (cameraState.startPromise) {
+      return cameraState.startPromise;
+    }
+
+    clearCameraStatus();
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: true
+    };
+
+    cameraState.startPromise = navigator.mediaDevices.getUserMedia(constraints)
+      .then((stream) => {
+        cameraState.stream = stream;
+        if (cameraPreviewEl) {
+          cameraPreviewEl.srcObject = stream;
+          const playPromise = cameraPreviewEl.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => undefined);
+          }
+        }
+        updateCameraButtons(true);
+        showCameraStatus('Camera geactiveerd. Richt je toestel op het gewenste onderwerp.', 'success');
+        return stream;
+      })
+      .catch((error) => {
+        let message = 'Kon de camera niet starten.';
+        if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
+          message = 'Toegang tot de camera geweigerd.';
+        } else if (error && error.name === 'NotFoundError') {
+          message = 'Geen camera gevonden op dit apparaat.';
+        }
+        showCameraStatus(message, 'error');
+        throw error;
+      })
+      .finally(() => {
+        cameraState.startPromise = null;
+      });
+
+    return cameraState.startPromise;
+  }
+
+  function stopQrScanTimer() {
+    if (cameraState.qrScanTimeoutId) {
+      window.clearTimeout(cameraState.qrScanTimeoutId);
+      cameraState.qrScanTimeoutId = null;
+    }
+  }
+
+  function stopCameraStream() {
+    if (cameraState.recorder && cameraState.recorder.state === 'recording') {
+      stopVideoRecording(true);
+    }
+    stopQrScan({ keepResult: true });
+
+    const stream = cameraState.stream;
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (error) {
+          console.warn('Kon cameratrack niet stoppen', error);
+        }
+      });
+    }
+
+    cameraState.stream = null;
+    if (cameraPreviewEl) {
+      cameraPreviewEl.pause();
+      cameraPreviewEl.srcObject = null;
+    }
+    updateCameraButtons(false);
+    showCameraStatus('Camera gestopt.', 'info');
+  }
+
+  function resetPhotoPreview() {
+    if (cameraState.photoPreviewUrl) {
+      window.URL.revokeObjectURL(cameraState.photoPreviewUrl);
+      cameraState.photoPreviewUrl = null;
+    }
+    if (photoPreviewImage) {
+      photoPreviewImage.hidden = true;
+      photoPreviewImage.removeAttribute('src');
+    }
+    if (photoMetaEl) {
+      photoMetaEl.textContent = '';
+    }
+    cameraState.photoBlob = null;
+    if (photoSaveButton) {
+      photoSaveButton.disabled = true;
+    }
+  }
+
+  function updatePhotoPreview(blob, width, height) {
+    if (!photoPreviewImage) {
+      return;
+    }
+    if (cameraState.photoPreviewUrl) {
+      window.URL.revokeObjectURL(cameraState.photoPreviewUrl);
+      cameraState.photoPreviewUrl = null;
+    }
+    const previewUrl = window.URL.createObjectURL(blob);
+    cameraState.photoPreviewUrl = previewUrl;
+    photoPreviewImage.src = previewUrl;
+    photoPreviewImage.hidden = false;
+    if (photoMetaEl) {
+      const parts = [];
+      if (width && height) {
+        parts.push(`${width}×${height}px`);
+      }
+      parts.push(`${formatFileSize(blob.size)} • ${blob.type || 'image/jpeg'}`);
+      photoMetaEl.textContent = parts.join(' — ');
+    }
+    if (photoSaveButton) {
+      photoSaveButton.disabled = false;
+    }
+  }
+
+  async function capturePhoto() {
+    if (!photoCaptureButton) {
+      return;
+    }
+
+    try {
+      photoCaptureButton.disabled = true;
+      const stream = await ensureCameraStream();
+      if (!stream || !cameraPreviewEl || !photoCanvas) {
+        throw new Error('Camera niet beschikbaar.');
+      }
+
+      if (cameraPreviewEl.readyState < 2) {
+        await new Promise((resolve) => {
+          cameraPreviewEl.addEventListener('loadeddata', resolve, { once: true });
+        });
+      }
+
+      const width = cameraPreviewEl.videoWidth || 1280;
+      const height = cameraPreviewEl.videoHeight || 720;
+      photoCanvas.width = width;
+      photoCanvas.height = height;
+      const context = photoCanvas.getContext('2d', { willReadFrequently: true });
+      if (!context) {
+        throw new Error('Deze browser ondersteunt geen camerafoto.');
+      }
+      context.drawImage(cameraPreviewEl, 0, 0, width, height);
+
+      const blob = await new Promise((resolve, reject) => {
+        try {
+          photoCanvas.toBlob((result) => {
+            if (result) {
+              resolve(result);
+            } else {
+              reject(new Error('Kon de foto niet opslaan.'));
+            }
+          }, 'image/jpeg', 0.92);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      cameraState.photoBlob = blob;
+      updatePhotoPreview(blob, width, height);
+      updateCameraButtons(Boolean(cameraState.stream));
+      showCameraStatus('Foto vastgelegd. Controleer het voorbeeld en sla op als object.', 'success');
+    } catch (error) {
+      console.error('Failed to capture photo', error);
+      resetPhotoPreview();
+      showCameraStatus(error.message || 'Foto maken mislukt.', 'error');
+    } finally {
+      photoCaptureButton.disabled = !cameraState.stream;
+    }
+  }
+
+  async function savePhoto() {
+    if (!cameraState.photoBlob) {
+      showCameraStatus('Maak eerst een foto voordat je opslaat.', 'warning');
+      return;
+    }
+
+    if (photoSaveButton) {
+      photoSaveButton.disabled = true;
+      photoSaveButton.textContent = 'Opslaan…';
+    }
+
+    try {
+      const base64 = await blobToBase64(cameraState.photoBlob);
+      const mimeType = cameraState.photoBlob.type || 'image/jpeg';
+      const extension = getExtensionFromMime(mimeType) || 'jpg';
+      const payload = {
+        object_type: 'file',
+        object_name: `memo-foto-${formatTimestampForName()}.${extension}`,
+        object_data: base64,
+        file_size: cameraState.photoBlob.size,
+        mime_type: mimeType,
+        note: `Foto gemaakt via memo-camera op ${new Date().toLocaleString('nl-NL')}`
+      };
+      await saveSharedObject(payload);
+    } catch (error) {
+      if (error && error.message) {
+        showCameraStatus(error.message, 'error');
+      }
+    } finally {
+      if (photoSaveButton) {
+        photoSaveButton.disabled = !cameraState.photoBlob;
+        photoSaveButton.textContent = 'Object opslaan';
+      }
+    }
+  }
+
+  function updateQrResult(value, format) {
+    cameraState.qrLastValue = value || '';
+    cameraState.qrLastFormat = format || '';
+
+    if (qrResultEl) {
+      if (cameraState.qrLastValue) {
+        const pieces = [];
+        if (cameraState.qrLastFormat) {
+          pieces.push(`[${cameraState.qrLastFormat.toUpperCase()}]`);
+        }
+        pieces.push(cameraState.qrLastValue);
+        qrResultEl.textContent = pieces.join(' ');
+      } else {
+        qrResultEl.textContent = 'Nog geen QR-code gescand.';
+      }
+    }
+
+    if (qrSaveButton) {
+      qrSaveButton.disabled = !cameraState.qrLastValue;
+    }
+  }
+
+  function scheduleQrScan() {
+    stopQrScanTimer();
+    if (!cameraState.qrActive) {
+      return;
+    }
+
+    cameraState.qrScanTimeoutId = window.setTimeout(async () => {
+      if (!cameraState.qrActive) {
+        return;
+      }
+
+      if (!cameraPreviewEl || cameraPreviewEl.readyState < 2) {
+        scheduleQrScan();
+        return;
+      }
+
+      try {
+        const detector = ensureBarcodeDetector();
+        if (!detector) {
+          throw new Error('QR-scanner niet beschikbaar.');
+        }
+        const results = await detector.detect(cameraPreviewEl);
+        if (Array.isArray(results) && results.length) {
+          const match = results[0];
+          const rawValue = (match.rawValue || match.displayValue || '').trim();
+          if (rawValue) {
+            cameraState.qrActive = false;
+            updateQrResult(rawValue, match.format || 'qr');
+            if (qrToggleButton) {
+              qrToggleButton.textContent = 'QR-scan starten';
+            }
+            showCameraStatus('QR-code gevonden.', 'success');
+            updateCameraButtons(Boolean(cameraState.stream));
+            stopQrScanTimer();
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('QR scan failed', error);
+        cameraState.qrActive = false;
+        if (qrToggleButton) {
+          qrToggleButton.textContent = 'QR-scan starten';
+        }
+        showCameraStatus(error.message || 'QR-scanner onderbroken.', 'error');
+        stopQrScanTimer();
+        updateCameraButtons(Boolean(cameraState.stream));
+        return;
+      }
+
+      scheduleQrScan();
+    }, 350);
+  }
+
+  async function startQrScan() {
+    if (!supportsBarcodeDetector) {
+      showCameraStatus('QR-scanner wordt niet ondersteund in deze browser.', 'error');
+      return;
+    }
+
+    const stream = await ensureCameraStream();
+    if (!stream) {
+      return;
+    }
+
+    const detector = ensureBarcodeDetector();
+    if (!detector) {
+      showCameraStatus('QR-scanner niet beschikbaar.', 'error');
+      return;
+    }
+
+    cameraState.qrActive = true;
+    updateQrResult('', '');
+    if (qrToggleButton) {
+      qrToggleButton.textContent = 'Stop QR-scan';
+    }
+    showCameraStatus('Scanner actief. Richt de camera op de QR-code.', 'info');
+    scheduleQrScan();
+  }
+
+  function stopQrScan(options = {}) {
+    const keepResult = Boolean(options.keepResult);
+    cameraState.qrActive = false;
+    stopQrScanTimer();
+    if (!keepResult) {
+      updateQrResult('', '');
+    }
+    if (qrToggleButton) {
+      qrToggleButton.textContent = 'QR-scan starten';
+      qrToggleButton.disabled = !cameraState.stream || !supportsBarcodeDetector;
+    }
+  }
+
+  async function saveQrResult() {
+    if (!cameraState.qrLastValue) {
+      showCameraStatus('Er is nog geen QR-code gescand.', 'warning');
+      return;
+    }
+
+    if (qrSaveButton) {
+      qrSaveButton.disabled = true;
+      qrSaveButton.textContent = 'Opslaan…';
+    }
+
+    try {
+      const parsedUrl = tryParseUrl(cameraState.qrLastValue);
+      const note = `QR-resultaat opgeslagen via memo-camera op ${new Date().toLocaleString('nl-NL')}`;
+      if (parsedUrl) {
+        await saveSharedObject({
+          object_type: 'url',
+          object_name: parsedUrl.hostname || 'QR-link',
+          object_data: cameraState.qrLastValue,
+          object_url: cameraState.qrLastValue,
+          note
+        });
+      } else {
+        const preview = cameraState.qrLastValue.length > 60
+          ? `${cameraState.qrLastValue.slice(0, 60)}…`
+          : cameraState.qrLastValue;
+        await saveSharedObject({
+          object_type: 'text',
+          object_name: preview || 'QR-tekst',
+          object_data: cameraState.qrLastValue,
+          note
+        });
+      }
+    } catch (error) {
+      if (error && error.message) {
+        showCameraStatus(error.message, 'error');
+      }
+    } finally {
+      if (qrSaveButton) {
+        qrSaveButton.disabled = !cameraState.qrLastValue;
+        qrSaveButton.textContent = 'Resultaat opslaan';
+      }
+    }
+  }
+
+  function resetVideoPreview() {
+    if (cameraState.videoPreviewUrl) {
+      window.URL.revokeObjectURL(cameraState.videoPreviewUrl);
+      cameraState.videoPreviewUrl = null;
+    }
+    if (videoPreviewEl) {
+      videoPreviewEl.pause();
+      videoPreviewEl.hidden = true;
+      videoPreviewEl.removeAttribute('src');
+      try {
+        videoPreviewEl.load();
+      } catch (error) {
+        // Ignore load errors
+      }
+    }
+    if (videoMetaEl) {
+      videoMetaEl.textContent = '';
+    }
+    cameraState.videoBlob = null;
+    if (videoSaveButton) {
+      videoSaveButton.disabled = true;
+    }
+  }
+
+  function getPreferredRecorderMimeType() {
+    if (!supportsMediaRecorder || typeof window.MediaRecorder.isTypeSupported !== 'function') {
+      return '';
+    }
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/webm'
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      try {
+        if (window.MediaRecorder.isTypeSupported(candidate)) {
+          return candidate;
+        }
+      } catch (error) {
+        // Ignore capability errors and continue
+      }
+    }
+    return '';
+  }
+
+  async function startVideoRecording() {
+    if (!supportsMediaRecorder) {
+      showCameraStatus('Video opnemen wordt niet ondersteund in deze browser.', 'error');
+      return;
+    }
+
+    if (cameraState.recorder && cameraState.recorder.state === 'recording') {
+      showCameraStatus('Er loopt al een opname.', 'warning');
+      return;
+    }
+
+    const stream = await ensureCameraStream();
+    if (!stream) {
+      return;
+    }
+
+    resetVideoPreview();
+    cameraState.recordedChunks = [];
+    cameraState.recordingCancelled = false;
+
+    const mimeType = getPreferredRecorderMimeType();
+
+    try {
+      const options = mimeType ? { mimeType } : undefined;
+      const recorder = new window.MediaRecorder(stream, options);
+      cameraState.recorder = recorder;
+      cameraState.recorderMimeType = mimeType || recorder.mimeType || 'video/webm';
+
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size && !cameraState.recordingCancelled) {
+          cameraState.recordedChunks.push(event.data);
+        }
+      });
+
+      recorder.addEventListener('stop', () => {
+        const chunks = cameraState.recordedChunks;
+        const wasCancelled = cameraState.recordingCancelled;
+        if (!chunks.length || wasCancelled) {
+          cameraState.recordedChunks = [];
+          cameraState.recorder = null;
+          cameraState.recorderMimeType = '';
+          cameraState.recordingCancelled = false;
+          updateCameraButtons(Boolean(cameraState.stream));
+          if (wasCancelled) {
+            showCameraStatus('Video-opname geannuleerd.', 'warning');
+          }
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: cameraState.recorderMimeType || 'video/webm' });
+        cameraState.videoBlob = blob;
+        cameraState.recordedChunks = [];
+        const previewUrl = window.URL.createObjectURL(blob);
+        cameraState.videoPreviewUrl = previewUrl;
+        if (videoPreviewEl) {
+          videoPreviewEl.src = previewUrl;
+          videoPreviewEl.hidden = false;
+        }
+        if (videoMetaEl) {
+          videoMetaEl.textContent = `${formatFileSize(blob.size)} • ${cameraState.recorderMimeType || blob.type || 'video/webm'}`;
+        }
+        if (videoSaveButton) {
+          videoSaveButton.disabled = false;
+        }
+        cameraState.recorder = null;
+        cameraState.recorderMimeType = '';
+        showCameraStatus('Video-opname klaar om op te slaan.', 'success');
+        updateCameraButtons(Boolean(cameraState.stream));
+      });
+
+      recorder.addEventListener('error', (event) => {
+        console.error('MediaRecorder error', event);
+        showCameraStatus('Video-opname is gestopt door een fout.', 'error');
+      });
+
+      recorder.start();
+      updateCameraButtons(true);
+      if (videoStopButton) {
+        videoStopButton.disabled = false;
+      }
+      showCameraStatus('Video-opname gestart. Tik op stop om te beëindigen.', 'info');
+    } catch (error) {
+      console.error('Failed to start MediaRecorder', error);
+      cameraState.recorder = null;
+      cameraState.recorderMimeType = '';
+      showCameraStatus(error.message || 'Video opnemen mislukt.', 'error');
+      updateCameraButtons(Boolean(cameraState.stream));
+    }
+  }
+
+  function stopVideoRecording(cancel = false) {
+    if (!cameraState.recorder) {
+      return;
+    }
+
+    cameraState.recordingCancelled = cancel;
+    try {
+      if (cameraState.recorder.state !== 'inactive') {
+        cameraState.recorder.stop();
+      }
+    } catch (error) {
+      console.error('Failed to stop recorder', error);
+    }
+    if (videoStopButton) {
+      videoStopButton.disabled = true;
+    }
+    updateCameraButtons(Boolean(cameraState.stream));
+  }
+
+  async function saveVideo() {
+    if (!cameraState.videoBlob) {
+      showCameraStatus('Maak eerst een video-opname voordat je opslaat.', 'warning');
+      return;
+    }
+
+    if (videoSaveButton) {
+      videoSaveButton.disabled = true;
+      videoSaveButton.textContent = 'Opslaan…';
+    }
+
+    try {
+      const base64 = await blobToBase64(cameraState.videoBlob);
+      const mimeType = cameraState.videoBlob.type || 'video/webm';
+      const extension = getExtensionFromMime(mimeType) || 'webm';
+      const payload = {
+        object_type: 'file',
+        object_name: `memo-video-${formatTimestampForName()}.${extension}`,
+        object_data: base64,
+        file_size: cameraState.videoBlob.size,
+        mime_type: mimeType,
+        note: `Video gemaakt via memo-camera op ${new Date().toLocaleString('nl-NL')}`
+      };
+      await saveSharedObject(payload);
+    } catch (error) {
+      if (error && error.message) {
+        showCameraStatus(error.message, 'error');
+      }
+    } finally {
+      if (videoSaveButton) {
+        videoSaveButton.disabled = !cameraState.videoBlob;
+        videoSaveButton.textContent = 'Object opslaan';
+      }
+    }
+  }
+
+  async function saveSharedObject(payload) {
+    const finalPayload = Object.assign({}, payload);
+    if (!finalPayload.note) {
+      finalPayload.note = `Opgeslagen via memo-camera op ${new Date().toLocaleString('nl-NL')}`;
+    }
+
+    try {
+      const response = await fetch('/api/shared', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(finalPayload)
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      let data = {};
+      if (contentType.includes('application/json')) {
+        data = await response.json().catch(() => ({}));
+      }
+
+      if (!response.ok || data.status !== 'ok') {
+        const detail = data && (data.detail || data.message);
+        throw new Error(detail || `${response.status} ${response.statusText}`);
+      }
+
+      showCameraStatus('Object opgeslagen bij gedeelde items.', 'success');
+      return data;
+    } catch (error) {
+      console.error('Failed to save shared object', error);
+      showCameraStatus(error.message || 'Opslaan mislukt.', 'error');
+      throw error;
+    }
+  }
+
+  function setupCameraControls() {
+    if (!cameraSection) {
+      return;
+    }
+
+    updateCameraButtons(Boolean(cameraState.stream));
+
+    const hasMediaDevices = navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function';
+    if (!hasMediaDevices) {
+      if (cameraStartButton) {
+        cameraStartButton.disabled = true;
+        cameraStartButton.textContent = 'Camera niet beschikbaar';
+      }
+      updateCameraButtons(false);
+      showCameraStatus('Camera wordt niet ondersteund in deze browser.', 'error');
+      return;
+    }
+
+    if (cameraStartButton) {
+      cameraStartButton.addEventListener('click', async () => {
+        cameraStartButton.disabled = true;
+        try {
+          await ensureCameraStream();
+        } finally {
+          updateCameraButtons(Boolean(cameraState.stream));
+        }
+      });
+    }
+
+    if (cameraStopButton) {
+      cameraStopButton.addEventListener('click', () => {
+        stopCameraStream();
+      });
+    }
+
+    if (photoCaptureButton) {
+      photoCaptureButton.addEventListener('click', capturePhoto);
+    }
+
+    if (photoSaveButton) {
+      photoSaveButton.addEventListener('click', savePhoto);
+    }
+
+    if (qrToggleButton) {
+      if (supportsBarcodeDetector) {
+        qrToggleButton.addEventListener('click', async () => {
+          if (cameraState.qrActive) {
+            stopQrScan({ keepResult: true });
+            showCameraStatus('QR-scanner gestopt.', 'info');
+            updateCameraButtons(Boolean(cameraState.stream));
+            return;
+          }
+
+          qrToggleButton.disabled = true;
+          try {
+            await startQrScan();
+          } finally {
+            updateCameraButtons(Boolean(cameraState.stream));
+          }
+        });
+      } else {
+        qrToggleButton.disabled = true;
+        qrToggleButton.textContent = 'QR-scanner niet ondersteund';
+      }
+    }
+
+    if (qrSaveButton) {
+      qrSaveButton.addEventListener('click', saveQrResult);
+    }
+
+    if (videoRecordButton) {
+      if (supportsMediaRecorder) {
+        videoRecordButton.addEventListener('click', startVideoRecording);
+      } else {
+        videoRecordButton.disabled = true;
+        videoRecordButton.textContent = 'Video niet ondersteund';
+      }
+    }
+
+    if (videoStopButton) {
+      videoStopButton.addEventListener('click', () => stopVideoRecording(false));
+    }
+
+    if (videoSaveButton) {
+      videoSaveButton.addEventListener('click', saveVideo);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (cameraState.recorder && cameraState.recorder.state === 'recording') {
+          stopVideoRecording(true);
+        }
+        if (cameraState.stream) {
+          stopCameraStream();
+        }
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      if (cameraState.stream) {
+        stopCameraStream();
+      }
+    });
+
+    showCameraStatus('Start de camera om deze functies te gebruiken.', 'info');
+    updateCameraButtons(false);
   }
 
   function showTranscriptionStatus(message, type = 'info') {
@@ -836,6 +1765,7 @@
     setupManualControls();
     setupTranscriptionUpload();
     setupSpeechRecording();
+    setupCameraControls();
     loadMemos();
   }
 
