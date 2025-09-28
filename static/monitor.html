@@ -29,49 +29,49 @@
         <img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">
         Monitor
     </h1>
-    <p class="monitor-subtitle rci-muted">Configureer servicebewaking, voer handmatige controles uit en bekijk recente resultaten.</p>
 </header>
 
 <main class="monitor-layout" aria-labelledby="monitor-title">
     <section class="monitor-form rci-card" aria-labelledby="monitor-form-heading">
-        <div class="monitor-section-header">
-            <h2 id="monitor-form-heading">Nieuwe monitor toevoegen</h2>
-            <p class="rci-muted">Ondersteunt HTTP(S), URL-wijzigingsdetectie en veelgebruikte netwerkservices.</p>
-        </div>
+        <h2 id="monitor-form-heading">Monitor</h2>
         <form id="monitor-form" class="monitor-form-grid" novalidate>
             <div class="monitor-form-row">
                 <label for="monitor-name">Naam<span aria-hidden="true">*</span></label>
-                <input id="monitor-name" name="name" type="text" required placeholder="Bijvoorbeeld API-status" autocomplete="off">
+                <input id="monitor-name" name="name" type="text" required autocomplete="off">
             </div>
 
             <div class="monitor-inline-group">
                 <div class="monitor-form-row">
-                    <label for="monitor-service">Service<span aria-hidden="true">*</span></label>
+                    <label for="monitor-service">Type<span aria-hidden="true">*</span></label>
                     <select id="monitor-service" name="service" required></select>
                 </div>
                 <div class="monitor-form-row">
                     <label for="monitor-target">Doel<span aria-hidden="true">*</span></label>
-                    <input id="monitor-target" name="target" type="text" required placeholder="URL, host of resource">
+                    <input id="monitor-target" name="target" type="text" required>
+                </div>
+                <div class="monitor-form-row monitor-switch">
+                    <span class="monitor-switch-text" id="monitor-enabled-text">Actief</span>
+                    <label class="monitor-switch-wrapper" for="monitor-enabled">
+                        <input id="monitor-enabled" name="isEnabled" type="checkbox" class="monitor-switch-input" checked aria-labelledby="monitor-enabled-text">
+                        <span class="monitor-switch-control" aria-hidden="true"></span>
+                    </label>
                 </div>
             </div>
 
             <div id="monitor-url-options" class="monitor-inline-group hidden" aria-hidden="true">
                 <div class="monitor-form-row">
-                    <label for="monitor-url-check">URL-controle</label>
-                    <select id="monitor-url-check" name="urlCheck">
-                        <option value="availability">Beschikbaarheid</option>
-                        <option value="change">Wijziging detecteren</option>
-                    </select>
+                    <label for="monitor-url-check">URL</label>
+                    <select id="monitor-url-check" name="urlCheck"></select>
                 </div>
                 <div class="monitor-form-row">
-                    <label for="monitor-timeout">Timeout (seconden)</label>
-                    <input id="monitor-timeout" name="timeout" type="number" min="1" max="60" step="1" placeholder="15">
+                    <label for="monitor-timeout">Timeout</label>
+                    <input id="monitor-timeout" name="timeout" type="number" min="1" max="60" step="1">
                 </div>
             </div>
 
             <div class="monitor-inline-group">
                 <div class="monitor-form-row">
-                    <label for="monitor-interval-value">Polling-interval<span aria-hidden="true">*</span></label>
+                    <label for="monitor-interval-value">Interval<span aria-hidden="true">*</span></label>
                     <div class="monitor-interval-group">
                         <input id="monitor-interval-value" name="intervalValue" type="number" min="1" value="5" required>
                         <select id="monitor-interval-unit" name="intervalUnit">
@@ -84,31 +84,28 @@
                 </div>
                 <div id="monitor-port-wrapper" class="monitor-form-row">
                     <label for="monitor-port">Poort</label>
-                    <input id="monitor-port" name="port" type="number" min="1" max="65535" placeholder="Bijvoorbeeld 443">
+                    <input id="monitor-port" name="port" type="number" min="1" max="65535">
                 </div>
             </div>
 
             <div class="monitor-form-row">
                 <label for="monitor-notes">Notitie</label>
-                <textarea id="monitor-notes" name="notes" rows="3" placeholder="Extra details of instructies"></textarea>
+                <textarea id="monitor-notes" name="notes" rows="3"></textarea>
             </div>
 
             <div class="monitor-actions">
                 <button type="submit" class="focus-ring">Opslaan</button>
-                <button type="button" id="monitor-cancel-edit" class="secondary-button focus-ring hidden">Annuleren</button>
-                <button type="button" id="monitor-refresh" class="secondary-button focus-ring">Vernieuwen</button>
+                <button type="button" id="monitor-cancel-edit" class="secondary-button focus-ring hidden">Annuleer</button>
+                <button type="button" id="monitor-refresh" class="secondary-button focus-ring">Vernieuw</button>
             </div>
             <div id="monitor-form-status" class="status-message" role="status" aria-live="polite"></div>
         </form>
     </section>
 
     <section class="monitor-list rci-card" aria-labelledby="monitor-list-heading">
-        <div class="monitor-section-header">
-            <h2 id="monitor-list-heading">Actieve monitors</h2>
-            <p class="rci-muted">Bekijk status, histogrammen en laatste controles.</p>
-        </div>
+        <h2 id="monitor-list-heading">Overzicht</h2>
         <div id="monitor-list" class="monitor-card-grid" aria-live="polite" aria-busy="false"></div>
-        <div id="monitor-empty" class="monitor-empty rci-muted" role="status">Er zijn nog geen monitors geconfigureerd.</div>
+        <div id="monitor-empty" class="monitor-empty rci-muted" role="status">Geen monitors.</div>
     </section>
 </main>
 
@@ -119,6 +116,17 @@
             <button type="button" id="monitor-log-close" class="secondary-button focus-ring">Sluiten</button>
         </div>
         <div id="monitor-log-content" class="monitor-log-content" aria-live="polite"></div>
+    </div>
+</div>
+
+<div id="monitor-graph-overlay" class="monitor-log-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="monitor-graph-title">
+    <div class="monitor-log-panel rci-card monitor-graph-panel">
+        <div class="monitor-log-header">
+            <h2 id="monitor-graph-title">Grafiek</h2>
+            <button type="button" id="monitor-graph-close" class="secondary-button focus-ring">Sluiten</button>
+        </div>
+        <canvas id="monitor-graph-canvas" class="monitor-graph-canvas" aria-label="Resultaten over tijd" role="img"></canvas>
+        <p id="monitor-graph-empty" class="monitor-graph-empty hidden">Geen gegevens</p>
     </div>
 </div>
 

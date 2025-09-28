@@ -146,6 +146,28 @@ MONITOR_PORT_DEFAULTS: Dict[str, int] = {
 }
 
 
+def _extract_ping_average_ms(output: str) -> Optional[float]:
+    """Return the average round-trip time in milliseconds from ping output."""
+    if not output:
+        return None
+
+    unix_match = re.search(r"=\s*(?:\d+(?:\.\d+)?)/(?P<avg>\d+(?:\.\d+)?)/", output)
+    if unix_match:
+        try:
+            return float(unix_match.group("avg"))
+        except (TypeError, ValueError):
+            return None
+
+    windows_match = re.search(r"Average\s*=\s*(?P<avg>\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE)
+    if windows_match:
+        try:
+            return float(windows_match.group("avg"))
+        except (TypeError, ValueError):
+            return None
+
+    return None
+
+
 POLLING_INTERVAL_UNITS: Dict[str, int] = {
     "seconds": 1,
     "minutes": 60,
@@ -407,17 +429,22 @@ def perform_ping_monitor_check(monitor: Dict[str, Any]) -> Dict[str, Any]:
         output = result.stdout.strip() or result.stderr.strip()
         message = output.splitlines()[-1] if output else "Ping uitgevoerd"
 
+        average_ms = _extract_ping_average_ms(output)
+        response_time_ms = int(round(average_ms)) if average_ms is not None else duration_ms
+
         details = {
             "command": " ".join(command),
             "output": output,
             "target": target,
+            "average_rtt_ms": average_ms,
+            "command_duration_ms": duration_ms,
         }
 
         return db_manager.record_monitor_result(
             monitor_id=monitor["id"],
             status="success" if success else "failure",
             is_available=success,
-            response_time_ms=duration_ms,
+            response_time_ms=response_time_ms,
             message=message[:200],
             details=details,
         )
@@ -631,6 +658,8 @@ async def _monitor_scheduler_loop(stop_event: asyncio.Event) -> None:
         next_run_at: Optional[datetime] = None
 
         for monitor in monitors:
+            if not monitor.get("is_enabled", True):
+                continue
             scheduled_for = _next_scheduled_run(monitor)
             if scheduled_for is None:
                 continue
@@ -1573,6 +1602,11 @@ class MonitorRequest(BaseModel):
     url_check_type: Optional[Literal["availability", "change"]] = None
     notes: Optional[str] = Field(default=None, max_length=1000)
     config: Optional[Dict[str, Any]] = None
+    is_enabled: Optional[bool] = True
+
+
+class MonitorToggleRequest(BaseModel):
+    is_enabled: bool
 
 
 @app.delete("/nickname")
@@ -3008,6 +3042,8 @@ def _prepare_monitor_payload(request: MonitorRequest) -> Dict[str, Any]:
             if value not in (None, "", []):
                 config_payload[key] = value
 
+    is_enabled = True if request.is_enabled is None else bool(request.is_enabled)
+
     return {
         "name": request.name.strip(),
         "service_type": service_type,
@@ -3016,6 +3052,7 @@ def _prepare_monitor_payload(request: MonitorRequest) -> Dict[str, Any]:
         "polling_interval_seconds": polling_seconds,
         "config": config_payload,
         "notes": request.notes.strip() if request.notes else None,
+        "is_enabled": is_enabled,
     }
 
 
@@ -3051,6 +3088,24 @@ def update_monitor_endpoint(
     except Exception as exc:
         log_error(f"Failed to update monitor {monitor_id}: {exc}")
         raise HTTPException(status_code=500, detail="Monitor bijwerken mislukt") from exc
+
+
+@app.post("/api/monitors/{monitor_id}/toggle")
+def toggle_monitor_endpoint(
+    monitor_id: int,
+    request: MonitorToggleRequest,
+    dep: None = Depends(password_dependency),
+):
+    try:
+        monitor = db_manager.set_monitor_enabled(monitor_id, request.is_enabled)
+        if monitor is None:
+            raise HTTPException(status_code=404, detail="Monitor niet gevonden")
+        return {"status": "ok", "monitor": enrich_monitor_payload(monitor)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to toggle monitor {monitor_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Monitor status bijwerken mislukt") from exc
 
 
 @app.delete("/api/monitors/{monitor_id}")
