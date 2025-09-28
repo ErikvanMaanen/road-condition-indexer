@@ -525,6 +525,7 @@ class DatabaseManager:
                     polling_interval_seconds INT NOT NULL,
                     config NVARCHAR(MAX),
                     notes NVARCHAR(1000),
+                    is_enabled BIT NOT NULL DEFAULT 1,
                     last_status NVARCHAR(20),
                     last_message NVARCHAR(1000),
                     last_checked_at DATETIME2,
@@ -599,6 +600,13 @@ class DatabaseManager:
             text(f"""
             IF COL_LENGTH('{TABLE_DEBUG_LOG}', 'device_id') IS NULL
                 ALTER TABLE {TABLE_DEBUG_LOG} ADD device_id NVARCHAR(100)
+            """)
+        )
+        
+        conn.execute(
+            text(f"""
+            IF COL_LENGTH('{TABLE_MONITORS}', 'is_enabled') IS NULL
+                ALTER TABLE {TABLE_MONITORS} ADD is_enabled BIT NOT NULL DEFAULT 1 WITH VALUES
             """)
         )
         
@@ -2459,6 +2467,9 @@ class DatabaseManager:
         elif config_value in (None, ""):
             mapping["config"] = {}
 
+        if "is_enabled" in mapping:
+            mapping["is_enabled"] = bool(mapping["is_enabled"])
+
         return mapping
 
     def _serialize_monitor_result_row(self, row: Any) -> Dict[str, Any]:
@@ -2700,6 +2711,7 @@ class DatabaseManager:
         polling_interval_seconds: int,
         config: Optional[Dict[str, Any]] = None,
         notes: Optional[str] = None,
+        is_enabled: bool = True,
     ) -> Dict[str, Any]:
         """Insert a new monitor configuration."""
         config_json = json.dumps(config or {}, ensure_ascii=False) if config else None
@@ -2711,16 +2723,17 @@ class DatabaseManager:
                         f"""
                         INSERT INTO {TABLE_MONITORS} (
                             name, service_type, target, url_check_type,
-                            polling_interval_seconds, config, notes
+                            polling_interval_seconds, config, notes, is_enabled
                         )
                         OUTPUT INSERTED.id, INSERTED.name, INSERTED.service_type,
                                INSERTED.target, INSERTED.url_check_type,
                                INSERTED.polling_interval_seconds, INSERTED.config,
-                               INSERTED.notes, INSERTED.last_status, INSERTED.last_message,
+                               INSERTED.notes, INSERTED.is_enabled, INSERTED.last_status,
+                               INSERTED.last_message,
                                INSERTED.last_checked_at, INSERTED.created_at, INSERTED.updated_at
                         VALUES (
                             :name, :service_type, :target, :url_check_type,
-                            :polling_interval_seconds, :config, :notes
+                            :polling_interval_seconds, :config, :notes, :is_enabled
                         )
                         """
                     ),
@@ -2732,6 +2745,7 @@ class DatabaseManager:
                         "polling_interval_seconds": polling_interval_seconds,
                         "config": config_json,
                         "notes": notes,
+                        "is_enabled": int(bool(is_enabled)),
                     },
                 )
 
@@ -2763,6 +2777,7 @@ class DatabaseManager:
         polling_interval_seconds: int,
         config: Optional[Dict[str, Any]] = None,
         notes: Optional[str] = None,
+        is_enabled: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """Update an existing monitor."""
         config_json = json.dumps(config or {}, ensure_ascii=False) if config else None
@@ -2781,11 +2796,12 @@ class DatabaseManager:
                             polling_interval_seconds = :polling_interval_seconds,
                             config = :config,
                             notes = :notes,
+                            is_enabled = :is_enabled,
                             updated_at = SYSUTCDATETIME()
                         OUTPUT INSERTED.id, INSERTED.name, INSERTED.service_type,
                                INSERTED.target, INSERTED.url_check_type,
                                INSERTED.polling_interval_seconds, INSERTED.config,
-                               INSERTED.notes, INSERTED.last_status, INSERTED.last_message,
+                               INSERTED.notes, INSERTED.is_enabled, INSERTED.last_status, INSERTED.last_message,
                                INSERTED.last_checked_at, INSERTED.created_at, INSERTED.updated_at
                         WHERE id = :monitor_id
                         """
@@ -2799,6 +2815,7 @@ class DatabaseManager:
                         "polling_interval_seconds": polling_interval_seconds,
                         "config": config_json,
                         "notes": notes,
+                        "is_enabled": int(bool(is_enabled)),
                     },
                 )
 
@@ -2819,6 +2836,55 @@ class DatabaseManager:
 
         except Exception as exc:
             self.log_debug(f"Failed to update monitor {monitor_id}: {exc}", LogLevel.ERROR, LogCategory.DATABASE)
+            raise
+
+    def set_monitor_enabled(self, monitor_id: int, is_enabled: bool) -> Optional[Dict[str, Any]]:
+        """Enable or disable a monitor."""
+        try:
+            with self.get_connection_context() as conn:
+                result = conn.execute(
+                    text(
+                        f"""
+                        UPDATE {TABLE_MONITORS}
+                        SET
+                            is_enabled = :is_enabled,
+                            updated_at = SYSUTCDATETIME()
+                        OUTPUT INSERTED.id, INSERTED.name, INSERTED.service_type,
+                               INSERTED.target, INSERTED.url_check_type,
+                               INSERTED.polling_interval_seconds, INSERTED.config,
+                               INSERTED.notes, INSERTED.is_enabled, INSERTED.last_status,
+                               INSERTED.last_message, INSERTED.last_checked_at,
+                               INSERTED.created_at, INSERTED.updated_at
+                        WHERE id = :monitor_id
+                        """
+                    ),
+                    {
+                        "monitor_id": monitor_id,
+                        "is_enabled": int(bool(is_enabled)),
+                    },
+                )
+
+                row = result.fetchone()
+                if row is None:
+                    conn.rollback()
+                    return None
+
+                conn.commit()
+
+                monitor = self._serialize_monitor_row(row)
+                self.log_debug(
+                    f"Monitor {monitor_id} {'enabled' if monitor['is_enabled'] else 'disabled'}",
+                    LogLevel.INFO,
+                    LogCategory.DATABASE,
+                )
+                return monitor
+
+        except Exception as exc:
+            self.log_debug(
+                f"Failed to toggle monitor {monitor_id}: {exc}",
+                LogLevel.ERROR,
+                LogCategory.DATABASE,
+            )
             raise
 
     def delete_monitor(self, monitor_id: int) -> bool:

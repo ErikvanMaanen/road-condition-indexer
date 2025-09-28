@@ -5,7 +5,7 @@
         pollingUnits: [],
         monitors: [],
         editingId: null,
-        charts: new Map(),
+        graphChart: null,
     };
 
     const elements = {
@@ -22,6 +22,7 @@
         portWrapper: document.getElementById('monitor-port-wrapper'),
         port: document.getElementById('monitor-port'),
         notes: document.getElementById('monitor-notes'),
+        enabled: document.getElementById('monitor-enabled'),
         cancelEdit: document.getElementById('monitor-cancel-edit'),
         refresh: document.getElementById('monitor-refresh'),
         status: document.getElementById('monitor-form-status'),
@@ -31,6 +32,11 @@
         overlayClose: document.getElementById('monitor-log-close'),
         overlayContent: document.getElementById('monitor-log-content'),
         overlayTitle: document.getElementById('monitor-log-title'),
+        graphOverlay: document.getElementById('monitor-graph-overlay'),
+        graphClose: document.getElementById('monitor-graph-close'),
+        graphCanvas: document.getElementById('monitor-graph-canvas'),
+        graphEmpty: document.getElementById('monitor-graph-empty'),
+        graphTitle: document.getElementById('monitor-graph-title'),
     };
 
     const PORT_SERVICE_TYPES = new Set(['tcp', 'udp', 'smtp', 'imap', 'pop3', 'ftp', 'sftp', 'ssh', 'dns']);
@@ -141,6 +147,9 @@
         if (elements.intervalUnit) {
             elements.intervalUnit.value = 'minutes';
         }
+        if (elements.enabled) {
+            elements.enabled.checked = true;
+        }
         toggleUrlOptions(elements.service.value || 'http');
         togglePortField(elements.service.value || 'http');
         elements.cancelEdit.classList.add('hidden');
@@ -226,15 +235,6 @@
         }
     }
 
-    function destroyCharts() {
-        state.charts.forEach((chart) => {
-            if (chart && typeof chart.destroy === 'function') {
-                chart.destroy();
-            }
-        });
-        state.charts.clear();
-    }
-
     function summarizeResults(results) {
         const summary = { success: 0, warning: 0, failure: 0, change: 0 };
         (results || []).forEach((result) => {
@@ -253,58 +253,6 @@
             }
         });
         return summary;
-    }
-
-    function renderHistogram(canvas, monitor) {
-        if (!canvas || typeof Chart === 'undefined') {
-            return;
-        }
-        const summary = summarizeResults(monitor.recent_results || []);
-        const dataset = [summary.success, summary.warning, summary.failure];
-        const chart = new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: ['Succes', 'Waarschuwing', 'Fout'],
-                datasets: [
-                    {
-                        label: 'Aantal gebeurtenissen',
-                        data: dataset,
-                        backgroundColor: [
-                            'rgba(25,135,84,0.7)',
-                            'rgba(255,193,7,0.7)',
-                            'rgba(220,53,69,0.7)',
-                        ],
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    },
-                ],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        grid: { display: false },
-                    },
-                    y: {
-                        beginAtZero: true,
-                        ticks: { precision: 0 },
-                        grid: { color: 'rgba(0,0,0,0.08)' },
-                    },
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label(context) {
-                                return `${context.parsed.y} gebeurtenissen`;
-                            },
-                        },
-                    },
-                },
-            },
-        });
-        state.charts.set(monitor.id, chart);
     }
 
     function getStatusMeta(monitor) {
@@ -327,7 +275,6 @@
     }
 
     function renderMonitors() {
-        destroyCharts();
         elements.list.innerHTML = '';
         if (!state.monitors.length) {
             elements.empty.classList.remove('hidden');
@@ -337,75 +284,69 @@
 
         state.monitors.forEach((monitor) => {
             const card = document.createElement('article');
-            card.className = 'monitor-card';
+            card.className = 'monitor-item';
             const { label: statusLabel, css: statusClass, latest } = getStatusMeta(monitor);
             const lastChecked = latest?.checked_at || monitor.last_checked_at;
             const lastMessage = latest?.message || monitor.last_message || '—';
             const responseTime = typeof latest?.response_time_ms === 'number' ? `${latest.response_time_ms} ms` : '—';
             const availability = latest?.is_available == null ? '—' : latest.is_available ? 'Ja' : 'Nee';
             const changeCount = summarizeResults(monitor.recent_results || []).change;
-            const hasHistory = (monitor.recent_results || []).length > 0;
-            const chartClasses = ['monitor-chart'];
-            if (!hasHistory) {
-                chartClasses.push('monitor-chart-empty');
-            }
+            const enabled = monitor.is_enabled !== false;
 
             card.innerHTML = `
-                <div class="monitor-card-header">
+                <header class="monitor-item-head">
+                    <div class="monitor-item-meta">
+                        <h3 class="monitor-item-title">${escapeHtml(monitor.name)}</h3>
+                        <span class="monitor-item-type">${escapeHtml(monitor.service_label || monitor.service_type)}</span>
+                    </div>
+                    <div class="monitor-item-controls">
+                        <button type="button" class="monitor-toggle focus-ring ${enabled ? '' : 'is-off'}" data-action="toggle" aria-pressed="${enabled ? 'true' : 'false'}">${enabled ? 'Aan' : 'Uit'}</button>
+                        <span class="monitor-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                </header>
+                <dl class="monitor-item-grid">
                     <div>
-                        <h3 class="monitor-card-title">${escapeHtml(monitor.name)}</h3>
-                        <p class="monitor-card-subtitle rci-muted">${escapeHtml(monitor.service_label || monitor.service_type)}</p>
+                        <dt>Doel</dt>
+                        <dd title="${escapeHtml(monitor.target)}">${escapeHtml(monitor.target)}</dd>
                     </div>
-                    <span class="monitor-status ${statusClass}">${escapeHtml(statusLabel)}</span>
-                </div>
-                <div class="monitor-card-main">
-                    <dl class="monitor-meta">
-                        <div>
-                            <dt>Doel</dt>
-                            <dd title="${escapeHtml(monitor.target)}">${escapeHtml(monitor.target)}</dd>
-                        </div>
-                        <div>
-                            <dt>Interval</dt>
-                            <dd>${escapeHtml(monitor.polling_interval?.display || '')}</dd>
-                        </div>
-                        <div>
-                            <dt>Laatst gecontroleerd</dt>
-                            <dd>${escapeHtml(formatDate(lastChecked))}</dd>
-                        </div>
-                        <div>
-                            <dt>Beschikbaar</dt>
-                            <dd>${escapeHtml(availability)}</dd>
-                        </div>
-                        <div>
-                            <dt>Respons</dt>
-                            <dd>${escapeHtml(responseTime)}</dd>
-                        </div>
-                    </dl>
-                    <div class="${chartClasses.join(' ')}" aria-hidden="${hasHistory ? 'false' : 'true'}">
-                        <canvas aria-label="Beschikbaarheids-histogram" role="img"></canvas>
-                        <p class="monitor-chart-meta rci-muted">Wijzigingen gedetecteerd: ${changeCount}</p>
+                    <div>
+                        <dt>Interval</dt>
+                        <dd>${escapeHtml(monitor.polling_interval?.display || '')}</dd>
                     </div>
-                </div>
-                <div class="monitor-card-info">
-                    <p class="monitor-message">${escapeHtml(lastMessage)}</p>
-                    ${monitor.notes ? `<p class="monitor-notes rci-muted">${escapeHtml(monitor.notes)}</p>` : ''}
-                </div>
-                <div class="monitor-card-actions">
-                    <button type="button" class="focus-ring" data-action="edit">Bewerken</button>
-                    <button type="button" class="secondary-button focus-ring" data-action="log">Log bekijken</button>
-                    <button type="button" class="secondary-button focus-ring" data-action="run" ${ACTIVE_RUN_TYPES.has(monitor.service_type) ? '' : 'disabled title="Deze service ondersteunt geen directe controle"'}>Controleer nu</button>
-                    <button type="button" class="danger-button focus-ring" data-action="delete">Verwijderen</button>
+                    <div>
+                        <dt>Laatst</dt>
+                        <dd>${escapeHtml(formatDate(lastChecked))}</dd>
+                    </div>
+                    <div>
+                        <dt>Beschikbaar</dt>
+                        <dd>${escapeHtml(availability)}</dd>
+                    </div>
+                    <div>
+                        <dt>Ping</dt>
+                        <dd>${escapeHtml(responseTime)}</dd>
+                    </div>
+                    <div>
+                        <dt>Wijziging</dt>
+                        <dd>${changeCount}</dd>
+                    </div>
+                </dl>
+                <p class="monitor-item-message">${escapeHtml(lastMessage)}</p>
+                ${monitor.notes ? `<p class="monitor-item-notes">${escapeHtml(monitor.notes)}</p>` : ''}
+                <div class="monitor-item-actions">
+                    <button type="button" class="focus-ring" data-action="run" ${ACTIVE_RUN_TYPES.has(monitor.service_type) ? '' : 'disabled'}>Check</button>
+                    <button type="button" class="secondary-button focus-ring" data-action="graph">Grafiek</button>
+                    <button type="button" class="secondary-button focus-ring" data-action="log">Log</button>
+                    <button type="button" class="secondary-button focus-ring" data-action="edit">Bewerk</button>
+                    <button type="button" class="danger-button focus-ring" data-action="delete">Verwijder</button>
                 </div>
             `;
 
-            const canvas = card.querySelector('canvas');
-            if (canvas && hasHistory) {
-                renderHistogram(canvas, monitor);
-            }
-
+            const toggleButton = card.querySelector('[data-action="toggle"]');
+            toggleButton.addEventListener('click', () => toggleMonitor(monitor, !enabled));
             card.querySelector('[data-action="edit"]').addEventListener('click', () => beginEditMonitor(monitor));
             card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteMonitor(monitor));
             card.querySelector('[data-action="log"]').addEventListener('click', () => openLogOverlay(monitor));
+            card.querySelector('[data-action="graph"]').addEventListener('click', () => openGraphOverlay(monitor));
             const runButton = card.querySelector('[data-action="run"]');
             if (runButton && !runButton.disabled) {
                 runButton.addEventListener('click', () => runMonitor(monitor));
@@ -434,6 +375,9 @@
             elements.port.value = monitor.config.port;
         }
         elements.notes.value = monitor.notes || '';
+        if (elements.enabled) {
+            elements.enabled.checked = monitor.is_enabled !== false;
+        }
         elements.cancelEdit.classList.remove('hidden');
         setFormStatus('');
     }
@@ -455,6 +399,7 @@
             polling_unit: elements.intervalUnit.value,
             url_check_type: ACTIVE_RUN_TYPES.has(elements.service.value) ? elements.urlCheck.value : null,
             notes: elements.notes.value.trim() || null,
+            is_enabled: elements.enabled ? Boolean(elements.enabled.checked) : true,
             config: {},
         };
 
@@ -539,6 +484,168 @@
         }
     }
 
+    function destroyGraphChart() {
+        if (state.graphChart && typeof state.graphChart.destroy === 'function') {
+            state.graphChart.destroy();
+        }
+        state.graphChart = null;
+    }
+
+    async function toggleMonitor(monitor, desiredState) {
+        try {
+            const response = await fetch(`/api/monitors/${monitor.id}/toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_enabled: desiredState }),
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.detail || 'Status bijwerken mislukt');
+            }
+            const payload = await response.json();
+            const updated = payload.monitor || {};
+            if (!Array.isArray(updated.recent_results)) {
+                updated.recent_results = monitor.recent_results || [];
+            }
+            const index = state.monitors.findIndex((entry) => entry.id === monitor.id);
+            if (index !== -1) {
+                state.monitors[index] = updated;
+            }
+            if (state.editingId === monitor.id) {
+                populateForm(updated);
+            }
+            renderMonitors();
+            setFormStatus(desiredState ? 'Monitor geactiveerd.' : 'Monitor gepauzeerd.', 'success');
+        } catch (error) {
+            console.error(error);
+            setFormStatus(error.message || 'Status bijwerken mislukt.', 'error');
+        }
+    }
+
+    function openGraphOverlay(monitor) {
+        if (!elements.graphOverlay) {
+            return;
+        }
+
+        destroyGraphChart();
+        const results = Array.isArray(monitor.recent_results) ? [...monitor.recent_results].reverse() : [];
+        if (elements.graphTitle) {
+            elements.graphTitle.textContent = `Grafiek · ${monitor.name}`;
+        }
+
+        if (!results.length || !elements.graphCanvas) {
+            if (elements.graphCanvas) {
+                elements.graphCanvas.classList.add('hidden');
+            }
+            if (elements.graphEmpty) {
+                elements.graphEmpty.classList.remove('hidden');
+            }
+        } else if (typeof Chart !== 'undefined') {
+            if (elements.graphCanvas) {
+                elements.graphCanvas.classList.remove('hidden');
+            }
+            if (elements.graphEmpty) {
+                elements.graphEmpty.classList.add('hidden');
+            }
+
+            const labels = results.map((entry) => formatDate(entry.checked_at));
+            const values = results.map((entry) => {
+                if (typeof entry.response_time_ms === 'number') {
+                    return entry.response_time_ms;
+                }
+                return null;
+            });
+            const colors = results.map((entry) => {
+                const status = (entry.status || '').toLowerCase();
+                if (status === 'success') {
+                    return 'rgba(25,135,84,0.9)';
+                }
+                if (status === 'warning') {
+                    return 'rgba(255,193,7,0.9)';
+                }
+                if (status === 'failure') {
+                    return 'rgba(220,53,69,0.9)';
+                }
+                return 'rgba(108,117,125,0.9)';
+            });
+
+            const context = elements.graphCanvas.getContext('2d');
+            state.graphChart = new Chart(context, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Ping (ms)',
+                            data: values,
+                            borderColor: 'rgba(73,80,87,0.75)',
+                            backgroundColor: 'rgba(73,80,87,0.12)',
+                            pointBackgroundColor: colors,
+                            pointBorderColor: colors,
+                            spanGaps: true,
+                            tension: 0.2,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label(context) {
+                                    const value = context.parsed.y;
+                                    const responseText = value == null ? 'n.v.t.' : `${value} ms`;
+                                    const result = results[context.dataIndex];
+                                    const status = (result?.status || '').toUpperCase();
+                                    return `${responseText}${status ? ` · ${status}` : ''}`;
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { maxRotation: 0 },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.08)' },
+                            ticks: { precision: 0 },
+                        },
+                    },
+                    elements: {
+                        point: { radius: 3 },
+                    },
+                },
+            });
+        } else {
+            if (elements.graphCanvas) {
+                elements.graphCanvas.classList.add('hidden');
+            }
+            if (elements.graphEmpty) {
+                elements.graphEmpty.classList.remove('hidden');
+            }
+        }
+
+        elements.graphOverlay.classList.remove('hidden');
+        if (elements.graphClose) {
+            elements.graphClose.focus();
+        }
+    }
+
+    function closeGraphOverlay() {
+        if (!elements.graphOverlay) {
+            return;
+        }
+        destroyGraphChart();
+        elements.graphOverlay.classList.add('hidden');
+        if (elements.graphEmpty) {
+            elements.graphEmpty.classList.add('hidden');
+        }
+    }
+
     async function openLogOverlay(monitor) {
         elements.overlay.classList.remove('hidden');
         elements.overlayTitle.textContent = `Monitorlog · ${monitor.name}`;
@@ -614,15 +721,41 @@
         elements.cancelEdit.addEventListener('click', resetForm);
         elements.refresh.addEventListener('click', () => loadMonitors(true));
         elements.service.addEventListener('change', handleServiceChange);
-        elements.overlayClose.addEventListener('click', closeOverlay);
-        elements.overlay.addEventListener('click', (event) => {
-            if (event.target === elements.overlay) {
-                closeOverlay();
-            }
-        });
+
+        if (elements.overlayClose) {
+            elements.overlayClose.addEventListener('click', closeOverlay);
+        }
+        if (elements.overlay) {
+            elements.overlay.addEventListener('click', (event) => {
+                if (event.target === elements.overlay) {
+                    closeOverlay();
+                }
+            });
+        }
+        if (elements.graphClose) {
+            elements.graphClose.addEventListener('click', closeGraphOverlay);
+        }
+        if (elements.graphOverlay) {
+            elements.graphOverlay.addEventListener('click', (event) => {
+                if (event.target === elements.graphOverlay) {
+                    closeGraphOverlay();
+                }
+            });
+        }
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && !elements.overlay.classList.contains('hidden')) {
-                closeOverlay();
+            if (event.key === 'Escape') {
+                let handled = false;
+                if (elements.overlay && !elements.overlay.classList.contains('hidden')) {
+                    closeOverlay();
+                    handled = true;
+                }
+                if (elements.graphOverlay && !elements.graphOverlay.classList.contains('hidden')) {
+                    closeGraphOverlay();
+                    handled = true;
+                }
+                if (handled) {
+                    event.stopPropagation();
+                }
             }
         });
 
