@@ -71,7 +71,15 @@
         </div>
         <div class="memo-camera-body">
             <div class="memo-camera-preview">
-                <video id="memo-camera-preview" class="memo-camera-stream" autoplay playsinline muted></video>
+                <div id="memo-camera-overlay" class="memo-camera-overlay" hidden>
+                    <video id="memo-camera-preview" class="memo-camera-stream" autoplay playsinline muted></video>
+                    <div class="memo-camera-overlay-controls">
+                        <button id="memo-camera-overlay-toggle" type="button" class="memo-camera-overlay-btn focus-ring" aria-label="Toon camera volledig scherm">
+                            🗖 Volledig scherm
+                        </button>
+                    </div>
+                </div>
+                <p id="memo-camera-overlay-hint" class="memo-camera-overlay-hint" hidden>De camera wordt weergegeven in een zwevend venster.</p>
                 <canvas id="memo-photo-canvas" class="memo-photo-canvas" hidden></canvas>
                 <div class="memo-camera-toggle">
                     <button id="memo-camera-start" type="button" class="memo-camera-btn focus-ring">Camera starten</button>
@@ -98,6 +106,7 @@
                     <div class="memo-camera-panel-actions">
                         <button id="memo-qr-toggle" type="button" class="memo-camera-btn focus-ring" disabled>🔍 QR-scan starten</button>
                         <button id="memo-qr-save" type="button" class="memo-camera-btn focus-ring" disabled>Resultaat opslaan</button>
+                        <button id="memo-qr-clear" type="button" class="memo-camera-btn focus-ring" disabled>Lijst leegmaken</button>
                     </div>
                     <div id="memo-qr-result" class="memo-qr-result" aria-live="polite"></div>
                 </article>
