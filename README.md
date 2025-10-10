@@ -275,6 +275,8 @@ For detailed testing documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 This project includes comprehensive documentation organized into the following guides:
 
+- **[FEATURES_SUMMARY.md](FEATURES_SUMMARY.md)** - Quick reference guide with all features and capabilities
+- **[FEATURES_AND_IMPROVEMENTS.md](FEATURES_AND_IMPROVEMENTS.md)** - Complete feature catalog and improvement proposals
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guidelines, testing, logging, and code architecture
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Azure deployment, CI/CD, and production configuration
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues, error codes, and recovery procedures
