@@ -275,8 +275,12 @@ For detailed testing documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 This project includes comprehensive documentation organized into the following guides:
 
-- **[FEATURES_SUMMARY.md](FEATURES_SUMMARY.md)** - Quick reference guide with all features and capabilities
-- **[FEATURES_AND_IMPROVEMENTS.md](FEATURES_AND_IMPROVEMENTS.md)** - Complete feature catalog and improvement proposals
+### 📚 Feature Documentation
+- **[FEATURES_SUMMARY.md](FEATURES_SUMMARY.md)** - Quick reference guide with all features and capabilities (~5 min read)
+- **[FEATURES_AND_IMPROVEMENTS.md](FEATURES_AND_IMPROVEMENTS.md)** - Complete feature catalog with 100+ improvement proposals (~30 min read)
+- **[ARCHITECTURE_DIAGRAM.md](ARCHITECTURE_DIAGRAM.md)** - Visual system architecture diagrams and data flows (~15 min read)
+
+### 🔧 Technical Documentation
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guidelines, testing, logging, and code architecture
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Azure deployment, CI/CD, and production configuration
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues, error codes, and recovery procedures
