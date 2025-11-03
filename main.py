@@ -1,9 +1,11 @@
 import os
 import platform
+import shlex
 import shutil
 import socket
 import subprocess
 import time
+import uuid
 import warnings
 
 
@@ -69,6 +71,7 @@ from fastapi.responses import (FileResponse, RedirectResponse, Response,
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from scipy import signal
+from starlette.background import BackgroundTask
 
 # Import database constants and manager
 from database import (TABLE_ARCHIVE_LOGS, TABLE_BIKE_DATA,
@@ -161,6 +164,250 @@ _REMOVABLE_SECTION_KEYWORDS = {
     "social",
     "newsletter",
 }
+
+
+NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
+    "mp3": {
+        "kind": "audio",
+        "output_formats": {
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "wav": {
+        "kind": "audio",
+        "output_formats": {
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "flac": {
+        "kind": "audio",
+        "output_formats": {
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "ogg": {
+        "kind": "audio",
+        "output_formats": {
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "m4a": {
+        "kind": "audio",
+        "output_formats": {
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+        },
+    },
+    "aac": {
+        "kind": "audio",
+        "output_formats": {
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+        },
+    },
+    "wma": {
+        "kind": "audio",
+        "output_formats": {
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "generic-audio": {
+        "kind": "audio",
+        "output_formats": {
+            "wav": {"extension": "wav", "media_type": "audio/wav", "audio_args": ["-c:a", "pcm_s16le"]},
+            "flac": {"extension": "flac", "media_type": "audio/flac", "audio_args": ["-c:a", "flac"]},
+            "m4a": {
+                "extension": "m4a",
+                "media_type": "audio/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "mp4": {
+        "kind": "video",
+        "output_formats": {
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+        },
+    },
+    "mov": {
+        "kind": "video",
+        "output_formats": {
+            "mov": {
+                "extension": "mov",
+                "media_type": "video/quicktime",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+        },
+    },
+    "mkv": {
+        "kind": "video",
+        "output_formats": {
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "avi": {
+        "kind": "video",
+        "output_formats": {
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+        },
+    },
+    "webm": {
+        "kind": "video",
+        "output_formats": {
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+        },
+    },
+    "generic-video": {
+        "kind": "video",
+        "output_formats": {
+            "mp4": {
+                "extension": "mp4",
+                "media_type": "video/mp4",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+                "extra_args": ["-movflags", "+faststart"],
+            },
+            "mkv": {
+                "extension": "mkv",
+                "media_type": "video/x-matroska",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+        },
+    },
+}
+
+_noise_results_store: Dict[str, Dict[str, Any]] = {}
+_noise_results_lock = asyncio.Lock()
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    """Clamp ``value`` to the inclusive range ``[minimum, maximum]``."""
+    return max(minimum, min(maximum, value))
+
+
+def _cleanup_noise_directory(path: Path) -> None:
+    """Remove a temporary directory used for audio/video noise processing."""
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def _decode_bytes_to_text(content_bytes: bytes) -> str:
@@ -1201,6 +1448,14 @@ def read_tools(request: Request):
     return FileResponse(BASE_DIR / "static" / "tools.html")
 
 
+@app.get("/av-tools.html")
+def read_av_tools(request: Request):
+    """Serve the audio and video tools page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/av-tools.html")
+    return FileResponse(BASE_DIR / "static" / "av-tools.html")
+
+
 @app.get("/memo.html")
 def read_memo_page(request: Request):
     """Serve the memo management page."""
@@ -1850,6 +2105,233 @@ def get_gpx(limit: Optional[int] = None):
     gpx_lines.append('</trkseg></trk></gpx>')
     gpx_data = "\n".join(gpx_lines)
     return Response(content=gpx_data, media_type="application/gpx+xml", headers={"Content-Disposition": "attachment; filename=records.gpx"})
+
+
+@app.post("/api/av/noise-reduction")
+async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile = File(...)):
+    """Apply adaptive noise reduction to the audio track of uploaded media."""
+    try:
+        payload = json.loads(settings)
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive programming
+        raise HTTPException(status_code=400, detail="Invalid settings payload") from exc
+
+    log_lines: List[str] = []
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        log_lines.append("FFmpeg executable not found on PATH.")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "FFmpeg is not installed on the server.", "log": log_lines},
+        )
+
+    extension_hint = (payload.get("extension") or "").lower()
+    original_extension = (payload.get("originalExtension") or "").lower()
+    filename_extension = Path(media_file.filename or "").suffix.lstrip(".").lower()
+    ext_key = extension_hint or original_extension or filename_extension
+    kind_hint = (payload.get("kind") or "").lower()
+    if not ext_key:
+        if kind_hint in {"audio", "video"}:
+            ext_key = f"generic-{kind_hint}"
+        elif (media_file.content_type or "").startswith("video/"):
+            ext_key = "generic-video"
+        else:
+            ext_key = "generic-audio"
+
+    media_info = NOISE_SUPPORTED_MEDIA.get(ext_key)
+    if media_info is None:
+        if kind_hint == "audio":
+            media_info = NOISE_SUPPORTED_MEDIA["generic-audio"]
+            ext_key = "generic-audio"
+        elif kind_hint == "video":
+            media_info = NOISE_SUPPORTED_MEDIA["generic-video"]
+            ext_key = "generic-video"
+        elif (media_file.content_type or "").startswith("video/"):
+            media_info = NOISE_SUPPORTED_MEDIA["generic-video"]
+            ext_key = "generic-video"
+        elif (media_file.content_type or "").startswith("audio/"):
+            media_info = NOISE_SUPPORTED_MEDIA["generic-audio"]
+            ext_key = "generic-audio"
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported media type for noise reduction")
+
+    output_key = (payload.get("outputFormat") or "").lower()
+    if not output_key:
+        raise HTTPException(status_code=400, detail="Output format is required")
+
+    format_config = media_info["output_formats"].get(output_key)
+    if not format_config:
+        raise HTTPException(status_code=400, detail="Output format is not allowed for this media type")
+
+    def _float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    data = await media_file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="noise-"))
+    input_suffix = Path(media_file.filename or "input").suffix or f".{original_extension}" or ".bin"
+    input_path = temp_dir / f"input{input_suffix}"
+    output_path = temp_dir / f"output.{format_config['extension']}"
+
+    with open(input_path, "wb") as handle:
+        handle.write(data)
+
+    log_lines.append(f"Input file: {media_file.filename or 'unnamed'} ({len(data)} bytes)")
+    log_lines.append(f"Processing as {media_info['kind']} ➜ {output_key}")
+
+    noise_reduction = _clamp(_float(payload.get("noiseReduction"), 12.0), 1.0, 60.0)
+    residual_floor = _float(payload.get("residualFloor"), -50.0)
+    temporal = _clamp(_float(payload.get("temporalSmoothing"), 1.8), 0.1, 6.0)
+    frequency = int(_clamp(_float(payload.get("frequencySmoothing"), 8.0), 1.0, 30.0))
+    highpass_enabled = bool(payload.get("highpassEnabled"))
+    highpass_cutoff = int(_clamp(_float(payload.get("highpassCutoff"), 120.0), 20.0, 20000.0))
+    lowpass_enabled = bool(payload.get("lowpassEnabled"))
+    lowpass_cutoff = int(_clamp(_float(payload.get("lowpassCutoff"), 15000.0), 100.0, 22050.0))
+    preserve_video = bool(payload.get("preserveVideo", True))
+    video_denoise = bool(payload.get("videoDenoise"))
+    video_strength = _clamp(_float(payload.get("videoDenoiseStrength"), 1.6), 0.1, 5.0)
+
+    audio_filters: List[str] = []
+    if highpass_enabled:
+        audio_filters.append(f"highpass=f={highpass_cutoff}")
+    audio_filters.append(
+        "afftdn="
+        f"nr={noise_reduction:.1f}:nf={residual_floor:.1f}:tn={temporal:.2f}:tf={frequency}:om=d"
+    )
+    if lowpass_enabled:
+        audio_filters.append(f"lowpass=f={lowpass_cutoff}")
+    audio_filter_arg = ",".join(audio_filters)
+    log_lines.append(f"Audio filter chain: {audio_filter_arg}")
+
+    video_filter_arg: Optional[str] = None
+    if media_info["kind"] == "video" and video_denoise:
+        luma = round(video_strength, 2)
+        chroma = round(video_strength * 0.75, 2)
+        temporal_strength = round(video_strength * 1.6, 2)
+        video_filter_arg = (
+            "hqdn3d="
+            f"luma_spatial={luma}:chroma_spatial={chroma}:"
+            f"luma_tmp={temporal_strength}:chroma_tmp={temporal_strength}"
+        )
+        log_lines.append(f"Video filter chain: {video_filter_arg}")
+    elif media_info["kind"] == "video":
+        log_lines.append("Video filter chain: none (video stream preserved)")
+
+    command: List[str] = [ffmpeg_path, "-hide_banner", "-y", "-i", str(input_path)]
+    if media_info["kind"] == "audio":
+        command.extend(["-vn", "-af", audio_filter_arg])
+        command.extend(format_config["audio_args"])
+    else:
+        command.extend(["-map", "0:v?", "-map", "0:a?", "-af", audio_filter_arg])
+        if video_filter_arg:
+            command.extend(["-vf", video_filter_arg])
+            command.extend(format_config.get("video_encode_args", []))
+        else:
+            if preserve_video and format_config.get("video_copy_args"):
+                command.extend(format_config["video_copy_args"])
+            else:
+                command.extend(format_config.get("video_encode_args", []))
+        command.extend(format_config["audio_args"])
+
+    if format_config.get("extra_args"):
+        command.extend(format_config["extra_args"])
+
+    command.append(str(output_path))
+    log_lines.append("FFmpeg command: " + " ".join(shlex.quote(part) for part in command))
+
+    try:
+        result = await run_in_threadpool(
+            subprocess.run,
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        log_lines.append(f"FFmpeg return code: {result.returncode}")
+        if result.stdout:
+            log_lines.append("--- stdout ---")
+            log_lines.extend(result.stdout.strip().splitlines())
+        if result.stderr:
+            log_lines.append("--- stderr ---")
+            log_lines.extend(result.stderr.strip().splitlines())
+
+        if result.returncode != 0 or not output_path.exists():
+            log_lines.append("Noise reduction failed to produce an output file.")
+            input_path.unlink(missing_ok=True)
+            _cleanup_noise_directory(temp_dir)
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "FFmpeg failed to process the media.",
+                    "log": log_lines,
+                },
+            )
+
+        input_path.unlink(missing_ok=True)
+
+        token = uuid.uuid4().hex
+        download_stem = Path(media_file.filename or "media").stem or "media"
+        download_name = f"{download_stem}_denoised.{format_config['extension']}"
+
+        async with _noise_results_lock:
+            _noise_results_store[token] = {
+                "output_path": str(output_path),
+                "temp_dir": str(temp_dir),
+                "media_type": format_config["media_type"],
+                "download_name": download_name,
+                "created": time.time(),
+            }
+
+        log_lines.append(f"Output file ready: {output_path.name}")
+        log_lines.append("Noise reduction complete.")
+
+        return {
+            "download_token": token,
+            "download_name": download_name,
+            "log": log_lines,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - unexpected runtime error
+        log_lines.append(f"Unexpected processing error: {exc}")
+        input_path.unlink(missing_ok=True)
+        _cleanup_noise_directory(temp_dir)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Unexpected error while processing media.",
+                "log": log_lines,
+            },
+        ) from exc
+
+
+@app.get("/api/av/noise-reduction/{token}")
+async def download_noise_reduced_media(token: str):
+    """Download the processed media file using a one-time token."""
+    async with _noise_results_lock:
+        entry = _noise_results_store.pop(token, None)
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Processed media not found or already downloaded")
+
+    output_path = Path(entry["output_path"])
+    temp_dir = Path(entry["temp_dir"])
+
+    if not output_path.exists():
+        _cleanup_noise_directory(temp_dir)
+        raise HTTPException(status_code=404, detail="Processed media has expired")
+
+    background = BackgroundTask(_cleanup_noise_directory, temp_dir)
+    return FileResponse(
+        output_path,
+        media_type=entry["media_type"],
+        filename=entry["download_name"],
+        background=background,
+    )
 
 
 @app.post("/tools/download_video")

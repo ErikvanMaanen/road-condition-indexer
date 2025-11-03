@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio &amp; Video Tools</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="/static/utils.js"></script>
+    <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="monitor.html">Monitor</a>
+    <a href="tools.html">Tools</a>
+    <a href="shared.html">Shared</a>
+    <a href="memo.html">Memo's</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Audio &amp; Video Tools</h1>
+
+<div class="section" id="noise-removal-section">
+    <div class="section-header" onclick="toggleSection('noise-removal')">
+        <span>🔇 Background Noise Remover</span>
+        <span class="section-toggle" id="noise-removal-toggle">▼</span>
+    </div>
+    <div class="section-content" id="noise-removal-content" style="display: block;">
+        <p class="text-sm rci-muted">Clean up audio tracks inside media files by applying an adaptive noise reduction profile powered by FFmpeg. Upload an audio or video file, tweak the processing profile, and download the denoised result together with a detailed processing log.</p>
+        <div id="noise-drop-zone" class="json-drop" role="button" tabindex="0" aria-label="Drop or select a media file">
+            Drop media here or
+            <input type="file" id="noise-file-input" accept="audio/*,video/*" aria-label="Select media file">
+        </div>
+        <div id="noise-file-details" class="mt-05 text-sm rci-muted">No file selected.</div>
+
+        <div id="noise-settings-wrapper" class="mt-1">
+            <template id="noise-audio-template">
+                <fieldset class="tool-fieldset">
+                    <legend>Noise reduction settings</legend>
+                    <div class="tool-settings-grid">
+                        <label class="tool-field">
+                            <span class="tool-label">Profile</span>
+                            <select data-role="profile-select">
+                                <option value="balanced" selected>Balanced (everyday noise)</option>
+                                <option value="gentle">Gentle (light hiss)</option>
+                                <option value="aggressive">Aggressive (heavy background)</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <span class="tool-help">Choose a starting point for the sliders below.</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Noise reduction</span>
+                            <div class="tool-range">
+                                <input type="range" min="3" max="30" value="12" step="1" data-role="noise-reduction">
+                                <output data-role="noise-reduction-display">12 dB</output>
+                            </div>
+                            <span class="tool-help">How strongly the noise floor is pushed down (dB).</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Residual floor</span>
+                            <div class="tool-range">
+                                <input type="range" min="-80" max="-20" value="-50" step="1" data-role="residual-floor">
+                                <output data-role="residual-floor-display">-50 dB</output>
+                            </div>
+                            <span class="tool-help">Sets the lowest allowed audio level to avoid pumping artifacts.</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Temporal smoothing</span>
+                            <div class="tool-range">
+                                <input type="range" min="5" max="40" value="18" step="1" data-role="temporal-smoothing">
+                                <output data-role="temporal-smoothing-display">1.8×</output>
+                            </div>
+                            <span class="tool-help">Controls how much to blend across frames (higher values smooth more aggressively).</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Frequency smoothing</span>
+                            <div class="tool-range">
+                                <input type="range" min="3" max="18" value="8" step="1" data-role="frequency-smoothing">
+                                <output data-role="frequency-smoothing-display">8 bands</output>
+                            </div>
+                            <span class="tool-help">Blends neighboring frequency bins to reduce tonal artifacts.</span>
+                        </label>
+                    </div>
+                    <div class="tool-toggle-row">
+                        <label><input type="checkbox" data-role="highpass-toggle"> Enable high-pass filter</label>
+                        <input type="number" data-role="highpass-value" class="tool-inline-input" value="120" min="20" max="2000" step="10" disabled> Hz
+                    </div>
+                    <div class="tool-toggle-row">
+                        <label><input type="checkbox" data-role="lowpass-toggle"> Enable low-pass filter</label>
+                        <input type="number" data-role="lowpass-value" class="tool-inline-input" value="15000" min="2000" max="20000" step="100" disabled> Hz
+                    </div>
+                    <label class="tool-field mt-1">
+                        <span class="tool-label">Output format</span>
+                        <select data-role="output-format"></select>
+                        <span class="tool-help" data-role="output-help"></span>
+                    </label>
+                </fieldset>
+            </template>
+
+            <template id="noise-video-template">
+                <fieldset class="tool-fieldset">
+                    <legend>Noise reduction settings</legend>
+                    <div class="tool-settings-grid">
+                        <label class="tool-field">
+                            <span class="tool-label">Profile</span>
+                            <select data-role="profile-select">
+                                <option value="balanced" selected>Balanced (dialogue)</option>
+                                <option value="gentle">Gentle (ambience)</option>
+                                <option value="aggressive">Aggressive (noisy footage)</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <span class="tool-help">Choose a starting point for the sliders below.</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Noise reduction</span>
+                            <div class="tool-range">
+                                <input type="range" min="3" max="30" value="12" step="1" data-role="noise-reduction">
+                                <output data-role="noise-reduction-display">12 dB</output>
+                            </div>
+                            <span class="tool-help">How strongly the noise floor is pushed down (dB).</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Residual floor</span>
+                            <div class="tool-range">
+                                <input type="range" min="-80" max="-20" value="-50" step="1" data-role="residual-floor">
+                                <output data-role="residual-floor-display">-50 dB</output>
+                            </div>
+                            <span class="tool-help">Sets the lowest allowed audio level to avoid pumping artifacts.</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Temporal smoothing</span>
+                            <div class="tool-range">
+                                <input type="range" min="5" max="40" value="20" step="1" data-role="temporal-smoothing">
+                                <output data-role="temporal-smoothing-display">2.0×</output>
+                            </div>
+                            <span class="tool-help">Controls how much to blend across frames (higher values smooth more aggressively).</span>
+                        </label>
+                        <label class="tool-field">
+                            <span class="tool-label">Frequency smoothing</span>
+                            <div class="tool-range">
+                                <input type="range" min="3" max="18" value="9" step="1" data-role="frequency-smoothing">
+                                <output data-role="frequency-smoothing-display">9 bands</output>
+                            </div>
+                            <span class="tool-help">Blends neighboring frequency bins to reduce tonal artifacts.</span>
+                        </label>
+                    </div>
+                    <div class="tool-toggle-row">
+                        <label><input type="checkbox" data-role="highpass-toggle"> Enable high-pass filter</label>
+                        <input type="number" data-role="highpass-value" class="tool-inline-input" value="90" min="20" max="2000" step="10" disabled> Hz
+                    </div>
+                    <div class="tool-toggle-row">
+                        <label><input type="checkbox" data-role="lowpass-toggle"> Enable low-pass filter</label>
+                        <input type="number" data-role="lowpass-value" class="tool-inline-input" value="16000" min="2000" max="20000" step="100" disabled> Hz
+                    </div>
+                    <fieldset class="tool-subfieldset">
+                        <legend>Video handling</legend>
+                        <label class="tool-toggle-row">
+                            <input type="checkbox" data-role="preserve-video" checked>
+                            <span>Copy the original video stream when possible</span>
+                        </label>
+                        <label class="tool-toggle-row">
+                            <input type="checkbox" data-role="video-denoise">
+                            <span>Apply spatial-temporal denoise to the picture</span>
+                        </label>
+                        <div class="tool-field tool-nested" data-role="video-denoise-controls" hidden>
+                            <span class="tool-label">Denoise strength</span>
+                            <div class="tool-range">
+                                <input type="range" min="0.5" max="3.0" step="0.1" value="1.6" data-role="video-denoise-strength">
+                                <output data-role="video-denoise-strength-display">1.6</output>
+                            </div>
+                            <span class="tool-help">Higher values increase video smoothing (uses HQDN3D filter).</span>
+                        </div>
+                    </fieldset>
+                    <label class="tool-field mt-1">
+                        <span class="tool-label">Output format</span>
+                        <select data-role="output-format"></select>
+                        <span class="tool-help" data-role="output-help"></span>
+                    </label>
+                </fieldset>
+            </template>
+        </div>
+
+        <div id="noise-actions" class="mt-1 flex gap-05 flex-wrap">
+            <button id="noise-process-btn" disabled>Remove Background Noise</button>
+            <button id="noise-reset-btn" class="secondary" disabled>Reset</button>
+        </div>
+
+        <div id="noise-download" class="mt-1 hidden">
+            <a id="noise-download-link" class="button" download>Download cleaned media</a>
+        </div>
+
+        <div class="mt-1">
+            <h2 class="tool-log-heading">Processing log</h2>
+            <pre id="noise-log" class="tool-log" aria-live="polite"></pre>
+        </div>
+    </div>
+</div>
+
+<script src="/static/av-tools.js"></script>
+</body>
+</html>

@@ -368,6 +368,86 @@ body.memo-camera-overlay-fullscreen { overflow:hidden; }
 .bg-alt { background:var(--rci-surface-alt); }
 .mono { font-family:monospace; }
 .hidden-initial { display:none; }
+
+/* Audio/Video tools */
+.tool-fieldset {
+  border:1px solid var(--rci-border);
+  border-radius:var(--rci-radius);
+  padding:1rem;
+  background:var(--rci-surface);
+  box-shadow:var(--rci-shadow);
+}
+
+.tool-subfieldset {
+  border:1px solid var(--rci-border);
+  border-radius:var(--rci-radius);
+  padding:0.75rem;
+  margin-top:1rem;
+  background:var(--rci-bg-alt);
+}
+
+.tool-settings-grid {
+  display:grid;
+  gap:0.75rem;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.tool-field {
+  display:flex;
+  flex-direction:column;
+  gap:0.35rem;
+}
+
+.tool-label {
+  font-weight:600;
+}
+
+.tool-range {
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
+}
+
+.tool-range input[type="range"] {
+  flex:1 1 auto;
+}
+
+.tool-help {
+  font-size:0.85rem;
+  color:var(--rci-text-muted);
+}
+
+.tool-toggle-row {
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
+  margin-top:0.5rem;
+}
+
+.tool-inline-input {
+  width:6rem;
+}
+
+.tool-nested {
+  margin-top:0.75rem;
+}
+
+.tool-log-heading {
+  margin:0;
+  font-size:1rem;
+}
+
+.tool-log {
+  background:var(--rci-bg-alt);
+  border:1px solid var(--rci-border);
+  border-radius:var(--rci-radius);
+  padding:0.75rem;
+  max-height:280px;
+  overflow:auto;
+  font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  font-size:0.85rem;
+  white-space:pre-wrap;
+}
 .btn-green { background:#28a745; color:#fff; }
 .btn-amber { background:#ffc107; color:#000; }
 .btn-green:hover { background:#1f6e36; }
