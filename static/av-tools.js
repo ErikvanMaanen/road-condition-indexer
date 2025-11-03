@@ -370,7 +370,11 @@
     }
 
     function gatherSettingsPayload() {
-        if (!currentSettingsScope || !currentFormat) return null;
+        if (!currentFormat) return null;
+        if (!currentSettingsScope) {
+            currentSettingsScope = settingsWrapper;
+        }
+        if (!currentSettingsScope) return null;
         const scope = currentSettingsScope;
         const get = role => scope.querySelector(`[data-role="${role}"]`);
         const payload = {
@@ -433,7 +437,7 @@
         hideDownload();
         try {
             const body = new FormData();
-            body.append('file', currentFile);
+            body.append('media_file', currentFile);
             body.append('settings', JSON.stringify(settings));
             appendLog('Uploading file to server for processing...');
             const response = await fetch('/api/av/noise-reduction', { method: 'POST', body });
