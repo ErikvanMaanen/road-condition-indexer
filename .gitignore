@@ -31,6 +31,8 @@ venv/
 static/vendor/
 !static/vendor/.gitkeep
 !static/vendor/README.md
+!static/vendor/qrcode/
+!static/vendor/qrcode/**
 
 # Allow specific lib files but ignore others
 static/lib/*
