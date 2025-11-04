@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="/static/lib/simple-json-diff.css">
     <script src="/static/lib/simple-json-diff.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/diff@5.1.0/dist/diff.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="/static/vendor/qrcode/qrcode.min.js"></script>
     <!-- Inline styles migrated to site.css -->
 </head>
 <body>
@@ -263,7 +263,7 @@
         </div>
         <div id="qr-status" class="mt-05 text-sm rci-muted" aria-live="polite"></div>
         <div class="mt-05 result-box flex justify-center">
-            <canvas id="qr-canvas" class="hidden" role="img" aria-label="Generated QR code"></canvas>
+            <div id="qr-canvas" class="hidden" role="img" aria-label="Generated QR code"></div>
         </div>
     </div>
 </div>
@@ -1677,7 +1677,7 @@ const qrSizeInput = document.getElementById('qr-size');
 const qrErrorLevel = document.getElementById('qr-error-level');
 const qrGenerateBtn = document.getElementById('qr-generate-btn');
 const qrDownloadBtn = document.getElementById('qr-download-btn');
-const qrCanvas = document.getElementById('qr-canvas');
+const qrCanvasContainer = document.getElementById('qr-canvas');
 const qrStatus = document.getElementById('qr-status');
 
 let lastQrDataUrl = '';
@@ -1694,60 +1694,87 @@ function clampQrSize(value) {
     return Math.min(Math.max(number, 120), 512);
 }
 
+function resetQrOutput() {
+    if (qrCanvasContainer) {
+        qrCanvasContainer.innerHTML = '';
+        qrCanvasContainer.classList.add('hidden');
+        qrCanvasContainer.removeAttribute('data-has-qr');
+        qrCanvasContainer.setAttribute('aria-label', 'Generated QR code');
+    }
+    lastQrDataUrl = '';
+    if (qrDownloadBtn) {
+        qrDownloadBtn.disabled = true;
+    }
+}
+
+function extractQrDataUrl() {
+    if (!qrCanvasContainer) return '';
+    const canvas = qrCanvasContainer.querySelector('canvas');
+    if (canvas && typeof canvas.toDataURL === 'function') {
+        return canvas.toDataURL('image/png');
+    }
+    const img = qrCanvasContainer.querySelector('img');
+    if (img && img.src) {
+        return img.src;
+    }
+    return '';
+}
+
 function generateQrCode() {
     const text = (qrInput.value || '').trim();
     if (!text) {
         setQrStatus('Enter some text or a URL to generate a QR code.', true);
-        qrCanvas.classList.add('hidden');
-        qrDownloadBtn.disabled = true;
-        lastQrDataUrl = '';
+        resetQrOutput();
+        return;
+    }
+
+    if (!(window.QRCode && QRCode.CorrectLevel)) {
+        console.error('QR code library is not available on the page.');
+        setQrStatus('QR code library failed to load. Please refresh the page.', true);
+        resetQrOutput();
         return;
     }
 
     const size = clampQrSize(qrSizeInput.value);
     qrSizeInput.value = size;
-    const level = qrErrorLevel.value || 'M';
+    const levelKey = (qrErrorLevel.value || 'M').toUpperCase();
+    const correctLevel = QRCode.CorrectLevel[levelKey] ?? QRCode.CorrectLevel.M;
 
-    qrDownloadBtn.disabled = true;
+    resetQrOutput();
     setQrStatus('Generating QR code…');
 
-    const options = {
-        errorCorrectionLevel: level,
-        margin: 2,
-        width: size,
-        color: {
-            dark: '#000000',
-            light: '#ffffff'
-        }
-    };
-
     try {
-        QRCode.toCanvas(qrCanvas, text, options, err => {
-            if (err) {
-                console.error('QR generation failed', err);
-                setQrStatus('Failed to generate QR code.', true);
-                qrCanvas.classList.add('hidden');
-                lastQrDataUrl = '';
-                return;
-            }
-            qrCanvas.classList.remove('hidden');
-            qrCanvas.setAttribute('aria-label', `QR code for ${text}`);
-            lastQrDataUrl = qrCanvas.toDataURL('image/png');
-            qrDownloadBtn.disabled = false;
-            setQrStatus(`Generated ${size}×${size} QR code using ${level} error correction.`);
+        new QRCode(qrCanvasContainer, {
+            text,
+            width: size,
+            height: size,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel
         });
+
+        const dataUrl = extractQrDataUrl();
+        if (!dataUrl) {
+            throw new Error('QR code output is empty');
+        }
+
+        lastQrDataUrl = dataUrl;
+        qrCanvasContainer.classList.remove('hidden');
+        qrCanvasContainer.setAttribute('data-has-qr', 'true');
+        qrCanvasContainer.setAttribute('aria-label', 'Generated QR code preview');
+        qrDownloadBtn.disabled = false;
+        setQrStatus('QR code ready.');
     } catch (err) {
         console.error('QR generation threw an error', err);
-        setQrStatus('QR code generation is not supported in this browser.', true);
-        qrCanvas.classList.add('hidden');
-        lastQrDataUrl = '';
+        resetQrOutput();
+        setQrStatus('Unable to generate QR code. Please try again.', true);
     }
 }
 
 qrGenerateBtn.addEventListener('click', generateQrCode);
 
 qrInput.addEventListener('keydown', event => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         generateQrCode();
     }
@@ -1759,9 +1786,10 @@ qrSizeInput.addEventListener('change', () => {
 });
 
 qrDownloadBtn.addEventListener('click', () => {
-    if (!lastQrDataUrl) return;
+    const dataUrl = lastQrDataUrl || extractQrDataUrl();
+    if (!dataUrl) return;
     const link = document.createElement('a');
-    link.href = lastQrDataUrl;
+    link.href = dataUrl;
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     link.download = `qr-code-${ts}.png`;
     link.click();
