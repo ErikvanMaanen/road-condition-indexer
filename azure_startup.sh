@@ -23,6 +23,21 @@ fi
 echo "✅ Application files found"
 echo "🐍 Python version: $(python3 --version 2>&1)"
 
+# Install FFmpeg if required for noise reduction endpoint
+INSTALL_SCRIPT="$APP_DIR/bin/install_ffmpeg.sh"
+if [ -x "$INSTALL_SCRIPT" ]; then
+    echo "🔧 Ensuring FFmpeg is installed..."
+    if "$INSTALL_SCRIPT"; then
+        export PATH="/home/site/ffmpeg/bin:$PATH"
+        echo "✅ FFmpeg ready: $(command -v ffmpeg)"
+    else
+        echo "❌ Failed to install FFmpeg"
+        exit 1
+    fi
+else
+    echo "⚠️  FFmpeg installer script not found at $INSTALL_SCRIPT"
+fi
+
 # Check database configuration (required for startup)
 if [ -n "$AZURE_SQL_SERVER" ] && [ -n "$AZURE_SQL_DATABASE" ] && [ -n "$AZURE_SQL_USER" ] && [ -n "$AZURE_SQL_PASSWORD" ]; then
     echo "✅ Azure SQL Server configuration detected"
