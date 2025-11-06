@@ -514,7 +514,13 @@
             fileInput.click();
         }
     });
-    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('click', event => {
+        const target = event.target;
+        if (target === fileInput || (target && typeof target.closest === 'function' && target.closest('input[type="file"]'))) {
+            return;
+        }
+        fileInput.click();
+    });
 
     fileInput.addEventListener('change', () => {
         const file = fileInput.files && fileInput.files[0];
