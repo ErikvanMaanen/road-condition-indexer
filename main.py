@@ -2205,7 +2205,7 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
         audio_filters.append(f"highpass=f={highpass_cutoff}")
     audio_filters.append(
         "afftdn="
-        f"nr={noise_reduction:.1f}:nf={residual_floor:.1f}:ad={adaptivity:.2f}:gs={frequency}:om=d"
+        f"nr={noise_reduction:.1f}:nf={residual_floor:.1f}:ad={adaptivity:.2f}:gs={frequency}"
     )
     if lowpass_enabled:
         audio_filters.append(f"lowpass=f={lowpass_cutoff}")
