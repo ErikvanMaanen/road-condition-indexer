@@ -2186,7 +2186,12 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
     noise_reduction = _clamp(_float(payload.get("noiseReduction"), 12.0), 1.0, 60.0)
     residual_floor = _float(payload.get("residualFloor"), -50.0)
     temporal = _clamp(_float(payload.get("temporalSmoothing"), 1.8), 0.1, 6.0)
-    frequency = int(_clamp(_float(payload.get("frequencySmoothing"), 8.0), 1.0, 30.0))
+    # Map the user supplied temporal smoothing multiplier (0.1x – 6.0x) to
+    # FFmpeg's adaptivity parameter range (0.0 – 1.0). Lower adaptivity values
+    # react faster (less smoothing) while higher values smooth more
+    # aggressively, which matches the UI description.
+    adaptivity = _clamp((temporal - 0.1) / 5.9, 0.0, 1.0)
+    frequency = int(_clamp(_float(payload.get("frequencySmoothing"), 8.0), 0.0, 50.0))
     highpass_enabled = bool(payload.get("highpassEnabled"))
     highpass_cutoff = int(_clamp(_float(payload.get("highpassCutoff"), 120.0), 20.0, 20000.0))
     lowpass_enabled = bool(payload.get("lowpassEnabled"))
@@ -2200,7 +2205,7 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
         audio_filters.append(f"highpass=f={highpass_cutoff}")
     audio_filters.append(
         "afftdn="
-        f"nr={noise_reduction:.1f}:nf={residual_floor:.1f}:tn={temporal:.2f}:tf={frequency}:om=d"
+        f"nr={noise_reduction:.1f}:nf={residual_floor:.1f}:ad={adaptivity:.2f}:gs={frequency}:om=d"
     )
     if lowpass_enabled:
         audio_filters.append(f"lowpass=f={lowpass_cutoff}")
