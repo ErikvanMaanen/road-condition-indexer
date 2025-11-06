@@ -24,6 +24,20 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
+# Ensure ffmpeg is available for media processing endpoints
+if [ -x "bin/install_ffmpeg.sh" ]; then
+    echo "🔧 Ensuring FFmpeg is installed..."
+    if bin/install_ffmpeg.sh; then
+        export PATH="/home/site/ffmpeg/bin:$PATH"
+        echo "✅ FFmpeg ready: $(command -v ffmpeg)"
+    else
+        echo "❌ Failed to install FFmpeg"
+        exit 1
+    fi
+else
+    echo "⚠️  bin/install_ffmpeg.sh not found; continuing without automatic FFmpeg setup"
+fi
+
 # Python version check
 echo "🐍 Python version check..."
 python3 --version
