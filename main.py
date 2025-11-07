@@ -396,6 +396,21 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
     },
 }
 
+AAC_ALLOWED_BITRATES = {96, 128, 160, 192, 224, 256, 320}
+VIDEO_PRESET_CHOICES = {
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+}
+VIDEO_CRF_MIN = 10
+VIDEO_CRF_MAX = 40
+
 _noise_results_store: Dict[str, Dict[str, Any]] = {}
 _noise_results_lock = asyncio.Lock()
 
@@ -2168,6 +2183,85 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
         except (TypeError, ValueError):
             return default
 
+    def _normalize_audio_bitrate(value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            candidate = int(value)
+        else:
+            text = str(value).strip().lower()
+            if not text:
+                return None
+            if text.endswith("bps"):
+                text = text[:-3]
+            if text.endswith("k"):
+                text = text[:-1]
+            try:
+                candidate = int(float(text))
+            except (TypeError, ValueError):
+                return None
+        if candidate > 1000:
+            candidate = int(round(candidate / 1000))
+        if candidate in AAC_ALLOWED_BITRATES:
+            return candidate
+        return None
+
+    def _normalize_video_preset(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        preset = str(value).strip().lower()
+        if preset in VIDEO_PRESET_CHOICES:
+            return preset
+        return None
+
+    def _replace_or_append(args: List[str], flag: str, value: str) -> bool:
+        try:
+            index = args.index(flag)
+        except ValueError:
+            args.extend([flag, value])
+            return True
+        if index + 1 < len(args):
+            if args[index + 1] == value:
+                return False
+            args[index + 1] = value
+            return True
+        args.append(value)
+        return True
+
+    audio_args = list(format_config["audio_args"])
+    video_copy_args = list(format_config.get("video_copy_args", []))
+    video_encode_args = list(format_config.get("video_encode_args", []))
+
+    current_audio_bitrate: Optional[int] = None
+    if "-b:a" in audio_args:
+        idx = audio_args.index("-b:a")
+        if idx + 1 < len(audio_args):
+            token = str(audio_args[idx + 1]).lower()
+            if token.endswith("k"):
+                try:
+                    current_audio_bitrate = int(token[:-1])
+                except ValueError:
+                    current_audio_bitrate = None
+
+    current_video_preset: Optional[str] = None
+    current_video_crf: Optional[int] = None
+    if video_encode_args:
+        try:
+            preset_idx = video_encode_args.index("-preset")
+        except ValueError:
+            preset_idx = -1
+        if preset_idx >= 0 and preset_idx + 1 < len(video_encode_args):
+            current_video_preset = str(video_encode_args[preset_idx + 1]).lower()
+        try:
+            crf_idx = video_encode_args.index("-crf")
+        except ValueError:
+            crf_idx = -1
+        if crf_idx >= 0 and crf_idx + 1 < len(video_encode_args):
+            try:
+                current_video_crf = int(float(video_encode_args[crf_idx + 1]))
+            except (TypeError, ValueError):
+                current_video_crf = None
+
     data = await media_file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
@@ -2200,6 +2294,27 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
     video_denoise = bool(payload.get("videoDenoise"))
     video_strength = _clamp(_float(payload.get("videoDenoiseStrength"), 1.6), 0.1, 5.0)
 
+    requested_audio_bitrate = _normalize_audio_bitrate(payload.get("audioBitrate"))
+    audio_bitrate_applied = False
+    if (
+        requested_audio_bitrate
+        and "-b:a" in audio_args
+        and (current_audio_bitrate is None or requested_audio_bitrate != current_audio_bitrate)
+    ):
+        audio_bitrate_applied = _replace_or_append(audio_args, "-b:a", f"{requested_audio_bitrate}k")
+
+    requested_video_preset = _normalize_video_preset(payload.get("videoPreset"))
+    raw_video_crf = payload.get("videoCrf")
+    if isinstance(raw_video_crf, str) and not raw_video_crf.strip():
+        raw_video_crf = None
+    video_crf_choice: Optional[int] = None
+    if raw_video_crf is not None:
+        video_crf_choice = int(round(_clamp(_float(raw_video_crf), VIDEO_CRF_MIN, VIDEO_CRF_MAX)))
+    preset_differs = bool(
+        requested_video_preset is not None and requested_video_preset != (current_video_preset or None)
+    )
+    crf_differs = bool(video_crf_choice is not None and video_crf_choice != (current_video_crf or None))
+
     audio_filters: List[str] = []
     if highpass_enabled:
         audio_filters.append(f"highpass=f={highpass_cutoff}")
@@ -2211,6 +2326,8 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
         audio_filters.append(f"lowpass=f={lowpass_cutoff}")
     audio_filter_arg = ",".join(audio_filters)
     log_lines.append(f"Audio filter chain: {audio_filter_arg}")
+    if audio_bitrate_applied and requested_audio_bitrate:
+        log_lines.append(f"AAC bitrate: {requested_audio_bitrate} kbps")
 
     video_filter_arg: Optional[str] = None
     if media_info["kind"] == "video" and video_denoise:
@@ -2226,21 +2343,34 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
     elif media_info["kind"] == "video":
         log_lines.append("Video filter chain: none (video stream preserved)")
 
+    will_encode_video = False
+    if media_info["kind"] == "video":
+        will_encode_video = bool(video_filter_arg) or not (preserve_video and video_copy_args)
+        if will_encode_video:
+            if requested_video_preset and preset_differs:
+                if _replace_or_append(video_encode_args, "-preset", requested_video_preset):
+                    log_lines.append(f"Video preset: {requested_video_preset}")
+            if video_crf_choice is not None and crf_differs:
+                if _replace_or_append(video_encode_args, "-crf", str(video_crf_choice)):
+                    log_lines.append(f"Video CRF: {video_crf_choice}")
+        elif (preset_differs or crf_differs) and preserve_video and video_copy_args:
+            log_lines.append("Video encoding settings left unchanged because the video stream is copied.")
+
     command: List[str] = [ffmpeg_path, "-hide_banner", "-y", "-i", str(input_path)]
     if media_info["kind"] == "audio":
         command.extend(["-vn", "-af", audio_filter_arg])
-        command.extend(format_config["audio_args"])
+        command.extend(audio_args)
     else:
         command.extend(["-map", "0:v?", "-map", "0:a?", "-af", audio_filter_arg])
         if video_filter_arg:
             command.extend(["-vf", video_filter_arg])
-            command.extend(format_config.get("video_encode_args", []))
+            command.extend(video_encode_args)
         else:
-            if preserve_video and format_config.get("video_copy_args"):
-                command.extend(format_config["video_copy_args"])
+            if preserve_video and video_copy_args:
+                command.extend(video_copy_args)
             else:
-                command.extend(format_config.get("video_encode_args", []))
-        command.extend(format_config["audio_args"])
+                command.extend(video_encode_args)
+        command.extend(audio_args)
 
     if format_config.get("extra_args"):
         command.extend(format_config["extra_args"])
