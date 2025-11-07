@@ -97,6 +97,11 @@
                         <select data-role="output-format"></select>
                         <span class="tool-help" data-role="output-help"></span>
                     </label>
+                    <label class="tool-field tool-nested" data-role="audio-bitrate-field" hidden>
+                        <span class="tool-label">AAC bitrate</span>
+                        <select data-role="audio-bitrate"></select>
+                        <span class="tool-help">Adjust the target bitrate when exporting to AAC.</span>
+                    </label>
                 </fieldset>
             </template>
 
@@ -178,6 +183,24 @@
                         <span class="tool-label">Output format</span>
                         <select data-role="output-format"></select>
                         <span class="tool-help" data-role="output-help"></span>
+                    </label>
+                    <label class="tool-field tool-nested" data-role="audio-bitrate-field" hidden>
+                        <span class="tool-label">AAC bitrate</span>
+                        <select data-role="audio-bitrate"></select>
+                        <span class="tool-help">Controls the target bitrate when audio is encoded to AAC.</span>
+                    </label>
+                    <label class="tool-field tool-nested" data-role="video-crf-field" hidden>
+                        <span class="tool-label">Encoding quality (CRF)</span>
+                        <div class="tool-range">
+                            <input type="range" min="16" max="30" value="20" step="1" data-role="video-crf">
+                            <output data-role="video-crf-display">CRF 20</output>
+                        </div>
+                        <span class="tool-help">Lower CRF values improve quality while increasing file size.</span>
+                    </label>
+                    <label class="tool-field tool-nested" data-role="video-preset-field" hidden>
+                        <span class="tool-label">Encoding preset</span>
+                        <select data-role="video-preset"></select>
+                        <span class="tool-help">Choose the speed/quality trade-off for video re-encoding.</span>
                     </label>
                 </fieldset>
             </template>

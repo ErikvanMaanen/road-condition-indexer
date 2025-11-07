@@ -15,6 +15,35 @@
         aggressive: { noiseReduction: 20, residualFloor: -56, temporalSmoothing: 26, frequencySmoothing: 11 }
     };
 
+    const AAC_BITRATE_OPTIONS = [128, 160, 192, 224, 256, 320];
+    const DEFAULT_AAC_BITRATE = 192;
+    const VIDEO_PRESET_OPTIONS = [
+        { value: 'ultrafast', label: 'Ultrafast' },
+        { value: 'superfast', label: 'Superfast' },
+        { value: 'veryfast', label: 'Very fast' },
+        { value: 'faster', label: 'Faster' },
+        { value: 'fast', label: 'Fast' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'slow', label: 'Slow' },
+        { value: 'slower', label: 'Slower' },
+        { value: 'veryslow', label: 'Very slow' }
+    ];
+    const DEFAULT_VIDEO_PRESET = 'medium';
+
+    const createAudioBitrateConfig = () => ({
+        options: AAC_BITRATE_OPTIONS.slice(),
+        default: DEFAULT_AAC_BITRATE
+    });
+
+    const createVideoQualityConfig = () => ({
+        min: 16,
+        max: 30,
+        step: 1,
+        defaultCrf: 20,
+        presets: VIDEO_PRESET_OPTIONS.map(option => ({ ...option })),
+        defaultPreset: DEFAULT_VIDEO_PRESET
+    });
+
     const FORMAT_LIBRARY = {
         mp3: {
             kind: 'audio',
@@ -23,7 +52,12 @@
             outputFormats: [
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Best for editing or archiving.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Keeps file smaller while lossless.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Good balance for sharing.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Good balance for sharing.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         wav: {
@@ -33,7 +67,12 @@
             outputFormats: [
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Preserves full quality.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Compress without losing quality.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Smaller file for distribution.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Smaller file for distribution.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         flac: {
@@ -43,7 +82,12 @@
             outputFormats: [
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Keep as lossless FLAC.' },
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Great for further processing.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Encode to AAC for compatibility.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Encode to AAC for compatibility.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         ogg: {
@@ -53,7 +97,12 @@
             outputFormats: [
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Ideal for mastering.' },
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Full quality wave file.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Convert for players that do not support OGG.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Convert for players that do not support OGG.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         m4a: {
@@ -61,7 +110,12 @@
             label: 'M4A audio',
             backendKey: 'm4a',
             outputFormats: [
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Keep the MPEG-4 container.' },
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Keep the MPEG-4 container.',
+                    audioBitrate: createAudioBitrateConfig()
+                },
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Export an uncompressed master.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Store as lossless FLAC.' }
             ]
@@ -71,7 +125,12 @@
             label: 'AAC audio',
             backendKey: 'aac',
             outputFormats: [
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Keep AAC audio in M4A container.' },
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Keep AAC audio in M4A container.',
+                    audioBitrate: createAudioBitrateConfig()
+                },
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Export lossless PCM.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Archive as lossless FLAC.' }
             ]
@@ -83,7 +142,12 @@
             outputFormats: [
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Re-encode to wave for editing.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Lossless archival copy.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Convert to AAC for compatibility.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Convert to AAC for compatibility.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         mp4: {
@@ -91,8 +155,20 @@
             label: 'MP4 video',
             backendKey: 'mp4',
             outputFormats: [
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Universal compatibility.' },
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Matroska container with AAC audio.' }
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Universal compatibility.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Matroska container with AAC audio.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         },
         mov: {
@@ -100,9 +176,27 @@
             label: 'QuickTime/MOV video',
             backendKey: 'mov',
             outputFormats: [
-                { value: 'mov', label: 'MOV (H.264 + AAC)', help: 'QuickTime compatible output.' },
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Widely supported mp4 container.' },
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Matroska container.' }
+                {
+                    value: 'mov',
+                    label: 'MOV (H.264 + AAC)',
+                    help: 'QuickTime compatible output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Widely supported mp4 container.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Matroska container.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         },
         mkv: {
@@ -110,8 +204,20 @@
             label: 'Matroska video',
             backendKey: 'mkv',
             outputFormats: [
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Matroska container output.' },
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Export as MP4 for portability.' }
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Matroska container output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Export as MP4 for portability.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         },
         avi: {
@@ -119,8 +225,20 @@
             label: 'AVI video',
             backendKey: 'avi',
             outputFormats: [
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Transcode to MP4 for modern playback.' },
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Store in Matroska container.' }
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Transcode to MP4 for modern playback.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Store in Matroska container.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         },
         webm: {
@@ -128,8 +246,20 @@
             label: 'WebM video',
             backendKey: 'webm',
             outputFormats: [
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Rewrap with H.264 + AAC output.' },
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Convert for wider device support.' }
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Rewrap with H.264 + AAC output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Convert for wider device support.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         },
         'generic-audio': {
@@ -139,7 +269,12 @@
             outputFormats: [
                 { value: 'wav', label: 'WAV (16-bit PCM)', help: 'Safe uncompressed audio output.' },
                 { value: 'flac', label: 'FLAC (lossless)', help: 'Lossless but smaller than WAV.' },
-                { value: 'm4a', label: 'M4A (AAC)', help: 'Compressed output for sharing.' }
+                {
+                    value: 'm4a',
+                    label: 'M4A (AAC)',
+                    help: 'Compressed output for sharing.',
+                    audioBitrate: createAudioBitrateConfig()
+                }
             ]
         },
         'generic-video': {
@@ -147,8 +282,20 @@
             label: 'Video stream',
             backendKey: 'generic-video',
             outputFormats: [
-                { value: 'mp4', label: 'MP4 (H.264 + AAC)', help: 'Standard MP4 output.' },
-                { value: 'mkv', label: 'MKV (H.264 + AAC)', help: 'Matroska container output.' }
+                {
+                    value: 'mp4',
+                    label: 'MP4 (H.264 + AAC)',
+                    help: 'Standard MP4 output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'mkv',
+                    label: 'MKV (H.264 + AAC)',
+                    help: 'Matroska container output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                }
             ]
         }
     };
@@ -255,6 +402,16 @@
         const videoDenoiseWrap = scope.querySelector('[data-role="video-denoise-controls"]');
         const videoDenoiseStrength = scope.querySelector('[data-role="video-denoise-strength"]');
         const videoDenoiseStrengthDisplay = scope.querySelector('[data-role="video-denoise-strength-display"]');
+        const audioBitrateField = scope.querySelector('[data-role="audio-bitrate-field"]');
+        const audioBitrateSelect = scope.querySelector('[data-role="audio-bitrate"]');
+        const videoCrfField = scope.querySelector('[data-role="video-crf-field"]');
+        const videoCrfRange = scope.querySelector('[data-role="video-crf"]');
+        const videoCrfDisplay = scope.querySelector('[data-role="video-crf-display"]');
+        const videoPresetField = scope.querySelector('[data-role="video-preset-field"]');
+        const videoPresetSelect = scope.querySelector('[data-role="video-preset"]');
+
+        const formatBitrateValue = kbps => `${kbps}k`;
+        const formatBitrateLabel = kbps => `${kbps} kbps`;
 
         const updateNoiseDisplay = () => {
             if (noiseOut) noiseOut.textContent = `${noiseRange.value} dB`;
@@ -276,12 +433,115 @@
                 videoDenoiseStrengthDisplay.textContent = `${Number(videoDenoiseStrength.value).toFixed(1)}`;
             }
         };
+        const updateVideoCrfDisplay = () => {
+            if (videoCrfDisplay && videoCrfRange) {
+                videoCrfDisplay.textContent = `CRF ${videoCrfRange.value}`;
+            }
+        };
+
+        const updateVideoEncodeControlsState = () => {
+            if (!videoCrfRange && !videoPresetSelect) return;
+            const shouldEncode = !preserveVideo || !preserveVideo.checked || (videoDenoiseToggle && videoDenoiseToggle.checked);
+            const disableVideoControls = !shouldEncode;
+            if (videoCrfRange) {
+                videoCrfRange.disabled = disableVideoControls || (videoCrfField && videoCrfField.hidden);
+            }
+            if (videoPresetSelect) {
+                videoPresetSelect.disabled = disableVideoControls || (videoPresetField && videoPresetField.hidden);
+            }
+        };
+
+        const applyOutputFormatOptions = () => {
+            if (!outputSelect || !Array.isArray(formatInfo.outputFormats)) {
+                if (audioBitrateField) audioBitrateField.hidden = true;
+                if (videoCrfField) videoCrfField.hidden = true;
+                if (videoPresetField) videoPresetField.hidden = true;
+                updateVideoEncodeControlsState();
+                return;
+            }
+            const selected = formatInfo.outputFormats.find(option => option.value === outputSelect.value);
+            if (!selected) {
+                if (audioBitrateField) audioBitrateField.hidden = true;
+                if (videoCrfField) videoCrfField.hidden = true;
+                if (videoPresetField) videoPresetField.hidden = true;
+                updateVideoEncodeControlsState();
+                return;
+            }
+
+            if (audioBitrateField && audioBitrateSelect) {
+                const config = selected.audioBitrate;
+                if (config && Array.isArray(config.options) && config.options.length) {
+                    const previous = audioBitrateSelect.value;
+                    audioBitrateSelect.innerHTML = '';
+                    config.options.forEach(kbps => {
+                        const opt = document.createElement('option');
+                        const value = formatBitrateValue(kbps);
+                        opt.value = value;
+                        opt.textContent = formatBitrateLabel(kbps);
+                        audioBitrateSelect.appendChild(opt);
+                    });
+                    const validValues = config.options.map(formatBitrateValue);
+                    const defaultValue = formatBitrateValue(config.default ?? config.options[0]);
+                    audioBitrateSelect.value = validValues.includes(previous) ? previous : defaultValue;
+                    audioBitrateField.hidden = false;
+                } else {
+                    audioBitrateField.hidden = true;
+                }
+            }
+
+            if (videoCrfField && videoCrfRange && videoCrfDisplay) {
+                const quality = selected.videoQuality;
+                if (quality) {
+                    const previous = Number(videoCrfRange.value);
+                    const min = Number.isFinite(quality.min) ? Number(quality.min) : 16;
+                    const max = Number.isFinite(quality.max) ? Number(quality.max) : 30;
+                    const step = Number.isFinite(quality.step) ? Number(quality.step) : 1;
+                    videoCrfRange.min = String(min);
+                    videoCrfRange.max = String(max);
+                    videoCrfRange.step = String(step);
+                    let nextValue = Number.isFinite(previous) && previous >= min && previous <= max
+                        ? previous
+                        : Number.isFinite(quality.defaultCrf) ? Number(quality.defaultCrf) : Math.round((min + max) / 2);
+                    nextValue = Math.min(Math.max(nextValue, min), max);
+                    videoCrfRange.value = String(nextValue);
+                    updateVideoCrfDisplay();
+                    videoCrfField.hidden = false;
+                } else {
+                    videoCrfField.hidden = true;
+                }
+            }
+
+            if (videoPresetField && videoPresetSelect) {
+                const quality = selected.videoQuality;
+                if (quality && Array.isArray(quality.presets) && quality.presets.length) {
+                    const previous = videoPresetSelect.value;
+                    videoPresetSelect.innerHTML = '';
+                    quality.presets.forEach(preset => {
+                        const opt = document.createElement('option');
+                        opt.value = preset.value;
+                        opt.textContent = preset.label;
+                        videoPresetSelect.appendChild(opt);
+                    });
+                    const validValues = quality.presets.map(preset => preset.value);
+                    let defaultPreset = quality.defaultPreset && validValues.includes(quality.defaultPreset)
+                        ? quality.defaultPreset
+                        : (validValues.includes(DEFAULT_VIDEO_PRESET) ? DEFAULT_VIDEO_PRESET : quality.presets[0].value);
+                    videoPresetSelect.value = validValues.includes(previous) ? previous : defaultPreset;
+                    videoPresetField.hidden = false;
+                } else {
+                    videoPresetField.hidden = true;
+                }
+            }
+
+            updateVideoEncodeControlsState();
+        };
 
         updateNoiseDisplay();
         updateFloorDisplay();
         updateTemporalDisplay();
         updateFreqDisplay();
         updateVideoDenoiseDisplay();
+        updateVideoCrfDisplay();
 
         if (profileSelect) {
             profileSelect.addEventListener('change', () => {
@@ -344,9 +604,22 @@
                     videoDenoiseStrength.value = '1.6';
                     updateVideoDenoiseDisplay();
                 }
+                updateVideoEncodeControlsState();
             });
             videoDenoiseStrength.addEventListener('input', () => {
                 updateVideoDenoiseDisplay();
+            });
+        }
+
+        if (preserveVideo) {
+            preserveVideo.addEventListener('change', () => {
+                updateVideoEncodeControlsState();
+            });
+        }
+
+        if (videoCrfRange) {
+            videoCrfRange.addEventListener('input', () => {
+                updateVideoCrfDisplay();
             });
         }
 
@@ -359,13 +632,17 @@
                 if (idx === 0) opt.selected = true;
                 outputSelect.appendChild(opt);
             });
-            const updateHelp = () => {
-                if (!outputHelp) return;
-                const selected = formatInfo.outputFormats.find(o => o.value === outputSelect.value);
-                outputHelp.textContent = selected ? selected.help : '';
+            const updateOutputDetails = () => {
+                if (outputHelp) {
+                    const selected = formatInfo.outputFormats.find(o => o.value === outputSelect.value);
+                    outputHelp.textContent = selected ? selected.help : '';
+                }
+                applyOutputFormatOptions();
             };
-            outputSelect.addEventListener('change', updateHelp);
-            updateHelp();
+            outputSelect.addEventListener('change', updateOutputDetails);
+            updateOutputDetails();
+        } else {
+            applyOutputFormatOptions();
         }
     }
 
@@ -392,10 +669,22 @@
             lowpassEnabled: !!(get('lowpass-toggle') && get('lowpass-toggle').checked),
             lowpassCutoff: Number((get('lowpass-value') || { value: '15000' }).value)
         };
+        const audioBitrateControl = get('audio-bitrate');
+        if (audioBitrateControl && audioBitrateControl.value) {
+            payload.audioBitrate = audioBitrateControl.value;
+        }
         if (currentFormat.kind === 'video') {
             payload.preserveVideo = !!(get('preserve-video') && get('preserve-video').checked);
             payload.videoDenoise = !!(get('video-denoise') && get('video-denoise').checked);
             payload.videoDenoiseStrength = Number((get('video-denoise-strength') || { value: '1.6' }).value);
+            const videoCrfControl = get('video-crf');
+            if (videoCrfControl && videoCrfControl.value) {
+                payload.videoCrf = Number(videoCrfControl.value);
+            }
+            const videoPresetControl = get('video-preset');
+            if (videoPresetControl && videoPresetControl.value) {
+                payload.videoPreset = videoPresetControl.value;
+            }
         }
         return payload;
     }
