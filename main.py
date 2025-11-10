@@ -282,11 +282,23 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
                 "extra_args": ["-movflags", "+faststart"],
             },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
             "mkv": {
                 "extension": "mkv",
                 "media_type": "video/x-matroska",
                 "audio_args": ["-c:a", "aac", "-b:a", "192k"],
                 "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
             },
         },
@@ -316,6 +328,12 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
                 "video_copy_args": ["-c:v", "copy"],
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
             },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
         },
     },
     "mkv": {
@@ -336,11 +354,24 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
                 "extra_args": ["-movflags", "+faststart"],
             },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
         },
     },
     "avi": {
         "kind": "video",
         "output_formats": {
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_copy_args": ["-c:v", "copy"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
             "mp4": {
                 "extension": "mp4",
                 "media_type": "video/mp4",
@@ -372,6 +403,12 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
                 "extra_args": ["-movflags", "+faststart"],
             },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
         },
     },
     "generic-video": {
@@ -385,6 +422,12 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
                 "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
                 "extra_args": ["-movflags", "+faststart"],
             },
+            "avi": {
+                "extension": "avi",
+                "media_type": "video/x-msvideo",
+                "audio_args": ["-c:a", "aac", "-b:a", "192k"],
+                "video_encode_args": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+            },
             "mkv": {
                 "extension": "mkv",
                 "media_type": "video/x-matroska",
@@ -396,7 +439,7 @@ NOISE_SUPPORTED_MEDIA: Dict[str, Dict[str, Any]] = {
     },
 }
 
-AAC_ALLOWED_BITRATES = {96, 128, 160, 192, 224, 256, 320}
+ENCODED_AUDIO_ALLOWED_BITRATES = {96, 128, 160, 192, 224, 256, 320}
 VIDEO_PRESET_CHOICES = {
     "ultrafast",
     "superfast",
@@ -2202,7 +2245,7 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
                 return None
         if candidate > 1000:
             candidate = int(round(candidate / 1000))
-        if candidate in AAC_ALLOWED_BITRATES:
+        if candidate in ENCODED_AUDIO_ALLOWED_BITRATES:
             return candidate
         return None
 
@@ -2327,7 +2370,7 @@ async def reduce_media_noise(settings: str = Form(...), media_file: UploadFile =
     audio_filter_arg = ",".join(audio_filters)
     log_lines.append(f"Audio filter chain: {audio_filter_arg}")
     if audio_bitrate_applied and requested_audio_bitrate:
-        log_lines.append(f"AAC bitrate: {requested_audio_bitrate} kbps")
+        log_lines.append(f"Audio bitrate: {requested_audio_bitrate} kbps")
 
     video_filter_arg: Optional[str] = None
     if media_info["kind"] == "video" and video_denoise:
