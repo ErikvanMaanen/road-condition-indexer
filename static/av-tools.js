@@ -168,6 +168,13 @@
                     help: 'Matroska container with AAC audio.',
                     audioBitrate: createAudioBitrateConfig(),
                     videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Legacy AVI container output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
                 }
             ]
         },
@@ -196,6 +203,13 @@
                     help: 'Matroska container.',
                     audioBitrate: createAudioBitrateConfig(),
                     videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Export to AVI for legacy workflows.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
                 }
             ]
         },
@@ -217,6 +231,13 @@
                     help: 'Export as MP4 for portability.',
                     audioBitrate: createAudioBitrateConfig(),
                     videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Legacy AVI container output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
                 }
             ]
         },
@@ -225,6 +246,13 @@
             label: 'AVI video',
             backendKey: 'avi',
             outputFormats: [
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Keep the AVI container with refreshed codecs.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
                 {
                     value: 'mp4',
                     label: 'MP4 (H.264 + AAC)',
@@ -259,6 +287,13 @@
                     help: 'Convert for wider device support.',
                     audioBitrate: createAudioBitrateConfig(),
                     videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Export to AVI for compatibility with legacy systems.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
                 }
             ]
         },
@@ -286,6 +321,13 @@
                     value: 'mp4',
                     label: 'MP4 (H.264 + AAC)',
                     help: 'Standard MP4 output.',
+                    audioBitrate: createAudioBitrateConfig(),
+                    videoQuality: createVideoQualityConfig()
+                },
+                {
+                    value: 'avi',
+                    label: 'AVI (H.264 + AAC)',
+                    help: 'Legacy AVI container output.',
                     audioBitrate: createAudioBitrateConfig(),
                     videoQuality: createVideoQualityConfig()
                 },
