@@ -1543,6 +1543,45 @@ def read_comprehensive_logs(request: Request):
         return RedirectResponse(url="/static/login.html?next=/comprehensive-logs.html")
     return FileResponse(BASE_DIR / "static" / "comprehensive-logs.html")
 
+
+@app.get("/dumpert.html")
+def read_dumpert_page(request: Request):
+    """Serve the Dumpert Top Loader page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/dumpert.html")
+    return FileResponse(BASE_DIR / "static" / "dumpert.html")
+
+
+@app.get("/api/dumpert/toppers/{page}")
+async def dumpert_toppers_proxy(
+    page: int,
+    request: Request,
+    nsfw: Optional[str] = Query(None, pattern=r"^[01]$"),
+):
+    """Proxy the Dumpert toppers API to work around CORS restrictions.
+
+    Forwards the required 'origin: Dumpert Top Loader' header and optionally
+    the NSFW header, then returns the JSON response unchanged.
+    """
+    if page < 0 or page > 10:
+        raise HTTPException(status_code=400, detail="Page must be between 0 and 10")
+
+    url = f"https://api-live.dumpert.nl/mobile_api/json/toppers/{page}/"
+    headers = {"origin": "Dumpert Top Loader"}
+    if nsfw == "1":
+        headers["x-dumpert-nsfw"] = "1"
+
+    try:
+        resp = await run_in_threadpool(
+            lambda: requests.get(url, headers=headers, timeout=10)
+        )
+        resp.raise_for_status()
+        return Response(content=resp.content, media_type="application/json")
+    except requests.exceptions.Timeout as exc:
+        raise HTTPException(status_code=504, detail="Dumpert API timeout") from exc
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Dumpert API error: {exc}") from exc
+
 # Track last received location for each device
 # Maps device_id -> (timestamp, latitude, longitude)
 LAST_POINT: Dict[str, Tuple[datetime, float, float]] = {}

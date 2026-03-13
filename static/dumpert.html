@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dumpert Top Loader</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js" defer></script>
+    <style>
+        .dumpert-hero {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .dumpert-wordmark {
+            font-size: 2.6rem;
+            font-weight: 900;
+            letter-spacing: -1px;
+            color: #e82c2c;
+            line-height: 1;
+            text-transform: uppercase;
+            font-family: Arial Black, Arial, sans-serif;
+        }
+        [data-theme="dark"] .dumpert-wordmark { color: #ff5555; }
+        .dumpert-subtitle {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--rci-text-muted);
+            letter-spacing: 0.04em;
+        }
+
+        .dumpert-card {
+            max-width: 480px;
+        }
+        .dumpert-form-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 0.6rem 1rem;
+            margin-bottom: 1.2rem;
+        }
+        .dumpert-form-grid label {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .dumpert-form-grid select,
+        .dumpert-form-grid input[type="number"] {
+            padding: 6px 8px;
+            border: 1px solid var(--rci-border);
+            border-radius: 4px;
+            background: var(--rci-bg);
+            color: var(--rci-text);
+            font-size: 0.95rem;
+            width: 100%;
+        }
+        .dumpert-btn {
+            background: #e82c2c;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 22px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.2s;
+            letter-spacing: 0.02em;
+        }
+        .dumpert-btn:hover:not(:disabled) { background: #c41f1f; }
+        .dumpert-btn:disabled { opacity: 0.6; cursor: default; }
+        [data-theme="dark"] .dumpert-btn { background: #c41f1f; }
+        [data-theme="dark"] .dumpert-btn:hover:not(:disabled) { background: #a81818; }
+
+        .dumpert-open-all-btn {
+            background: var(--rci-primary);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 18px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .dumpert-open-all-btn:hover:not(:disabled) { background: var(--rci-primary-accent); }
+        .dumpert-open-all-btn:disabled { opacity: 0.6; cursor: default; }
+
+        .dumpert-notice {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            border-radius: 6px;
+            padding: 9px 12px;
+            font-size: 0.88rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        [data-theme="dark"] .dumpert-notice {
+            background: #3a2e00;
+            color: #ffd666;
+            border-color: #5a4800;
+        }
+        .dumpert-notice-close {
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: inherit;
+            line-height: 1;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+        #dumpert-results-section {
+            display: none;
+            margin-top: 1.5rem;
+        }
+        .dumpert-results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .dumpert-results-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        #dumpert-links-list {
+            list-style: decimal;
+            padding-left: 1.6rem;
+            margin: 0 0 0.5rem;
+        }
+        #dumpert-links-list li {
+            padding: 3px 0;
+        }
+        #dumpert-links-list a {
+            color: var(--rci-link);
+            text-decoration: none;
+            word-break: break-all;
+        }
+        #dumpert-links-list a:hover { text-decoration: underline; }
+
+        .dumpert-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: dumpert-spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        @keyframes dumpert-spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="monitor.html">Monitor</a>
+    <a href="tools.html">Tools</a>
+    <a href="shared.html">Shared</a>
+    <a href="memo.html">Memo's</a>
+    <a href="dumpert.html" aria-current="page">Dumpert</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+<main>
+    <div class="dumpert-hero">
+        <span class="dumpert-wordmark" aria-label="Dumpert">DUMPERT</span>
+        <span class="dumpert-subtitle">Top Loader</span>
+    </div>
+
+    <div class="rci-card dumpert-card">
+        <form id="dumpert-form" novalidate>
+            <div class="dumpert-form-grid">
+                <label for="dumpert-count">Aantal</label>
+                <select id="dumpert-count" name="count" aria-label="Aantal items"></select>
+
+                <label for="dumpert-nsfw">NSFW</label>
+                <select id="dumpert-nsfw" name="nsfw" aria-label="NSFW instelling">
+                    <option value="0">No Gross</option>
+                    <option value="1">Yes Please</option>
+                </select>
+
+                <label for="dumpert-mode">Open als</label>
+                <select id="dumpert-mode" name="mode" aria-label="Open modus">
+                    <option value="item">Item</option>
+                    <option value="popup">PopUp</option>
+                </select>
+            </div>
+
+            <button type="submit" class="dumpert-btn" id="dumpert-submit-btn">
+                Make it so!
+            </button>
+        </form>
+    </div>
+
+    <div id="dumpert-error" class="status-message status-error" role="alert" aria-live="polite"></div>
+
+    <section id="dumpert-results-section" aria-labelledby="dumpert-results-heading">
+        <div class="rci-card">
+            <div class="dumpert-results-header">
+                <h2 id="dumpert-results-heading">Resultaten (<span id="dumpert-result-count">0</span>)</h2>
+                <button type="button" class="dumpert-open-all-btn" id="dumpert-open-all-btn">
+                    🚀 Open All
+                </button>
+            </div>
+
+            <div class="dumpert-notice" id="dumpert-popup-notice" role="note">
+                <span>💡 Popup blocker actief? Sta popups toe voor deze site om alle links tegelijk te openen. Of gebruik de links hieronder één voor één.</span>
+                <button type="button" class="dumpert-notice-close" id="dumpert-notice-close" aria-label="Sluit melding">✕</button>
+            </div>
+
+            <ol id="dumpert-links-list" aria-label="Gevonden items"></ol>
+        </div>
+    </section>
+</main>
+
+<script>
+(function () {
+    'use strict';
+
+    const STORAGE_KEY = 'dumpertTopLoader';
+    const ITEMS_PER_PAGE = 24;
+    const MAX_PAGE = 10;
+
+    /* --- DOM refs --- */
+    const countSel  = document.getElementById('dumpert-count');
+    const nsfwSel   = document.getElementById('dumpert-nsfw');
+    const modeSel   = document.getElementById('dumpert-mode');
+    const form      = document.getElementById('dumpert-form');
+    const submitBtn = document.getElementById('dumpert-submit-btn');
+    const errorEl   = document.getElementById('dumpert-error');
+    const resultsEl = document.getElementById('dumpert-results-section');
+    const linksList = document.getElementById('dumpert-links-list');
+    const openAllBtn= document.getElementById('dumpert-open-all-btn');
+    const resultCountEl = document.getElementById('dumpert-result-count');
+    const noticeEl  = document.getElementById('dumpert-popup-notice');
+    const noticeCloseBtn = document.getElementById('dumpert-notice-close');
+
+    /* --- Populate count dropdown (1-100) --- */
+    for (let i = 1; i <= 100; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = String(i);
+        if (i === 24) opt.selected = true;
+        countSel.appendChild(opt);
+    }
+
+    /* --- Load persisted settings --- */
+    function loadSettings() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            if (saved.count && Number(saved.count) >= 1 && Number(saved.count) <= 100) {
+                countSel.value = String(saved.count);
+            }
+            if (saved.nsfw === '0' || saved.nsfw === '1') {
+                nsfwSel.value = saved.nsfw;
+            }
+            if (saved.mode === 'item' || saved.mode === 'popup') {
+                modeSel.value = saved.mode;
+            }
+        } catch (_) { /* ignore corrupt storage */ }
+    }
+
+    function saveSettings() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                count: countSel.value,
+                nsfw:  nsfwSel.value,
+                mode:  modeSel.value,
+            }));
+        } catch (_) { /* ignore quota errors */ }
+    }
+
+    /* --- URL construction --- */
+    function buildUrl(id, mode) {
+        if (mode === 'popup') {
+            return `https://www.dumpert.nl/?selectedId=${encodeURIComponent(id)}`;
+        }
+        return `https://dumpert.nl/item/${encodeURIComponent(id)}`;
+    }
+
+    /* --- Fetch a single page via the server-side proxy --- */
+    async function fetchPage(page, nsfw) {
+        const params = nsfw === '1' ? '?nsfw=1' : '';
+        const resp = await fetch(`/api/dumpert/toppers/${page}${params}`);
+        if (!resp.ok) {
+            const detail = await resp.text().catch(() => resp.statusText);
+            throw new Error(`Pagina ${page}: ${resp.status} – ${detail}`);
+        }
+        const data = await resp.json();
+        if (!data || !Array.isArray(data.items)) {
+            throw new Error(`Pagina ${page}: onverwacht API-formaat`);
+        }
+        return data.items.map(item => item.id).filter(Boolean);
+    }
+
+    /* --- Show / hide error --- */
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+    }
+    function clearError() {
+        errorEl.textContent = '';
+        errorEl.style.display = 'none';
+    }
+
+    /* --- Spinner helpers --- */
+    function setLoading(loading) {
+        if (loading) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="dumpert-spinner" aria-hidden="true"></span>Laden…';
+        } else {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Make it so!';
+        }
+    }
+
+    /* --- Render results --- */
+    function renderResults(ids, mode) {
+        linksList.innerHTML = '';
+        ids.forEach(id => {
+            const li  = document.createElement('li');
+            const a   = document.createElement('a');
+            a.href    = buildUrl(id, mode);
+            a.target  = '_blank';
+            a.rel     = 'noopener noreferrer';
+            a.textContent = buildUrl(id, mode);
+            li.appendChild(a);
+            linksList.appendChild(li);
+        });
+
+        resultCountEl.textContent = String(ids.length);
+        resultsEl.style.display = 'block';
+        noticeEl.style.display = 'flex'; // reset notice visibility each run
+    }
+
+    /* --- "Open All" handler --- */
+    let currentUrls = [];
+
+    openAllBtn.addEventListener('click', () => {
+        currentUrls.forEach(url => window.open(url, '_blank', 'noopener,noreferrer'));
+    });
+
+    /* --- Notice close --- */
+    noticeCloseBtn.addEventListener('click', () => {
+        noticeEl.style.display = 'none';
+    });
+
+    /* --- Form submit --- */
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError();
+        saveSettings();
+
+        const count = parseInt(countSel.value, 10);
+        if (!count || count < 1 || count > 100) {
+            showError('Kies een aantal tussen 1 en 100.');
+            return;
+        }
+
+        const nsfw = nsfwSel.value;
+        const mode = modeSel.value;
+        const pages = Math.ceil(count / ITEMS_PER_PAGE);
+
+        if (pages > MAX_PAGE) {
+            showError(`Aantal pagina's (${pages}) overschrijdt het maximum van ${MAX_PAGE}.`);
+            return;
+        }
+
+        setLoading(true);
+        resultsEl.style.display = 'none';
+        linksList.innerHTML = '';
+        currentUrls = [];
+
+        try {
+            let allIds = [];
+            for (let p = 0; p < pages; p++) {
+                const ids = await fetchPage(p, nsfw);
+                allIds = allIds.concat(ids);
+            }
+
+            if (allIds.length === 0) {
+                showError('Geen items gevonden. Probeer een andere instelling.');
+                return;
+            }
+
+            const trimmed = allIds.slice(0, count);
+            currentUrls = trimmed.map(id => buildUrl(id, mode));
+            renderResults(trimmed, mode);
+        } catch (err) {
+            showError(`Fout bij ophalen: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    /* --- Init --- */
+    loadSettings();
+}());
+</script>
+</body>
+</html>
