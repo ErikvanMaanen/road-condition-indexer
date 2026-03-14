@@ -8,9 +8,30 @@
     <link rel="stylesheet" href="/static/site.css">
     <script src="/static/utils.js" defer></script>
     <style>
+        body {
+            background: #0f0f0f;
+            color: #ededed;
+        }
+        #page-links {
+            background: #0f0f0f;
+            border: 1px solid #262626;
+        }
+        #page-links a {
+            color: #66cc22;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        #page-links a[aria-current="page"] {
+            color: #0f0f0f;
+            background: #66cc22;
+            border-radius: 4px;
+            padding: 3px 8px;
+        }
+
         .dumpert-hero {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 0.5rem;
             margin-bottom: 1.5rem;
         }
@@ -18,21 +39,28 @@
             font-size: 2.6rem;
             font-weight: 900;
             letter-spacing: -1px;
-            color: #e82c2c;
+            color: #f5f5f5;
             line-height: 1;
             text-transform: uppercase;
             font-family: Arial Black, Arial, sans-serif;
+            background: #0b0b0b;
+            border: 2px solid #2b2b2b;
+            border-radius: 6px;
+            padding: 2px 12px;
         }
-        [data-theme="dark"] .dumpert-wordmark { color: #ff5555; }
         .dumpert-subtitle {
-            font-size: 1.4rem;
+            font-size: 1.2rem;
             font-weight: 700;
-            color: var(--rci-text-muted);
+            color: #9f9f9f;
             letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
         .dumpert-card {
             max-width: 480px;
+            background: #202020;
+            border: 1px solid #2d2d2d;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
         }
         .dumpert-form-grid {
             display: grid;
@@ -44,52 +72,55 @@
         .dumpert-form-grid label {
             font-weight: 600;
             white-space: nowrap;
+            color: #66cc22;
+            text-transform: uppercase;
+            font-size: 0.86rem;
         }
         .dumpert-form-grid select,
         .dumpert-form-grid input[type="number"] {
             padding: 6px 8px;
-            border: 1px solid var(--rci-border);
+            border: 1px solid #383838;
             border-radius: 4px;
-            background: var(--rci-bg);
-            color: var(--rci-text);
+            background: #181818;
+            color: #ededed;
             font-size: 0.95rem;
             width: 100%;
         }
         .dumpert-btn {
-            background: #e82c2c;
-            color: #fff;
+            background: #66cc22;
+            color: #0f0f0f;
             border: none;
             border-radius: 6px;
             padding: 10px 22px;
             font-size: 1rem;
-            font-weight: 700;
+            font-weight: 800;
             cursor: pointer;
             transition: background 0.2s, opacity 0.2s;
             letter-spacing: 0.02em;
+            text-transform: uppercase;
         }
-        .dumpert-btn:hover:not(:disabled) { background: #c41f1f; }
+        .dumpert-btn:hover:not(:disabled) { background: #5bb91f; }
         .dumpert-btn:disabled { opacity: 0.6; cursor: default; }
-        [data-theme="dark"] .dumpert-btn { background: #c41f1f; }
-        [data-theme="dark"] .dumpert-btn:hover:not(:disabled) { background: #a81818; }
 
         .dumpert-open-all-btn {
-            background: var(--rci-primary);
-            color: #fff;
+            background: #66cc22;
+            color: #0f0f0f;
             border: none;
             border-radius: 6px;
             padding: 8px 18px;
             font-size: 0.95rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: background 0.2s, opacity 0.2s;
+            text-transform: uppercase;
         }
-        .dumpert-open-all-btn:hover:not(:disabled) { background: var(--rci-primary-accent); }
+        .dumpert-open-all-btn:hover:not(:disabled) { background: #5bb91f; }
         .dumpert-open-all-btn:disabled { opacity: 0.6; cursor: default; }
 
         .dumpert-notice {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
+            background: #171717;
+            color: #cfcfcf;
+            border: 1px solid #323232;
             border-radius: 6px;
             padding: 9px 12px;
             font-size: 0.88rem;
@@ -98,11 +129,6 @@
             justify-content: space-between;
             align-items: flex-start;
             gap: 0.5rem;
-        }
-        [data-theme="dark"] .dumpert-notice {
-            background: #3a2e00;
-            color: #ffd666;
-            border-color: #5a4800;
         }
         .dumpert-notice-close {
             background: none;
@@ -140,7 +166,7 @@
             padding: 3px 0;
         }
         #dumpert-links-list a {
-            color: var(--rci-link);
+            color: #66cc22;
             text-decoration: none;
             word-break: break-all;
         }
@@ -191,7 +217,7 @@
                 <label for="dumpert-nsfw">NSFW</label>
                 <select id="dumpert-nsfw" name="nsfw" aria-label="NSFW instelling">
                     <option value="0">No Gross</option>
-                    <option value="1">Yes Please</option>
+                    <option value="1" selected>Yes Please</option>
                 </select>
 
                 <label for="dumpert-mode">Open als</label>
@@ -255,7 +281,7 @@
         const opt = document.createElement('option');
         opt.value = String(i);
         opt.textContent = String(i);
-        if (i === 24) opt.selected = true;
+        if (i === 50) opt.selected = true;
         countSel.appendChild(opt);
     }
 
