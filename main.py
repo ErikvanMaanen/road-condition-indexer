@@ -1552,6 +1552,14 @@ def read_dumpert_page(request: Request):
     return FileResponse(BASE_DIR / "static" / "dumpert.html")
 
 
+@app.get("/dumpert-player.html")
+def read_dumpert_player_page(request: Request):
+    """Serve the Dumpert Top Video Player page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/static/login.html?next=/dumpert-player.html")
+    return FileResponse(BASE_DIR / "static" / "dumpert-player.html")
+
+
 @app.get("/api/dumpert/toppers/{page}")
 async def dumpert_toppers_proxy(
     page: int,
