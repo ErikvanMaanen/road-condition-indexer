@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dumpert Player</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js" defer></script>
+    <style>
+        body {
+            background: #0f0f0f;
+            color: #ededed;
+        }
+        #page-links {
+            background: #0f0f0f;
+            border: 1px solid #262626;
+        }
+        #page-links a {
+            color: #66cc22;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        #page-links a[aria-current="page"] {
+            color: #0f0f0f;
+            background: #66cc22;
+            border-radius: 4px;
+            padding: 3px 8px;
+        }
+
+        .player-hero {
+            display: flex;
+            align-items: baseline;
+            gap: 0.65rem;
+            margin-bottom: 1rem;
+        }
+        .player-hero strong {
+            font-size: 2rem;
+            letter-spacing: -0.03em;
+        }
+        .player-hero span {
+            color: #9d9d9d;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .player-controls {
+            max-width: 560px;
+            margin-bottom: 1rem;
+            background: #202020;
+            border: 1px solid #2d2d2d;
+        }
+        .player-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.6rem 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .player-grid label {
+            color: #66cc22;
+            text-transform: uppercase;
+            font-size: 0.86rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .player-grid select {
+            background: #181818;
+            color: #ededed;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            padding: 6px 8px;
+            width: 100%;
+        }
+
+        .player-btn,
+        .player-secondary-btn {
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .player-btn {
+            background: #66cc22;
+            color: #0f0f0f;
+            padding: 10px 20px;
+        }
+        .player-btn:hover:not(:disabled) {
+            background: #5bb91f;
+        }
+        .player-btn:disabled,
+        .player-secondary-btn:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+        .player-secondary-btn {
+            background: #303030;
+            color: #ededed;
+            padding: 8px 12px;
+            font-size: 0.83rem;
+        }
+        .player-secondary-btn:hover:not(:disabled) {
+            background: #3b3b3b;
+        }
+
+        .player-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+            gap: 1rem;
+            align-items: start;
+        }
+        @media (max-width: 980px) {
+            .player-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .player-stage {
+            background: #171717;
+            border: 1px solid #303030;
+            border-radius: 8px;
+            padding: 0.8rem;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .player-stage iframe {
+            width: 100%;
+            max-height: min(72vh, 760px);
+            min-height: min(72vh, 760px);
+            background: #000;
+            border-radius: 6px;
+            border: 0;
+        }
+
+        .player-meta h2 {
+            margin: 0.75rem 0 0.4rem;
+            font-size: 1.1rem;
+        }
+        .player-meta p {
+            margin: 0;
+            color: #bcbcbc;
+            font-size: 0.95rem;
+            line-height: 1.35;
+            white-space: pre-wrap;
+        }
+        .player-meta-tools {
+            display: flex;
+            gap: 0.55rem;
+            margin-top: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .playlist-card {
+            background: #171717;
+            border: 1px solid #303030;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+        }
+        .playlist-header {
+            padding: 0.75rem 0.8rem;
+            border-bottom: 1px solid #2b2b2b;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .playlist {
+            max-height: min(72vh, 760px);
+            overflow: auto;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .playlist button {
+            width: 100%;
+            text-align: left;
+            padding: 0.7rem 0.8rem;
+            border: none;
+            border-bottom: 1px solid #262626;
+            background: #141414;
+            color: #ededed;
+            cursor: pointer;
+        }
+        .playlist button:hover {
+            background: #1f1f1f;
+        }
+        .playlist button.is-active {
+            background: #2b421d;
+            color: #fff;
+        }
+        .playlist-item-title {
+            display: block;
+            font-weight: 700;
+            line-height: 1.25;
+            margin-bottom: 0.22rem;
+        }
+        .playlist-item-meta {
+            display: block;
+            font-size: 0.8rem;
+            color: #b3b3b3;
+        }
+
+        .status-message {
+            display: none;
+            margin-bottom: 0.9rem;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg);} }
+    </style>
+</head>
+<body>
+<nav id="page-links" class="page-links mb-1">
+    <a href="/">Main</a>
+    <a href="device.html">Device View</a>
+    <a href="database.html">Database Management</a>
+    <a href="maintenance.html">Maintenance</a>
+    <a href="monitor.html">Monitor</a>
+    <a href="tools.html">Tools</a>
+    <a href="shared.html">Shared</a>
+    <a href="memo.html">Memo's</a>
+    <a href="dumpert.html">Dumpert</a>
+    <a href="dumpert-player.html" aria-current="page">Dumpert Player</a>
+    <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
+</nav>
+
+<main>
+    <div class="player-hero">
+        <strong>DUMPERT</strong>
+        <span>Top Video Player</span>
+    </div>
+
+    <div class="rci-card player-controls">
+        <form id="player-form" novalidate>
+            <div class="player-grid">
+                <label for="player-count">Aantal</label>
+                <select id="player-count" name="count" aria-label="Aantal videos"></select>
+
+                <label for="player-nsfw">NSFW</label>
+                <select id="player-nsfw" name="nsfw" aria-label="NSFW instelling">
+                    <option value="0">No Gross</option>
+                    <option value="1" selected>Yes Please</option>
+                </select>
+            </div>
+            <button class="player-btn" id="player-load-btn" type="submit">Videos laden</button>
+        </form>
+    </div>
+
+    <div id="player-error" class="status-message status-error" role="alert" aria-live="polite"></div>
+
+    <section id="player-results" class="player-layout" style="display:none" aria-label="Dumpert video resultaten">
+        <div class="player-stage">
+            <iframe
+                id="player-iframe"
+                title="Dumpert video speler"
+                allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                allowfullscreen
+                loading="eager"
+            ></iframe>
+            <div class="player-meta">
+                <h2 id="player-title">Selecteer een video</h2>
+                <p id="player-description"></p>
+            </div>
+            <div class="player-meta-tools">
+                <button type="button" class="player-secondary-btn" id="player-prev-btn">⬅ Vorige</button>
+                <button type="button" class="player-secondary-btn" id="player-next-btn">Volgende ➡</button>
+                <button type="button" class="player-secondary-btn" id="player-fullscreen-btn">⛶ Fullscreen</button>
+                <a id="player-open-link" class="player-secondary-btn" href="#" target="_blank" rel="noopener noreferrer">Open op Dumpert ↗</a>
+            </div>
+        </div>
+
+        <div class="playlist-card">
+            <div class="playlist-header">
+                <span>Playlist</span>
+                <span id="player-count-label">0 videos</span>
+            </div>
+            <ol id="player-playlist" class="playlist" aria-label="Beschikbare videos"></ol>
+        </div>
+    </section>
+</main>
+
+<script>
+(function() {
+    'use strict';
+
+    const STORAGE_KEY = 'dumpertTopPlayer';
+    const ITEMS_PER_PAGE = 24;
+    const MAX_PAGE = 10;
+
+    const form = document.getElementById('player-form');
+    const countEl = document.getElementById('player-count');
+    const nsfwEl = document.getElementById('player-nsfw');
+    const loadBtn = document.getElementById('player-load-btn');
+    const errorEl = document.getElementById('player-error');
+    const resultsEl = document.getElementById('player-results');
+
+    const iframeEl = document.getElementById('player-iframe');
+    const titleEl = document.getElementById('player-title');
+    const descriptionEl = document.getElementById('player-description');
+    const playlistEl = document.getElementById('player-playlist');
+    const countLabelEl = document.getElementById('player-count-label');
+    const fullscreenBtn = document.getElementById('player-fullscreen-btn');
+    const prevBtn = document.getElementById('player-prev-btn');
+    const nextBtn = document.getElementById('player-next-btn');
+    const openLink = document.getElementById('player-open-link');
+
+    let playlist = [];
+    let activeIndex = -1;
+
+    for (let i = 1; i <= 100; i++) {
+        const option = document.createElement('option');
+        option.value = String(i);
+        option.textContent = String(i);
+        if (i === 24) {
+            option.selected = true;
+        }
+        countEl.appendChild(option);
+    }
+
+    function loadSettings() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            if (saved.count && Number(saved.count) >= 1 && Number(saved.count) <= 100) {
+                countEl.value = String(saved.count);
+            }
+            if (saved.nsfw === '0' || saved.nsfw === '1') {
+                nsfwEl.value = saved.nsfw;
+            }
+        } catch (_) {
+            // ignore broken local storage values
+        }
+    }
+
+    function saveSettings() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                count: countEl.value,
+                nsfw: nsfwEl.value,
+            }));
+        } catch (_) {
+            // ignore quota/local-storage errors
+        }
+    }
+
+    function setLoading(isLoading) {
+        if (isLoading) {
+            loadBtn.disabled = true;
+            loadBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Bezig met laden…';
+            return;
+        }
+        loadBtn.disabled = false;
+        loadBtn.textContent = 'Videos laden';
+    }
+
+    function showError(message) {
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+    }
+
+    function clearError() {
+        errorEl.textContent = '';
+        errorEl.style.display = 'none';
+    }
+
+    function buildItemUrl(id) {
+        return `https://dumpert.nl/item/${encodeURIComponent(id)}`;
+    }
+
+    function buildEmbeddedUrl(id) {
+        return `https://www.dumpert.nl/?selectedId=${encodeURIComponent(id)}`;
+    }
+
+    function findUrls(value, bucket) {
+        if (!value) {
+            return;
+        }
+
+        if (typeof value === 'string') {
+            if (/^https?:\/\//i.test(value)) {
+                bucket.push(value);
+            }
+            return;
+        }
+
+        if (Array.isArray(value)) {
+            value.forEach((entry) => findUrls(entry, bucket));
+            return;
+        }
+
+        if (typeof value === 'object') {
+            Object.values(value).forEach((entry) => findUrls(entry, bucket));
+        }
+    }
+
+    function pickEmbedUrl(item) {
+        const preferred = [
+            item && item.embed,
+            item && item.embed_url,
+            item && item.embedUrl,
+            item && item.urls && item.urls.embed,
+            item && item.media && item.media.embed,
+        ].find((candidate) => typeof candidate === 'string' && /^https?:\/\//i.test(candidate));
+        if (preferred) {
+            return preferred;
+        }
+
+        const candidates = [];
+        findUrls(item, candidates);
+
+        const normalized = Array.from(new Set(candidates)).filter((candidate) => !/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(candidate));
+        const embedLike = normalized.find((candidate) => /embed|selectedId=|\/item\//i.test(candidate));
+        if (embedLike) {
+            return embedLike;
+        }
+
+        return null;
+    }
+
+    async function fetchPage(page, nsfw) {
+        const params = nsfw === '1' ? '?nsfw=1' : '';
+        const response = await fetch(`/api/dumpert/toppers/${page}${params}`);
+        if (!response.ok) {
+            const details = await response.text().catch(() => response.statusText);
+            throw new Error(`Pagina ${page}: ${response.status} - ${details}`);
+        }
+
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.items)) {
+            throw new Error(`Pagina ${page}: onverwacht API formaat.`);
+        }
+
+        return payload.items;
+    }
+
+    function renderPlaylist() {
+        playlistEl.innerHTML = '';
+        playlist.forEach((item, index) => {
+            const li = document.createElement('li');
+            const button = document.createElement('button');
+            if (index === activeIndex) {
+                button.classList.add('is-active');
+            }
+            button.type = 'button';
+            button.innerHTML = [
+                `<span class="playlist-item-title">${index + 1}. ${item.title || 'Zonder titel'}</span>`,
+                `<span class="playlist-item-meta">ID: ${item.id || 'n/a'}</span>`
+            ].join('');
+            button.addEventListener('click', () => playIndex(index));
+            li.appendChild(button);
+            playlistEl.appendChild(li);
+        });
+
+        countLabelEl.textContent = `${playlist.length} videos`;
+    }
+
+    function setButtonStates() {
+        prevBtn.disabled = activeIndex <= 0;
+        nextBtn.disabled = activeIndex < 0 || activeIndex >= (playlist.length - 1);
+    }
+
+    function playIndex(index) {
+        if (index < 0 || index >= playlist.length) {
+            return;
+        }
+
+        activeIndex = index;
+        const item = playlist[index];
+
+        iframeEl.src = item.embedUrl;
+
+        titleEl.textContent = item.title || 'Zonder titel';
+        descriptionEl.textContent = item.description || '';
+        openLink.href = buildItemUrl(item.id);
+
+        renderPlaylist();
+        setButtonStates();
+        preloadEmbed(activeIndex + 1);
+    }
+
+    function preloadEmbed(index) {
+        const next = playlist[index];
+        if (!next) {
+            return;
+        }
+        const existing = document.querySelector('link[data-role=\"dumpert-prefetch\"]');
+        if (existing) {
+            existing.remove();
+        }
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = next.embedUrl;
+        link.setAttribute('data-role', 'dumpert-prefetch');
+        document.head.appendChild(link);
+    }
+
+    prevBtn.addEventListener('click', () => playIndex(activeIndex - 1));
+    nextBtn.addEventListener('click', () => playIndex(activeIndex + 1));
+
+    fullscreenBtn.addEventListener('click', async () => {
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+                return;
+            }
+
+            if (typeof iframeEl.requestFullscreen === 'function') {
+                await iframeEl.requestFullscreen();
+                return;
+            }
+
+            if (typeof iframeEl.webkitRequestFullscreen === 'function') {
+                iframeEl.webkitRequestFullscreen();
+            }
+        } catch (_) {
+            // Ignore fullscreen failures (browser permissions/limitations)
+        }
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        clearError();
+        saveSettings();
+
+        const count = parseInt(countEl.value, 10);
+        if (!count || count < 1 || count > 100) {
+            showError('Kies een aantal tussen 1 en 100.');
+            return;
+        }
+
+        const pages = Math.ceil(count / ITEMS_PER_PAGE);
+        if (pages > MAX_PAGE) {
+            showError(`Aantal pagina's (${pages}) overschrijdt het maximum van ${MAX_PAGE}.`);
+            return;
+        }
+
+        setLoading(true);
+        playlist = [];
+        activeIndex = -1;
+        resultsEl.style.display = 'none';
+
+        try {
+            const rawItems = [];
+            for (let page = 0; page < pages; page++) {
+                const items = await fetchPage(page, nsfwEl.value);
+                rawItems.push(...items);
+            }
+
+            playlist = rawItems.slice(0, count)
+                .map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    embedUrl: pickEmbedUrl(item) || buildEmbeddedUrl(item.id),
+                }))
+                .filter((item) => item.id && item.embedUrl);
+
+            if (!playlist.length) {
+                showError('Geen afspeelbare videos gevonden in deze selectie.');
+                return;
+            }
+
+            resultsEl.style.display = 'grid';
+            playIndex(0);
+        } catch (error) {
+            showError(`Fout bij ophalen: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    loadSettings();
+    setButtonStates();
+})();
+</script>
+</body>
+</html>
