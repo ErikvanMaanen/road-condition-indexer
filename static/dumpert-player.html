@@ -125,13 +125,11 @@
             padding: 0.8rem;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
         }
-        .player-stage iframe {
+        .player-stage video {
             width: 100%;
             max-height: min(72vh, 760px);
-            min-height: min(72vh, 760px);
             background: #000;
             border-radius: 6px;
-            border: 0;
         }
 
         .player-meta h2 {
@@ -264,13 +262,7 @@
 
     <section id="player-results" class="player-layout" style="display:none" aria-label="Dumpert video resultaten">
         <div class="player-stage">
-            <iframe
-                id="player-iframe"
-                title="Dumpert video speler"
-                allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                allowfullscreen
-                loading="eager"
-            ></iframe>
+            <video id="player-video" controls playsinline preload="metadata"></video>
             <div class="player-meta">
                 <h2 id="player-title">Selecteer een video</h2>
                 <p id="player-description"></p>
@@ -308,7 +300,7 @@
     const errorEl = document.getElementById('player-error');
     const resultsEl = document.getElementById('player-results');
 
-    const iframeEl = document.getElementById('player-iframe');
+    const videoEl = document.getElementById('player-video');
     const titleEl = document.getElementById('player-title');
     const descriptionEl = document.getElementById('player-description');
     const playlistEl = document.getElementById('player-playlist');
@@ -380,10 +372,6 @@
         return `https://dumpert.nl/item/${encodeURIComponent(id)}`;
     }
 
-    function buildEmbeddedUrl(id) {
-        return `https://www.dumpert.nl/?selectedId=${encodeURIComponent(id)}`;
-    }
-
     function findUrls(value, bucket) {
         if (!value) {
             return;
@@ -406,28 +394,28 @@
         }
     }
 
-    function pickEmbedUrl(item) {
-        const preferred = [
-            item && item.embed,
-            item && item.embed_url,
-            item && item.embedUrl,
-            item && item.urls && item.urls.embed,
-            item && item.media && item.media.embed,
-        ].find((candidate) => typeof candidate === 'string' && /^https?:\/\//i.test(candidate));
+    function pickBestVideoUrl(item) {
+        const candidates = [];
+        findUrls(item, candidates);
+
+        const normalized = Array.from(new Set(candidates));
+        const preferred = normalized.find((candidate) => /\.(mp4|webm)(\?|$)/i.test(candidate));
         if (preferred) {
             return preferred;
         }
 
-        const candidates = [];
-        findUrls(item, candidates);
-
-        const normalized = Array.from(new Set(candidates)).filter((candidate) => !/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(candidate));
-        const embedLike = normalized.find((candidate) => /embed|selectedId=|\/item\//i.test(candidate));
-        if (embedLike) {
-            return embedLike;
+        const fallback = normalized.find((candidate) => /m3u8(\?|$)/i.test(candidate));
+        if (fallback) {
+            return fallback;
         }
 
         return null;
+    }
+
+    function pickPosterUrl(item) {
+        const candidates = [];
+        findUrls(item, candidates);
+        return candidates.find((candidate) => /\.(jpg|jpeg|png|webp)(\?|$)/i.test(candidate)) || '';
     }
 
     async function fetchPage(page, nsfw) {
@@ -480,7 +468,12 @@
         activeIndex = index;
         const item = playlist[index];
 
-        iframeEl.src = item.embedUrl;
+        videoEl.src = item.videoUrl;
+        videoEl.poster = item.posterUrl || '';
+        videoEl.load();
+        videoEl.play().catch(() => {
+            // autoplay can be blocked; user can click play manually.
+        });
 
         titleEl.textContent = item.title || 'Zonder titel';
         descriptionEl.textContent = item.description || '';
@@ -488,23 +481,6 @@
 
         renderPlaylist();
         setButtonStates();
-        preloadEmbed(activeIndex + 1);
-    }
-
-    function preloadEmbed(index) {
-        const next = playlist[index];
-        if (!next) {
-            return;
-        }
-        const existing = document.querySelector('link[data-role=\"dumpert-prefetch\"]');
-        if (existing) {
-            existing.remove();
-        }
-        const link = document.createElement('link');
-        link.rel = 'prefetch';
-        link.href = next.embedUrl;
-        link.setAttribute('data-role', 'dumpert-prefetch');
-        document.head.appendChild(link);
     }
 
     prevBtn.addEventListener('click', () => playIndex(activeIndex - 1));
@@ -517,13 +493,13 @@
                 return;
             }
 
-            if (typeof iframeEl.requestFullscreen === 'function') {
-                await iframeEl.requestFullscreen();
+            if (typeof videoEl.requestFullscreen === 'function') {
+                await videoEl.requestFullscreen();
                 return;
             }
 
-            if (typeof iframeEl.webkitRequestFullscreen === 'function') {
-                iframeEl.webkitRequestFullscreen();
+            if (typeof videoEl.webkitEnterFullscreen === 'function') {
+                videoEl.webkitEnterFullscreen();
             }
         } catch (_) {
             // Ignore fullscreen failures (browser permissions/limitations)
@@ -564,9 +540,10 @@
                     id: item.id,
                     title: item.title,
                     description: item.description,
-                    embedUrl: pickEmbedUrl(item) || buildEmbeddedUrl(item.id),
+                    videoUrl: pickBestVideoUrl(item),
+                    posterUrl: pickPosterUrl(item),
                 }))
-                .filter((item) => item.id && item.embedUrl);
+                .filter((item) => item.id && item.videoUrl);
 
             if (!playlist.length) {
                 showError('Geen afspeelbare videos gevonden in deze selectie.');

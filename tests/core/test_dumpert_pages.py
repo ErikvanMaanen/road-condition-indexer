@@ -43,7 +43,6 @@ def test_dumpert_player_page_serves_when_authenticated(monkeypatch):
 
     assert response.status_code == 200
     assert 'Dumpert Player' in response.text
-    assert 'player-iframe' in response.text
 
 
 def test_dumpert_loader_page_still_serves(monkeypatch):
