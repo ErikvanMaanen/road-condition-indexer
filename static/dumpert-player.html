@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dumpert Player - 5 oplossingen lab</title>
+    <title>Dumpert Player - 10 oplossingen lab</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="/static/site.css">
     <script src="/static/utils.js" defer></script>
@@ -12,11 +12,9 @@
         #page-links { background: #0f0f0f; border: 1px solid #262626; }
         #page-links a { color: #66cc22; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
         #page-links a[aria-current="page"] { color: #0f0f0f; background: #66cc22; border-radius: 4px; padding: 3px 8px; }
-
         .hero { display: flex; gap: 0.7rem; align-items: baseline; margin-bottom: 1rem; }
         .hero strong { font-size: 2rem; letter-spacing: -0.03em; }
         .hero span { color: #9d9d9d; text-transform: uppercase; font-weight: 700; }
-
         .controls { background: #1b1b1b; border: 1px solid #303030; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
         .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.65rem 1rem; align-items: center; }
         .controls-grid label { color: #66cc22; font-weight: 700; text-transform: uppercase; font-size: 0.83rem; }
@@ -24,143 +22,68 @@
             background: #121212; color: #ededed; border: 1px solid #404040; border-radius: 4px; padding: 7px 8px;
         }
         .controls-actions { display: flex; gap: 0.6rem; margin-top: 0.9rem; flex-wrap: wrap; }
-
         .btn { border: none; border-radius: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; cursor: pointer; padding: 9px 12px; }
         .btn-primary { background: #66cc22; color: #101010; }
         .btn-secondary { background: #2d2d2d; color: #ededed; }
-
         .status-note { margin-bottom: 1rem; color: #bdbdbd; font-size: 0.92rem; }
         .status-error { margin-bottom: 1rem; }
-
-        .solutions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.9rem; margin-bottom: 180px; }
-        .solution-card {
-            background: #171717;
-            border: 1px solid #303030;
-            border-radius: 8px;
-            padding: 0.75rem;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.35);
-        }
+        .solutions { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.9rem; margin-bottom: 210px; }
+        .solution-card { background: #171717; border: 1px solid #303030; border-radius: 8px; padding: 0.75rem; box-shadow: 0 8px 22px rgba(0,0,0,0.35); }
         .solution-card h2 { font-size: 0.98rem; margin: 0 0 0.35rem; }
         .solution-card p { font-size: 0.84rem; margin: 0 0 0.5rem; color: #bfbfbf; }
-        .solution-card video,
-        .solution-card iframe,
-        .solution-card embed {
-            width: 100%;
-            aspect-ratio: 16/9;
-            background: #000;
-            border: 1px solid #292929;
-            border-radius: 6px;
+        .solution-card video, .solution-card iframe, .solution-card embed {
+            width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid #292929; border-radius: 6px;
         }
-
-        .logger {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(8, 8, 8, 0.97);
-            border-top: 1px solid #313131;
-            padding: 0.7rem 1rem;
-            z-index: 30;
-        }
+        .logger { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(8,8,8,0.97); border-top: 1px solid #313131; padding: 0.7rem 1rem; z-index: 30; }
         .logger-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.45rem; }
         .logger-header strong { text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.88rem; }
-        #log-box {
-            width: 100%;
-            height: 120px;
-            resize: vertical;
-            background: #101010;
-            color: #98ef70;
-            border: 1px solid #2c2c2c;
-            border-radius: 4px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: 12px;
-            line-height: 1.35;
-            padding: 8px;
-        }
+        #log-box { width: 100%; height: 140px; resize: vertical; background: #101010; color: #98ef70; border: 1px solid #2c2c2c; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.35; padding: 8px; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.13.8/dist/shaka-player.compiled.min.js" defer></script>
 </head>
 <body>
 <nav id="page-links" class="page-links mb-1">
-    <a href="/">Main</a>
-    <a href="device.html">Device View</a>
-    <a href="database.html">Database Management</a>
-    <a href="maintenance.html">Maintenance</a>
-    <a href="monitor.html">Monitor</a>
-    <a href="tools.html">Tools</a>
-    <a href="shared.html">Shared</a>
-    <a href="memo.html">Memo's</a>
-    <a href="dumpert.html">Dumpert</a>
-    <a href="dumpert-player.html" aria-current="page">Dumpert Player</a>
+    <a href="/">Main</a><a href="device.html">Device View</a><a href="database.html">Database Management</a><a href="maintenance.html">Maintenance</a><a href="monitor.html">Monitor</a><a href="tools.html">Tools</a><a href="shared.html">Shared</a><a href="memo.html">Memo's</a><a href="dumpert.html">Dumpert</a><a href="dumpert-player.html" aria-current="page">Dumpert Player</a>
     <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
 
 <main>
-    <div class="hero">
-        <strong>DUMPERT</strong>
-        <span>Video player oplossings-lab (5 tegelijk)</span>
-    </div>
+    <div class="hero"><strong>DUMPERT</strong><span>Video player oplossings-lab (10 tegelijk)</span></div>
 
     <section class="controls">
         <div class="controls-grid">
             <label for="item-id">Item ID / URL</label>
             <input id="item-id" placeholder="Bijv: 100125335_2757919b of https://dumpert.nl/item/..." />
-
             <label for="nsfw">NSFW</label>
-            <select id="nsfw" aria-label="NSFW instelling">
-                <option value="1" selected>Yes Please</option>
-                <option value="0">No Gross</option>
-            </select>
+            <select id="nsfw" aria-label="NSFW instelling"><option value="1" selected>Yes Please</option><option value="0">No Gross</option></select>
         </div>
-
         <div class="controls-actions">
             <button type="button" id="load-sample" class="btn btn-secondary">1e topper laden</button>
-            <button type="button" id="run-solutions" class="btn btn-primary">Start alle 5 oplossingen</button>
+            <button type="button" id="run-solutions" class="btn btn-primary">Start alle 10 oplossingen</button>
             <button type="button" id="clear-log" class="btn btn-secondary">Log leegmaken</button>
         </div>
     </section>
 
-    <div class="status-note" id="status-note">Deze pagina probeert 5 verschillende methoden naast elkaar zodat we snel zien wat wel/niet werkt.</div>
+    <div class="status-note" id="status-note">Deze pagina test 10 playback-varianten met extra netwerkdiagnostiek (CORS/content-type/range/HLS).</div>
     <div id="error" class="status-message status-error" role="alert" aria-live="polite"></div>
 
     <section class="solutions" aria-label="Dumpert player oplossingen">
-        <article class="solution-card">
-            <h2>1) &lt;video src="mp4"&gt; (direct)</h2>
-            <p>Eenvoudigste aanpak, werkt alleen als de browser direct toegang krijgt tot een afspeelbare MP4/WebM URL.</p>
-            <video id="solution1" controls playsinline preload="metadata"></video>
-        </article>
-
-        <article class="solution-card">
-            <h2>2) &lt;video&gt; met meerdere &lt;source&gt; elementen</h2>
-            <p>Probeert meerdere bronnen in volgorde: mp4, webm en als fallback m3u8.</p>
-            <video id="solution2" controls playsinline preload="metadata"></video>
-        </article>
-
-        <article class="solution-card">
-            <h2>3) Fetch + Blob URL</h2>
-            <p>Downloadt eerst het videobestand, maakt dan een lokale blob URL en speelt die af.</p>
-            <video id="solution3" controls playsinline preload="metadata"></video>
-        </article>
-
-        <article class="solution-card">
-            <h2>4) Iframe naar Dumpert item</h2>
-            <p>Test of framing van de originele item pagina mogelijk is (kan door headers geweigerd worden).</p>
-            <iframe id="solution4" title="Dumpert iframe test" loading="lazy" referrerpolicy="no-referrer"></iframe>
-        </article>
-
-        <article class="solution-card">
-            <h2>5) HLS.js voor m3u8 streams</h2>
-            <p>Gebruikt hls.js voor browsers zonder native HLS. Handig als alleen m3u8 beschikbaar is.</p>
-            <video id="solution5" controls playsinline preload="metadata"></video>
-        </article>
+        <article class="solution-card"><h2>1) &lt;video src="mp4"&gt; (direct)</h2><p>Rechtstreekse URL vanaf Dumpert CDN.</p><video id="solution1" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>2) &lt;video&gt; met meerdere &lt;source&gt;</h2><p>Fallbackvolgorde mp4 → webm → m3u8.</p><video id="solution2" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>3) Fetch + Blob URL (origin)</h2><p>Client fetch vanaf origin URL, daarna blob afspelen.</p><video id="solution3" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>4) Iframe itempagina</h2><p>Frame test voor blokkerende headers.</p><iframe id="solution4" title="Dumpert iframe test" loading="lazy" referrerpolicy="no-referrer"></iframe></article>
+        <article class="solution-card"><h2>5) HLS.js standaard</h2><p>Native HLS of hls.js fallback.</p><video id="solution5" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>6) Video via backend media-proxy</h2><p>Bypass CORS/mime problemen via same-origin proxy stream.</p><video id="solution6" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>7) Proxy stream + expliciete Range</h2><p>Forceert byte-range start=0 om partial-content gedrag te testen.</p><video id="solution7" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>8) HLS.js recovery-profiel</h2><p>HLS met agressieve fout recovery en detailed logs.</p><video id="solution8" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>9) Shaka Player (HLS)</h2><p>Alternatieve HLS-engine voor manifest parsing/transmux.</p><video id="solution9" controls playsinline preload="metadata"></video></article>
+        <article class="solution-card"><h2>10) Proxy fetch + Blob URL</h2><p>Download via backend proxy, lokale blob URL afspelen.</p><video id="solution10" controls playsinline preload="metadata"></video></article>
     </section>
 </main>
 
 <section class="logger" aria-label="Debug log">
-    <div class="logger-header">
-        <strong>Debug logging</strong>
-        <span id="log-meta">0 regels</span>
-    </div>
+    <div class="logger-header"><strong>Debug logging</strong><span id="log-meta">0 regels</span></div>
     <textarea id="log-box" readonly aria-label="Player test logs"></textarea>
 </section>
 
@@ -176,17 +99,21 @@
     const errorEl = document.getElementById('error');
     const statusNote = document.getElementById('status-note');
 
-    const s1 = document.getElementById('solution1');
-    const s2 = document.getElementById('solution2');
-    const s3 = document.getElementById('solution3');
+    const videos = {
+        s1: document.getElementById('solution1'), s2: document.getElementById('solution2'), s3: document.getElementById('solution3'),
+        s5: document.getElementById('solution5'), s6: document.getElementById('solution6'), s7: document.getElementById('solution7'),
+        s8: document.getElementById('solution8'), s9: document.getElementById('solution9'), s10: document.getElementById('solution10')
+    };
     const s4 = document.getElementById('solution4');
-    const s5 = document.getElementById('solution5');
 
     const logBox = document.getElementById('log-box');
     const logMeta = document.getElementById('log-meta');
 
-    let hlsInstance = null;
-    let objectUrl = null;
+    let hlsStandard = null;
+    let hlsRecovery = null;
+    let shakaPlayer = null;
+    let objectUrlOrigin = null;
+    let objectUrlProxy = null;
 
     function appendLog(message) {
         const stamp = new Date().toISOString();
@@ -209,40 +136,33 @@
 
     function parseItemId(value) {
         const trimmed = String(value || '').trim();
-        if (!trimmed) {
-            return '';
-        }
+        if (!trimmed) return '';
         const fromUrl = trimmed.match(/\/item\/([^/?#]+)/i);
         return fromUrl ? fromUrl[1] : trimmed;
     }
 
     function findUrls(value, bucket) {
-        if (!value) {
-            return;
-        }
+        if (!value) return;
         if (typeof value === 'string') {
-            if (/^https?:\/\//i.test(value)) {
-                bucket.push(value);
-            }
+            if (/^https?:\/\//i.test(value)) bucket.push(value);
             return;
         }
         if (Array.isArray(value)) {
             value.forEach((entry) => findUrls(entry, bucket));
             return;
         }
-        if (typeof value === 'object') {
-            Object.values(value).forEach((entry) => findUrls(entry, bucket));
-        }
+        if (typeof value === 'object') Object.values(value).forEach((entry) => findUrls(entry, bucket));
     }
 
     function pickMediaUrls(item) {
         const urls = [];
         findUrls(item, urls);
         const unique = Array.from(new Set(urls));
-        const mp4 = unique.find((u) => /\.mp4(\?|$)/i.test(u)) || '';
-        const webm = unique.find((u) => /\.webm(\?|$)/i.test(u)) || '';
-        const m3u8 = unique.find((u) => /\.m3u8(\?|$)/i.test(u)) || '';
-        return { mp4, webm, m3u8 };
+        return {
+            mp4: unique.find((u) => /\.mp4(\?|$)/i.test(u)) || '',
+            webm: unique.find((u) => /\.webm(\?|$)/i.test(u)) || '',
+            m3u8: unique.find((u) => /\.m3u8(\?|$)/i.test(u)) || '',
+        };
     }
 
     async function fetchToppersPage(page, nsfw) {
@@ -253,65 +173,114 @@
             throw new Error(`Kon toppers niet ophalen (${response.status}): ${details}`);
         }
         const payload = await response.json();
-        if (!payload || !Array.isArray(payload.items)) {
-            throw new Error('Onverwacht API formaat: items ontbreekt.');
-        }
+        if (!payload || !Array.isArray(payload.items)) throw new Error('Onverwacht API formaat: items ontbreekt.');
         return payload.items;
     }
 
     async function resolveItem() {
         const requestedId = parseItemId(itemIdInput.value);
-        const nsfw = nsfwEl.value;
-        const items = await fetchToppersPage(0, nsfw);
-
-        if (!items.length) {
-            throw new Error('Geen Dumpert items gevonden in toppers pagina 0.');
-        }
+        const items = await fetchToppersPage(0, nsfwEl.value);
+        if (!items.length) throw new Error('Geen Dumpert items gevonden in toppers pagina 0.');
 
         let chosen = items[0];
         if (requestedId) {
             const match = items.find((item) => String(item.id || '').toLowerCase() === requestedId.toLowerCase());
-            if (match) {
-                chosen = match;
-            } else {
-                appendLog(`Item ID ${requestedId} niet gevonden op pagina 0. Fallback naar eerste item ${items[0].id}.`);
-            }
+            chosen = match || items[0];
+            if (!match) appendLog(`Item ${requestedId} niet gevonden op page0, fallback ${items[0].id}.`);
         }
-
         return chosen;
     }
 
+    function logMediaState(element, label, evt) {
+        const err = element.error ? ` errCode=${element.error.code}` : '';
+        appendLog(`${label}: ${evt} readyState=${element.readyState} networkState=${element.networkState}${err} currentSrc=${element.currentSrc || '-'}`);
+    }
+
     function registerMediaEvents(element, label) {
-        ['loadedmetadata', 'canplay', 'playing', 'pause', 'ended', 'error'].forEach((evt) => {
-            element.addEventListener(evt, () => {
-                let extra = '';
-                if (evt === 'error' && element.error) {
-                    extra = ` (code ${element.error.code})`;
-                }
-                appendLog(`${label}: event '${evt}'${extra}`);
-            });
+        ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'pause', 'stalled', 'suspend', 'waiting', 'ended', 'error', 'emptied', 'abort'].forEach((evt) => {
+            element.addEventListener(evt, () => logMediaState(element, label, evt));
         });
     }
 
+    function proxiedUrl(url, rangeStart) {
+        const out = `/api/dumpert/media-proxy?url=${encodeURIComponent(url)}`;
+        if (typeof rangeStart === 'number') return `${out}&range_start=${rangeStart}`;
+        return out;
+    }
+
+    async function logRemoteDiagnostics(label, url) {
+        if (!url) {
+            appendLog(`${label}: geen URL voor diagnostics.`);
+            return;
+        }
+        try {
+            const response = await fetch(`/api/dumpert/media-diagnostics?url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+            appendLog(`${label}: diagnostics status=${data.status} type=${data.content_type || '-'} len=${data.content_length || '-'} cors=${data.access_control_allow_origin || '-'} range=${data.accept_ranges || '-'} sniff=${data.sniff || '-'}`);
+        } catch (error) {
+            appendLog(`${label}: diagnostics mislukt: ${error.message}`);
+        }
+    }
+
     function resetPlayers() {
-        [s1, s2, s3, s5].forEach((video) => {
+        Object.values(videos).forEach((video) => {
             video.pause();
             video.removeAttribute('src');
-            while (video.firstChild) {
-                video.removeChild(video.firstChild);
-            }
+            while (video.firstChild) video.removeChild(video.firstChild);
             video.load();
         });
         s4.removeAttribute('src');
 
-        if (hlsInstance) {
-            hlsInstance.destroy();
-            hlsInstance = null;
+        if (hlsStandard) { hlsStandard.destroy(); hlsStandard = null; }
+        if (hlsRecovery) { hlsRecovery.destroy(); hlsRecovery = null; }
+        if (shakaPlayer) { shakaPlayer.destroy(); shakaPlayer = null; }
+        if (objectUrlOrigin) { URL.revokeObjectURL(objectUrlOrigin); objectUrlOrigin = null; }
+        if (objectUrlProxy) { URL.revokeObjectURL(objectUrlProxy); objectUrlProxy = null; }
+    }
+
+    function setupHlsPlayer(videoEl, m3u8, profileLabel, createConfig) {
+        if (!m3u8) {
+            appendLog(`${profileLabel}: overgeslagen, geen m3u8.`);
+            return;
         }
-        if (objectUrl) {
-            URL.revokeObjectURL(objectUrl);
-            objectUrl = null;
+
+        if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+            videoEl.src = m3u8;
+            videoEl.load();
+            appendLog(`${profileLabel}: native HLS pad geactiveerd.`);
+            return;
         }
+
+        if (!(window.Hls && window.Hls.isSupported())) {
+            appendLog(`${profileLabel}: hls.js niet beschikbaar.`);
+            return;
+        }
+
+        const hls = new window.Hls(createConfig());
+        hls.on(window.Hls.Events.ERROR, (_event, data) => {
+            const details = data && data.details ? data.details : 'unknown';
+            const fatal = !!(data && data.fatal);
+            appendLog(`${profileLabel}: HLS error details=${details} fatal=${fatal}`);
+            if (fatal) {
+                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                    appendLog(`${profileLabel}: startLoad recovery.`);
+                    hls.startLoad();
+                } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+                    appendLog(`${profileLabel}: recoverMediaError recovery.`);
+                    hls.recoverMediaError();
+                }
+            }
+        });
+        hls.on(window.Hls.Events.MANIFEST_PARSED, (_event, data) => {
+            appendLog(`${profileLabel}: manifest parsed levels=${(data && data.levels && data.levels.length) || 0}`);
+        });
+        hls.on(window.Hls.Events.FRAG_LOADED, (_event, data) => {
+            appendLog(`${profileLabel}: frag loaded level=${data && data.frag ? data.frag.level : '-'}`);
+        });
+        hls.loadSource(m3u8);
+        hls.attachMedia(videoEl);
+        appendLog(`${profileLabel}: hls.js attach/load afgerond.`);
+        return hls;
     }
 
     async function runSolutions() {
@@ -321,82 +290,105 @@
         const item = await resolveItem();
         const itemUrl = `https://dumpert.nl/item/${encodeURIComponent(item.id)}`;
         const media = pickMediaUrls(item);
+        const preferred = media.mp4 || media.webm || media.m3u8;
+
+        if (!preferred) throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in payload.');
 
         itemIdInput.value = item.id || '';
-
+        statusNote.textContent = `Test item: ${item.id || 'n/a'} — ${item.title || 'zonder titel'}`;
         appendLog(`Gekozen item: ${item.id || 'onbekend'} - ${item.title || 'zonder titel'}`);
         appendLog(`URLs: mp4=${media.mp4 || '-'} | webm=${media.webm || '-'} | m3u8=${media.m3u8 || '-'}`);
 
-        statusNote.textContent = `Test item: ${item.id || 'n/a'} — ${item.title || 'zonder titel'}`;
+        await logRemoteDiagnostics('MP4', media.mp4 || media.webm || '');
+        await logRemoteDiagnostics('M3U8', media.m3u8 || '');
 
-        const preferredVideo = media.mp4 || media.webm || media.m3u8;
-        if (!preferredVideo) {
-            throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in API item payload.');
-        }
+        videos.s1.src = preferred;
+        videos.s1.load();
+        appendLog('S1 gestart: direct src op preferred url.');
 
-        s1.src = preferredVideo;
-        s1.load();
-        appendLog('Oplossing 1 gestart: src direct gezet op preferred URL.');
-
-        [
-            { src: media.mp4, type: 'video/mp4' },
-            { src: media.webm, type: 'video/webm' },
-            { src: media.m3u8, type: 'application/x-mpegURL' },
-        ].forEach((entry) => {
-            if (!entry.src) {
-                return;
-            }
+        [{ src: media.mp4, type: 'video/mp4' }, { src: media.webm, type: 'video/webm' }, { src: media.m3u8, type: 'application/x-mpegURL' }].forEach((entry) => {
+            if (!entry.src) return;
             const source = document.createElement('source');
             source.src = entry.src;
             source.type = entry.type;
-            s2.appendChild(source);
+            videos.s2.appendChild(source);
         });
-        s2.load();
-        appendLog('Oplossing 2 gestart: multiple <source> fallback ingevuld.');
+        videos.s2.load();
+        appendLog('S2 gestart: source lijst gevuld.');
 
         if (media.mp4 || media.webm) {
-            const blobSource = media.mp4 || media.webm;
+            const source = media.mp4 || media.webm;
             try {
-                const response = await fetch(blobSource, { mode: 'cors' });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                const response = await fetch(source, { mode: 'cors' });
+                appendLog(`S3 fetch: status=${response.status} type=${response.headers.get('content-type') || '-'}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await response.blob();
-                objectUrl = URL.createObjectURL(blob);
-                s3.src = objectUrl;
-                s3.load();
-                appendLog(`Oplossing 3 gestart: blob URL gemaakt (${Math.round(blob.size / 1024)} KB).`);
+                objectUrlOrigin = URL.createObjectURL(blob);
+                videos.s3.src = objectUrlOrigin;
+                videos.s3.load();
+                appendLog(`S3 gestart: origin blob size=${Math.round(blob.size / 1024)}KB.`);
             } catch (error) {
-                appendLog(`Oplossing 3 faalde tijdens fetch/blob: ${error.message}`);
+                appendLog(`S3 fout: ${error.message}`);
             }
         } else {
-            appendLog('Oplossing 3 overgeslagen: geen mp4/webm URL gevonden.');
+            appendLog('S3 overgeslagen: geen mp4/webm.');
         }
 
         s4.src = itemUrl;
-        appendLog('Oplossing 4 gestart: iframe src naar Dumpert item URL gezet.');
+        appendLog('S4 gestart: item iframe geladen.');
 
-        if (media.m3u8) {
-            if (s5.canPlayType('application/vnd.apple.mpegurl')) {
-                s5.src = media.m3u8;
-                s5.load();
-                appendLog('Oplossing 5: browser ondersteunt native HLS, m3u8 direct ingesteld.');
-            } else if (window.Hls && window.Hls.isSupported()) {
-                hlsInstance = new window.Hls({ enableWorker: true, lowLatencyMode: true });
-                hlsInstance.loadSource(media.m3u8);
-                hlsInstance.attachMedia(s5);
-                hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                    appendLog('Oplossing 5: HLS manifest geladen via hls.js.');
+        hlsStandard = setupHlsPlayer(videos.s5, media.m3u8, 'S5 standaard HLS', () => ({ enableWorker: true, lowLatencyMode: true }));
+
+        const baseProxySource = proxiedUrl(media.mp4 || media.webm || media.m3u8);
+        videos.s6.src = baseProxySource;
+        videos.s6.load();
+        appendLog(`S6 gestart: proxy src=${baseProxySource}`);
+
+        const rangeProxySource = proxiedUrl(media.mp4 || media.webm || media.m3u8, 0);
+        videos.s7.src = rangeProxySource;
+        videos.s7.load();
+        appendLog(`S7 gestart: proxy+range src=${rangeProxySource}`);
+
+        hlsRecovery = setupHlsPlayer(videos.s8, media.m3u8, 'S8 recovery HLS', () => ({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 90,
+            manifestLoadingTimeOut: 15000,
+            fragLoadingTimeOut: 20000,
+            maxBufferHole: 1,
+        }));
+
+        if (media.m3u8 && window.shaka && window.shaka.Player && window.shaka.Player.isBrowserSupported()) {
+            try {
+                shakaPlayer = new window.shaka.Player(videos.s9);
+                shakaPlayer.addEventListener('error', (event) => {
+                    const detail = event && event.detail ? event.detail : {};
+                    appendLog(`S9 shaka error code=${detail.code || '-'} severity=${detail.severity || '-'} category=${detail.category || '-'}`);
                 });
-                hlsInstance.on(window.Hls.Events.ERROR, (_evt, data) => {
-                    appendLog(`Oplossing 5 HLS error: ${data && data.details ? data.details : 'onbekend'}`);
-                });
-                appendLog('Oplossing 5 gestart: hls.js geactiveerd.');
-            } else {
-                appendLog('Oplossing 5 faalt: geen native HLS en hls.js niet beschikbaar.');
+                await shakaPlayer.load(media.m3u8);
+                appendLog('S9 gestart: shaka manifest succesvol geladen.');
+            } catch (error) {
+                appendLog(`S9 fout: ${error.message}`);
             }
         } else {
-            appendLog('Oplossing 5 overgeslagen: m3u8 URL ontbreekt in payload.');
+            appendLog('S9 overgeslagen: m3u8/shaka support ontbreekt.');
+        }
+
+        if (media.mp4 || media.webm) {
+            try {
+                const response = await fetch(proxiedUrl(media.mp4 || media.webm), { mode: 'same-origin' });
+                appendLog(`S10 proxy fetch: status=${response.status} type=${response.headers.get('content-type') || '-'}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                objectUrlProxy = URL.createObjectURL(blob);
+                videos.s10.src = objectUrlProxy;
+                videos.s10.load();
+                appendLog(`S10 gestart: proxy blob size=${Math.round(blob.size / 1024)}KB.`);
+            } catch (error) {
+                appendLog(`S10 fout: ${error.message}`);
+            }
+        } else {
+            appendLog('S10 overgeslagen: geen mp4/webm voor blob test.');
         }
     }
 
@@ -409,9 +401,7 @@
         clearError();
         try {
             const items = await fetchToppersPage(0, nsfwEl.value);
-            if (!items.length) {
-                throw new Error('Geen items op toppers pagina 0.');
-            }
+            if (!items.length) throw new Error('Geen items op toppers pagina 0.');
             itemIdInput.value = items[0].id || '';
             appendLog(`Sample geladen: ${items[0].id || 'onbekend'} - ${items[0].title || 'zonder titel'}`);
         } catch (error) {
@@ -429,13 +419,11 @@
     });
 
     [
-        ['Solution1', s1],
-        ['Solution2', s2],
-        ['Solution3', s3],
-        ['Solution5', s5],
+        ['Solution1', videos.s1], ['Solution2', videos.s2], ['Solution3', videos.s3], ['Solution5', videos.s5],
+        ['Solution6', videos.s6], ['Solution7', videos.s7], ['Solution8', videos.s8], ['Solution9', videos.s9], ['Solution10', videos.s10],
     ].forEach(([label, element]) => registerMediaEvents(element, label));
 
-    appendLog('Dumpert test lab geladen. Gebruik "1e topper laden" en daarna "Start alle 5 oplossingen".');
+    appendLog('Dumpert test lab geladen. Gebruik "1e topper laden" en daarna "Start alle 10 oplossingen".');
 })();
 </script>
 </body>
