@@ -3,223 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dumpert Player</title>
+    <title>Dumpert Player - 5 oplossingen lab</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="/static/site.css">
     <script src="/static/utils.js" defer></script>
     <style>
-        body {
-            background: #0f0f0f;
-            color: #ededed;
-        }
-        #page-links {
-            background: #0f0f0f;
-            border: 1px solid #262626;
-        }
-        #page-links a {
-            color: #66cc22;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-        }
-        #page-links a[aria-current="page"] {
-            color: #0f0f0f;
-            background: #66cc22;
-            border-radius: 4px;
-            padding: 3px 8px;
-        }
+        body { background: #0f0f0f; color: #ededed; }
+        #page-links { background: #0f0f0f; border: 1px solid #262626; }
+        #page-links a { color: #66cc22; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+        #page-links a[aria-current="page"] { color: #0f0f0f; background: #66cc22; border-radius: 4px; padding: 3px 8px; }
 
-        .player-hero {
-            display: flex;
-            align-items: baseline;
-            gap: 0.65rem;
-            margin-bottom: 1rem;
-        }
-        .player-hero strong {
-            font-size: 2rem;
-            letter-spacing: -0.03em;
-        }
-        .player-hero span {
-            color: #9d9d9d;
-            text-transform: uppercase;
-            font-weight: 700;
-        }
+        .hero { display: flex; gap: 0.7rem; align-items: baseline; margin-bottom: 1rem; }
+        .hero strong { font-size: 2rem; letter-spacing: -0.03em; }
+        .hero span { color: #9d9d9d; text-transform: uppercase; font-weight: 700; }
 
-        .player-controls {
-            max-width: 560px;
-            margin-bottom: 1rem;
-            background: #202020;
-            border: 1px solid #2d2d2d;
+        .controls { background: #1b1b1b; border: 1px solid #303030; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.65rem 1rem; align-items: center; }
+        .controls-grid label { color: #66cc22; font-weight: 700; text-transform: uppercase; font-size: 0.83rem; }
+        .controls-grid input, .controls-grid select {
+            background: #121212; color: #ededed; border: 1px solid #404040; border-radius: 4px; padding: 7px 8px;
         }
-        .player-grid {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 0.6rem 1rem;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .player-grid label {
-            color: #66cc22;
-            text-transform: uppercase;
-            font-size: 0.86rem;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-        .player-grid select {
-            background: #181818;
-            color: #ededed;
-            border: 1px solid #383838;
-            border-radius: 4px;
-            padding: 6px 8px;
-            width: 100%;
-        }
+        .controls-actions { display: flex; gap: 0.6rem; margin-top: 0.9rem; flex-wrap: wrap; }
 
-        .player-btn,
-        .player-secondary-btn {
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-        }
-        .player-btn {
-            background: #66cc22;
-            color: #0f0f0f;
-            padding: 10px 20px;
-        }
-        .player-btn:hover:not(:disabled) {
-            background: #5bb91f;
-        }
-        .player-btn:disabled,
-        .player-secondary-btn:disabled {
-            opacity: 0.6;
-            cursor: default;
-        }
-        .player-secondary-btn {
-            background: #303030;
-            color: #ededed;
-            padding: 8px 12px;
-            font-size: 0.83rem;
-        }
-        .player-secondary-btn:hover:not(:disabled) {
-            background: #3b3b3b;
-        }
+        .btn { border: none; border-radius: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; cursor: pointer; padding: 9px 12px; }
+        .btn-primary { background: #66cc22; color: #101010; }
+        .btn-secondary { background: #2d2d2d; color: #ededed; }
 
-        .player-layout {
-            display: grid;
-            grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-            gap: 1rem;
-            align-items: start;
-        }
-        @media (max-width: 980px) {
-            .player-layout {
-                grid-template-columns: 1fr;
-            }
-        }
+        .status-note { margin-bottom: 1rem; color: #bdbdbd; font-size: 0.92rem; }
+        .status-error { margin-bottom: 1rem; }
 
-        .player-stage {
+        .solutions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.9rem; margin-bottom: 180px; }
+        .solution-card {
             background: #171717;
             border: 1px solid #303030;
             border-radius: 8px;
-            padding: 0.8rem;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            padding: 0.75rem;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.35);
         }
-        .player-stage video {
+        .solution-card h2 { font-size: 0.98rem; margin: 0 0 0.35rem; }
+        .solution-card p { font-size: 0.84rem; margin: 0 0 0.5rem; color: #bfbfbf; }
+        .solution-card video,
+        .solution-card iframe,
+        .solution-card embed {
             width: 100%;
-            max-height: min(72vh, 760px);
+            aspect-ratio: 16/9;
             background: #000;
+            border: 1px solid #292929;
             border-radius: 6px;
         }
 
-        .player-meta h2 {
-            margin: 0.75rem 0 0.4rem;
-            font-size: 1.1rem;
+        .logger {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(8, 8, 8, 0.97);
+            border-top: 1px solid #313131;
+            padding: 0.7rem 1rem;
+            z-index: 30;
         }
-        .player-meta p {
-            margin: 0;
-            color: #bcbcbc;
-            font-size: 0.95rem;
-            line-height: 1.35;
-            white-space: pre-wrap;
-        }
-        .player-meta-tools {
-            display: flex;
-            gap: 0.55rem;
-            margin-top: 0.8rem;
-            flex-wrap: wrap;
-        }
-
-        .playlist-card {
-            background: #171717;
-            border: 1px solid #303030;
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-            overflow: hidden;
-        }
-        .playlist-header {
-            padding: 0.75rem 0.8rem;
-            border-bottom: 1px solid #2b2b2b;
-            font-weight: 700;
-            display: flex;
-            justify-content: space-between;
-            gap: 0.5rem;
-            align-items: center;
-        }
-        .playlist {
-            max-height: min(72vh, 760px);
-            overflow: auto;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-        .playlist button {
+        .logger-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.45rem; }
+        .logger-header strong { text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.88rem; }
+        #log-box {
             width: 100%;
-            text-align: left;
-            padding: 0.7rem 0.8rem;
-            border: none;
-            border-bottom: 1px solid #262626;
-            background: #141414;
-            color: #ededed;
-            cursor: pointer;
+            height: 120px;
+            resize: vertical;
+            background: #101010;
+            color: #98ef70;
+            border: 1px solid #2c2c2c;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 8px;
         }
-        .playlist button:hover {
-            background: #1f1f1f;
-        }
-        .playlist button.is-active {
-            background: #2b421d;
-            color: #fff;
-        }
-        .playlist-item-title {
-            display: block;
-            font-weight: 700;
-            line-height: 1.25;
-            margin-bottom: 0.22rem;
-        }
-        .playlist-item-meta {
-            display: block;
-            font-size: 0.8rem;
-            color: #b3b3b3;
-        }
-
-        .status-message {
-            display: none;
-            margin-bottom: 0.9rem;
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255,255,255,0.4);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-            vertical-align: middle;
-            margin-right: 6px;
-        }
-        @keyframes spin { to { transform: rotate(360deg);} }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js" defer></script>
 </head>
 <body>
 <nav id="page-links" class="page-links mb-1">
@@ -237,130 +96,110 @@
 </nav>
 
 <main>
-    <div class="player-hero">
+    <div class="hero">
         <strong>DUMPERT</strong>
-        <span>Top Video Player</span>
+        <span>Video player oplossings-lab (5 tegelijk)</span>
     </div>
 
-    <div class="rci-card player-controls">
-        <form id="player-form" novalidate>
-            <div class="player-grid">
-                <label for="player-count">Aantal</label>
-                <select id="player-count" name="count" aria-label="Aantal videos"></select>
+    <section class="controls">
+        <div class="controls-grid">
+            <label for="item-id">Item ID / URL</label>
+            <input id="item-id" placeholder="Bijv: 100125335_2757919b of https://dumpert.nl/item/..." />
 
-                <label for="player-nsfw">NSFW</label>
-                <select id="player-nsfw" name="nsfw" aria-label="NSFW instelling">
-                    <option value="0">No Gross</option>
-                    <option value="1" selected>Yes Please</option>
-                </select>
-            </div>
-            <button class="player-btn" id="player-load-btn" type="submit">Videos laden</button>
-        </form>
-    </div>
-
-    <div id="player-error" class="status-message status-error" role="alert" aria-live="polite"></div>
-
-    <section id="player-results" class="player-layout" style="display:none" aria-label="Dumpert video resultaten">
-        <div class="player-stage">
-            <video id="player-video" controls playsinline preload="metadata"></video>
-            <div class="player-meta">
-                <h2 id="player-title">Selecteer een video</h2>
-                <p id="player-description"></p>
-            </div>
-            <div class="player-meta-tools">
-                <button type="button" class="player-secondary-btn" id="player-prev-btn">⬅ Vorige</button>
-                <button type="button" class="player-secondary-btn" id="player-next-btn">Volgende ➡</button>
-                <button type="button" class="player-secondary-btn" id="player-fullscreen-btn">⛶ Fullscreen</button>
-                <a id="player-open-link" class="player-secondary-btn" href="#" target="_blank" rel="noopener noreferrer">Open op Dumpert ↗</a>
-            </div>
+            <label for="nsfw">NSFW</label>
+            <select id="nsfw" aria-label="NSFW instelling">
+                <option value="1" selected>Yes Please</option>
+                <option value="0">No Gross</option>
+            </select>
         </div>
 
-        <div class="playlist-card">
-            <div class="playlist-header">
-                <span>Playlist</span>
-                <span id="player-count-label">0 videos</span>
-            </div>
-            <ol id="player-playlist" class="playlist" aria-label="Beschikbare videos"></ol>
+        <div class="controls-actions">
+            <button type="button" id="load-sample" class="btn btn-secondary">1e topper laden</button>
+            <button type="button" id="run-solutions" class="btn btn-primary">Start alle 5 oplossingen</button>
+            <button type="button" id="clear-log" class="btn btn-secondary">Log leegmaken</button>
         </div>
     </section>
+
+    <div class="status-note" id="status-note">Deze pagina probeert 5 verschillende methoden naast elkaar zodat we snel zien wat wel/niet werkt.</div>
+    <div id="error" class="status-message status-error" role="alert" aria-live="polite"></div>
+
+    <section class="solutions" aria-label="Dumpert player oplossingen">
+        <article class="solution-card">
+            <h2>1) &lt;video src="mp4"&gt; (direct)</h2>
+            <p>Eenvoudigste aanpak, werkt alleen als de browser direct toegang krijgt tot een afspeelbare MP4/WebM URL.</p>
+            <video id="solution1" controls playsinline preload="metadata"></video>
+        </article>
+
+        <article class="solution-card">
+            <h2>2) &lt;video&gt; met meerdere &lt;source&gt; elementen</h2>
+            <p>Probeert meerdere bronnen in volgorde: mp4, webm en als fallback m3u8.</p>
+            <video id="solution2" controls playsinline preload="metadata"></video>
+        </article>
+
+        <article class="solution-card">
+            <h2>3) Fetch + Blob URL</h2>
+            <p>Downloadt eerst het videobestand, maakt dan een lokale blob URL en speelt die af.</p>
+            <video id="solution3" controls playsinline preload="metadata"></video>
+        </article>
+
+        <article class="solution-card">
+            <h2>4) Iframe naar Dumpert item</h2>
+            <p>Test of framing van de originele item pagina mogelijk is (kan door headers geweigerd worden).</p>
+            <iframe id="solution4" title="Dumpert iframe test" loading="lazy" referrerpolicy="no-referrer"></iframe>
+        </article>
+
+        <article class="solution-card">
+            <h2>5) HLS.js voor m3u8 streams</h2>
+            <p>Gebruikt hls.js voor browsers zonder native HLS. Handig als alleen m3u8 beschikbaar is.</p>
+            <video id="solution5" controls playsinline preload="metadata"></video>
+        </article>
+    </section>
 </main>
+
+<section class="logger" aria-label="Debug log">
+    <div class="logger-header">
+        <strong>Debug logging</strong>
+        <span id="log-meta">0 regels</span>
+    </div>
+    <textarea id="log-box" readonly aria-label="Player test logs"></textarea>
+</section>
 
 <script>
 (function() {
     'use strict';
 
-    const STORAGE_KEY = 'dumpertTopPlayer';
-    const ITEMS_PER_PAGE = 24;
-    const MAX_PAGE = 10;
+    const itemIdInput = document.getElementById('item-id');
+    const nsfwEl = document.getElementById('nsfw');
+    const loadSampleBtn = document.getElementById('load-sample');
+    const runBtn = document.getElementById('run-solutions');
+    const clearLogBtn = document.getElementById('clear-log');
+    const errorEl = document.getElementById('error');
+    const statusNote = document.getElementById('status-note');
 
-    const form = document.getElementById('player-form');
-    const countEl = document.getElementById('player-count');
-    const nsfwEl = document.getElementById('player-nsfw');
-    const loadBtn = document.getElementById('player-load-btn');
-    const errorEl = document.getElementById('player-error');
-    const resultsEl = document.getElementById('player-results');
+    const s1 = document.getElementById('solution1');
+    const s2 = document.getElementById('solution2');
+    const s3 = document.getElementById('solution3');
+    const s4 = document.getElementById('solution4');
+    const s5 = document.getElementById('solution5');
 
-    const videoEl = document.getElementById('player-video');
-    const titleEl = document.getElementById('player-title');
-    const descriptionEl = document.getElementById('player-description');
-    const playlistEl = document.getElementById('player-playlist');
-    const countLabelEl = document.getElementById('player-count-label');
-    const fullscreenBtn = document.getElementById('player-fullscreen-btn');
-    const prevBtn = document.getElementById('player-prev-btn');
-    const nextBtn = document.getElementById('player-next-btn');
-    const openLink = document.getElementById('player-open-link');
+    const logBox = document.getElementById('log-box');
+    const logMeta = document.getElementById('log-meta');
 
-    let playlist = [];
-    let activeIndex = -1;
+    let hlsInstance = null;
+    let objectUrl = null;
 
-    for (let i = 1; i <= 100; i++) {
-        const option = document.createElement('option');
-        option.value = String(i);
-        option.textContent = String(i);
-        if (i === 24) {
-            option.selected = true;
-        }
-        countEl.appendChild(option);
-    }
-
-    function loadSettings() {
-        try {
-            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            if (saved.count && Number(saved.count) >= 1 && Number(saved.count) <= 100) {
-                countEl.value = String(saved.count);
-            }
-            if (saved.nsfw === '0' || saved.nsfw === '1') {
-                nsfwEl.value = saved.nsfw;
-            }
-        } catch (_) {
-            // ignore broken local storage values
-        }
-    }
-
-    function saveSettings() {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                count: countEl.value,
-                nsfw: nsfwEl.value,
-            }));
-        } catch (_) {
-            // ignore quota/local-storage errors
-        }
-    }
-
-    function setLoading(isLoading) {
-        if (isLoading) {
-            loadBtn.disabled = true;
-            loadBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Bezig met laden…';
-            return;
-        }
-        loadBtn.disabled = false;
-        loadBtn.textContent = 'Videos laden';
+    function appendLog(message) {
+        const stamp = new Date().toISOString();
+        logBox.value += `[${stamp}] ${message}\n`;
+        const lines = logBox.value.split('\n').filter(Boolean).length;
+        logMeta.textContent = `${lines} regels`;
+        logBox.scrollTop = logBox.scrollHeight;
     }
 
     function showError(message) {
         errorEl.textContent = message;
         errorEl.style.display = 'block';
+        appendLog(`ERROR: ${message}`);
     }
 
     function clearError() {
@@ -368,199 +207,235 @@
         errorEl.style.display = 'none';
     }
 
-    function buildItemUrl(id) {
-        return `https://dumpert.nl/item/${encodeURIComponent(id)}`;
+    function parseItemId(value) {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) {
+            return '';
+        }
+        const fromUrl = trimmed.match(/\/item\/([^/?#]+)/i);
+        return fromUrl ? fromUrl[1] : trimmed;
     }
 
     function findUrls(value, bucket) {
         if (!value) {
             return;
         }
-
         if (typeof value === 'string') {
             if (/^https?:\/\//i.test(value)) {
                 bucket.push(value);
             }
             return;
         }
-
         if (Array.isArray(value)) {
             value.forEach((entry) => findUrls(entry, bucket));
             return;
         }
-
         if (typeof value === 'object') {
             Object.values(value).forEach((entry) => findUrls(entry, bucket));
         }
     }
 
-    function pickBestVideoUrl(item) {
-        const candidates = [];
-        findUrls(item, candidates);
-
-        const normalized = Array.from(new Set(candidates));
-        const preferred = normalized.find((candidate) => /\.(mp4|webm)(\?|$)/i.test(candidate));
-        if (preferred) {
-            return preferred;
-        }
-
-        const fallback = normalized.find((candidate) => /m3u8(\?|$)/i.test(candidate));
-        if (fallback) {
-            return fallback;
-        }
-
-        return null;
+    function pickMediaUrls(item) {
+        const urls = [];
+        findUrls(item, urls);
+        const unique = Array.from(new Set(urls));
+        const mp4 = unique.find((u) => /\.mp4(\?|$)/i.test(u)) || '';
+        const webm = unique.find((u) => /\.webm(\?|$)/i.test(u)) || '';
+        const m3u8 = unique.find((u) => /\.m3u8(\?|$)/i.test(u)) || '';
+        return { mp4, webm, m3u8 };
     }
 
-    function pickPosterUrl(item) {
-        const candidates = [];
-        findUrls(item, candidates);
-        return candidates.find((candidate) => /\.(jpg|jpeg|png|webp)(\?|$)/i.test(candidate)) || '';
-    }
-
-    async function fetchPage(page, nsfw) {
+    async function fetchToppersPage(page, nsfw) {
         const params = nsfw === '1' ? '?nsfw=1' : '';
         const response = await fetch(`/api/dumpert/toppers/${page}${params}`);
         if (!response.ok) {
             const details = await response.text().catch(() => response.statusText);
-            throw new Error(`Pagina ${page}: ${response.status} - ${details}`);
+            throw new Error(`Kon toppers niet ophalen (${response.status}): ${details}`);
         }
-
         const payload = await response.json();
         if (!payload || !Array.isArray(payload.items)) {
-            throw new Error(`Pagina ${page}: onverwacht API formaat.`);
+            throw new Error('Onverwacht API formaat: items ontbreekt.');
         }
-
         return payload.items;
     }
 
-    function renderPlaylist() {
-        playlistEl.innerHTML = '';
-        playlist.forEach((item, index) => {
-            const li = document.createElement('li');
-            const button = document.createElement('button');
-            if (index === activeIndex) {
-                button.classList.add('is-active');
-            }
-            button.type = 'button';
-            button.innerHTML = [
-                `<span class="playlist-item-title">${index + 1}. ${item.title || 'Zonder titel'}</span>`,
-                `<span class="playlist-item-meta">ID: ${item.id || 'n/a'}</span>`
-            ].join('');
-            button.addEventListener('click', () => playIndex(index));
-            li.appendChild(button);
-            playlistEl.appendChild(li);
-        });
+    async function resolveItem() {
+        const requestedId = parseItemId(itemIdInput.value);
+        const nsfw = nsfwEl.value;
+        const items = await fetchToppersPage(0, nsfw);
 
-        countLabelEl.textContent = `${playlist.length} videos`;
-    }
-
-    function setButtonStates() {
-        prevBtn.disabled = activeIndex <= 0;
-        nextBtn.disabled = activeIndex < 0 || activeIndex >= (playlist.length - 1);
-    }
-
-    function playIndex(index) {
-        if (index < 0 || index >= playlist.length) {
-            return;
+        if (!items.length) {
+            throw new Error('Geen Dumpert items gevonden in toppers pagina 0.');
         }
 
-        activeIndex = index;
-        const item = playlist[index];
+        let chosen = items[0];
+        if (requestedId) {
+            const match = items.find((item) => String(item.id || '').toLowerCase() === requestedId.toLowerCase());
+            if (match) {
+                chosen = match;
+            } else {
+                appendLog(`Item ID ${requestedId} niet gevonden op pagina 0. Fallback naar eerste item ${items[0].id}.`);
+            }
+        }
 
-        videoEl.src = item.videoUrl;
-        videoEl.poster = item.posterUrl || '';
-        videoEl.load();
-        videoEl.play().catch(() => {
-            // autoplay can be blocked; user can click play manually.
-        });
-
-        titleEl.textContent = item.title || 'Zonder titel';
-        descriptionEl.textContent = item.description || '';
-        openLink.href = buildItemUrl(item.id);
-
-        renderPlaylist();
-        setButtonStates();
+        return chosen;
     }
 
-    prevBtn.addEventListener('click', () => playIndex(activeIndex - 1));
-    nextBtn.addEventListener('click', () => playIndex(activeIndex + 1));
+    function registerMediaEvents(element, label) {
+        ['loadedmetadata', 'canplay', 'playing', 'pause', 'ended', 'error'].forEach((evt) => {
+            element.addEventListener(evt, () => {
+                let extra = '';
+                if (evt === 'error' && element.error) {
+                    extra = ` (code ${element.error.code})`;
+                }
+                appendLog(`${label}: event '${evt}'${extra}`);
+            });
+        });
+    }
 
-    fullscreenBtn.addEventListener('click', async () => {
-        try {
-            if (document.fullscreenElement) {
-                await document.exitFullscreen();
-                return;
+    function resetPlayers() {
+        [s1, s2, s3, s5].forEach((video) => {
+            video.pause();
+            video.removeAttribute('src');
+            while (video.firstChild) {
+                video.removeChild(video.firstChild);
             }
+            video.load();
+        });
+        s4.removeAttribute('src');
 
-            if (typeof videoEl.requestFullscreen === 'function') {
-                await videoEl.requestFullscreen();
-                return;
-            }
-
-            if (typeof videoEl.webkitEnterFullscreen === 'function') {
-                videoEl.webkitEnterFullscreen();
-            }
-        } catch (_) {
-            // Ignore fullscreen failures (browser permissions/limitations)
+        if (hlsInstance) {
+            hlsInstance.destroy();
+            hlsInstance = null;
         }
-    });
+        if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+        }
+    }
 
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
+    async function runSolutions() {
         clearError();
-        saveSettings();
+        resetPlayers();
 
-        const count = parseInt(countEl.value, 10);
-        if (!count || count < 1 || count > 100) {
-            showError('Kies een aantal tussen 1 en 100.');
-            return;
+        const item = await resolveItem();
+        const itemUrl = `https://dumpert.nl/item/${encodeURIComponent(item.id)}`;
+        const media = pickMediaUrls(item);
+
+        itemIdInput.value = item.id || '';
+
+        appendLog(`Gekozen item: ${item.id || 'onbekend'} - ${item.title || 'zonder titel'}`);
+        appendLog(`URLs: mp4=${media.mp4 || '-'} | webm=${media.webm || '-'} | m3u8=${media.m3u8 || '-'}`);
+
+        statusNote.textContent = `Test item: ${item.id || 'n/a'} — ${item.title || 'zonder titel'}`;
+
+        const preferredVideo = media.mp4 || media.webm || media.m3u8;
+        if (!preferredVideo) {
+            throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in API item payload.');
         }
 
-        const pages = Math.ceil(count / ITEMS_PER_PAGE);
-        if (pages > MAX_PAGE) {
-            showError(`Aantal pagina's (${pages}) overschrijdt het maximum van ${MAX_PAGE}.`);
-            return;
-        }
+        s1.src = preferredVideo;
+        s1.load();
+        appendLog('Oplossing 1 gestart: src direct gezet op preferred URL.');
 
-        setLoading(true);
-        playlist = [];
-        activeIndex = -1;
-        resultsEl.style.display = 'none';
-
-        try {
-            const rawItems = [];
-            for (let page = 0; page < pages; page++) {
-                const items = await fetchPage(page, nsfwEl.value);
-                rawItems.push(...items);
-            }
-
-            playlist = rawItems.slice(0, count)
-                .map((item) => ({
-                    id: item.id,
-                    title: item.title,
-                    description: item.description,
-                    videoUrl: pickBestVideoUrl(item),
-                    posterUrl: pickPosterUrl(item),
-                }))
-                .filter((item) => item.id && item.videoUrl);
-
-            if (!playlist.length) {
-                showError('Geen afspeelbare videos gevonden in deze selectie.');
+        [
+            { src: media.mp4, type: 'video/mp4' },
+            { src: media.webm, type: 'video/webm' },
+            { src: media.m3u8, type: 'application/x-mpegURL' },
+        ].forEach((entry) => {
+            if (!entry.src) {
                 return;
             }
+            const source = document.createElement('source');
+            source.src = entry.src;
+            source.type = entry.type;
+            s2.appendChild(source);
+        });
+        s2.load();
+        appendLog('Oplossing 2 gestart: multiple <source> fallback ingevuld.');
 
-            resultsEl.style.display = 'grid';
-            playIndex(0);
+        if (media.mp4 || media.webm) {
+            const blobSource = media.mp4 || media.webm;
+            try {
+                const response = await fetch(blobSource, { mode: 'cors' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const blob = await response.blob();
+                objectUrl = URL.createObjectURL(blob);
+                s3.src = objectUrl;
+                s3.load();
+                appendLog(`Oplossing 3 gestart: blob URL gemaakt (${Math.round(blob.size / 1024)} KB).`);
+            } catch (error) {
+                appendLog(`Oplossing 3 faalde tijdens fetch/blob: ${error.message}`);
+            }
+        } else {
+            appendLog('Oplossing 3 overgeslagen: geen mp4/webm URL gevonden.');
+        }
+
+        s4.src = itemUrl;
+        appendLog('Oplossing 4 gestart: iframe src naar Dumpert item URL gezet.');
+
+        if (media.m3u8) {
+            if (s5.canPlayType('application/vnd.apple.mpegurl')) {
+                s5.src = media.m3u8;
+                s5.load();
+                appendLog('Oplossing 5: browser ondersteunt native HLS, m3u8 direct ingesteld.');
+            } else if (window.Hls && window.Hls.isSupported()) {
+                hlsInstance = new window.Hls({ enableWorker: true, lowLatencyMode: true });
+                hlsInstance.loadSource(media.m3u8);
+                hlsInstance.attachMedia(s5);
+                hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                    appendLog('Oplossing 5: HLS manifest geladen via hls.js.');
+                });
+                hlsInstance.on(window.Hls.Events.ERROR, (_evt, data) => {
+                    appendLog(`Oplossing 5 HLS error: ${data && data.details ? data.details : 'onbekend'}`);
+                });
+                appendLog('Oplossing 5 gestart: hls.js geactiveerd.');
+            } else {
+                appendLog('Oplossing 5 faalt: geen native HLS en hls.js niet beschikbaar.');
+            }
+        } else {
+            appendLog('Oplossing 5 overgeslagen: m3u8 URL ontbreekt in payload.');
+        }
+    }
+
+    clearLogBtn.addEventListener('click', () => {
+        logBox.value = '';
+        logMeta.textContent = '0 regels';
+    });
+
+    loadSampleBtn.addEventListener('click', async () => {
+        clearError();
+        try {
+            const items = await fetchToppersPage(0, nsfwEl.value);
+            if (!items.length) {
+                throw new Error('Geen items op toppers pagina 0.');
+            }
+            itemIdInput.value = items[0].id || '';
+            appendLog(`Sample geladen: ${items[0].id || 'onbekend'} - ${items[0].title || 'zonder titel'}`);
         } catch (error) {
-            showError(`Fout bij ophalen: ${error.message}`);
-        } finally {
-            setLoading(false);
+            showError(error.message);
         }
     });
 
-    loadSettings();
-    setButtonStates();
+    runBtn.addEventListener('click', async () => {
+        clearError();
+        try {
+            await runSolutions();
+        } catch (error) {
+            showError(error.message);
+        }
+    });
+
+    [
+        ['Solution1', s1],
+        ['Solution2', s2],
+        ['Solution3', s3],
+        ['Solution5', s5],
+    ].forEach(([label, element]) => registerMediaEvents(element, label));
+
+    appendLog('Dumpert test lab geladen. Gebruik "1e topper laden" en daarna "Start alle 5 oplossingen".');
 })();
 </script>
 </body>
