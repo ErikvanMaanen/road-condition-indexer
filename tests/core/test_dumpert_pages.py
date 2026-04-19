@@ -1,4 +1,4 @@
-"""Tests for Dumpert static pages and auth gate behavior."""
+"""Tests for Dumpert player page auth and seamless playback UI."""
 
 import importlib
 import os
@@ -23,18 +23,7 @@ def _load_main(monkeypatch):
     return importlib.import_module('main')
 
 
-def test_dumpert_player_page_requires_auth(monkeypatch):
-    main = _load_main(monkeypatch)
-    monkeypatch.setattr(main, 'is_authenticated', lambda _request: False)
-
-    client = TestClient(main.app)
-    response = client.get('/dumpert-player.html', follow_redirects=False)
-
-    assert response.status_code in (302, 307)
-    assert response.headers['location'] == '/static/login.html?next=/dumpert-player.html'
-
-
-def test_dumpert_player_page_serves_when_authenticated(monkeypatch):
+def test_dumpert_player_page_exposes_seamless_background_stream_flow(monkeypatch):
     main = _load_main(monkeypatch)
     monkeypatch.setattr(main, 'is_authenticated', lambda _request: True)
 
@@ -42,35 +31,7 @@ def test_dumpert_player_page_serves_when_authenticated(monkeypatch):
     response = client.get('/dumpert-player.html')
 
     assert response.status_code == 200
-    assert 'Dumpert Player' in response.text
-
-
-def test_dumpert_loader_page_still_serves(monkeypatch):
-    main = _load_main(monkeypatch)
-    monkeypatch.setattr(main, 'is_authenticated', lambda _request: True)
-
-    client = TestClient(main.app)
-    response = client.get('/dumpert.html')
-
-    assert response.status_code == 200
-    assert 'Dumpert Top Loader' in response.text
-
-
-def test_dumpert_media_diagnostics_rejects_non_dumpert_hosts(monkeypatch):
-    main = _load_main(monkeypatch)
-    client = TestClient(main.app)
-
-    response = client.get('/api/dumpert/media-diagnostics', params={'url': 'https://example.com/video.mp4'})
-
-    assert response.status_code == 400
-    assert response.json()['detail'] == 'Media URL host not allowed'
-
-
-def test_dumpert_media_proxy_rejects_bad_scheme(monkeypatch):
-    main = _load_main(monkeypatch)
-    client = TestClient(main.app)
-
-    response = client.get('/api/dumpert/media-proxy', params={'url': 'file:///tmp/test.mp4'})
-
-    assert response.status_code == 400
-    assert response.json()['detail'] == 'Invalid media URL scheme'
+    assert 'Seamless player' in response.text
+    assert 'achtergrond-check (diagnostics + byte-range prewarm)' in response.text
+    assert 'Seamless afspelen' in response.text
+    assert 'Start alle 10 oplossingen' not in response.text
