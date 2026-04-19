@@ -47,7 +47,7 @@ from datetime import datetime, timedelta
 from html import unescape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import pytz
 
@@ -1589,6 +1589,117 @@ async def dumpert_toppers_proxy(
         raise HTTPException(status_code=504, detail="Dumpert API timeout") from exc
     except requests.exceptions.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"Dumpert API error: {exc}") from exc
+
+
+def _validate_dumpert_media_url(raw_url: str) -> str:
+    """Allow only http(s) URLs that point to Dumpert controlled hosts."""
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Invalid media URL scheme")
+
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = {
+        "dumpert.nl",
+        "www.dumpert.nl",
+        "api-live.dumpert.nl",
+        "media.dumpert.nl",
+        "static.dumpert.nl",
+        "st.dumpert.nl",
+    }
+    if host not in allowed_hosts and not host.endswith(".dumpert.nl"):
+        raise HTTPException(status_code=400, detail="Media URL host not allowed")
+    return raw_url
+
+
+@app.get("/api/dumpert/media-diagnostics")
+async def dumpert_media_diagnostics(url: str = Query(..., min_length=10)):
+    """Return remote media response diagnostics (status/headers/sniff bytes)."""
+    media_url = _validate_dumpert_media_url(url)
+
+    def _fetch_diagnostics() -> Dict[str, Optional[str]]:
+        session = requests.Session()
+        response = session.get(
+            media_url,
+            timeout=15,
+            headers={"Range": "bytes=0-1023", "User-Agent": "RoadConditionIndexer-DumpertDiag/1.0"},
+            stream=True,
+        )
+        response.raise_for_status()
+        first_chunk = b""
+        for chunk in response.iter_content(chunk_size=1024):
+            first_chunk += chunk
+            if len(first_chunk) >= 32:
+                break
+        headers = response.headers
+        sniff = first_chunk[:12].hex() if first_chunk else ""
+        return {
+            "status": str(response.status_code),
+            "content_type": headers.get("Content-Type"),
+            "content_length": headers.get("Content-Length"),
+            "accept_ranges": headers.get("Accept-Ranges"),
+            "access_control_allow_origin": headers.get("Access-Control-Allow-Origin"),
+            "content_range": headers.get("Content-Range"),
+            "sniff": sniff,
+        }
+
+    try:
+        payload = await run_in_threadpool(_fetch_diagnostics)
+        return payload
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Dumpert media diagnostics failed: {exc}") from exc
+
+
+@app.get("/api/dumpert/media-proxy")
+async def dumpert_media_proxy(
+    request: Request,
+    url: str = Query(..., min_length=10),
+    range_start: Optional[int] = Query(None, ge=0),
+):
+    """Stream Dumpert media through this backend to bypass browser CORS constraints."""
+    media_url = _validate_dumpert_media_url(url)
+    parsed = urlparse(media_url)
+    pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "range_start"]
+    clean_url = parsed._replace(query=urlencode(pairs)).geturl()
+
+    range_header = request.headers.get("range")
+    if range_start is not None:
+        range_header = f"bytes={range_start}-"
+
+    request_headers = {"User-Agent": "RoadConditionIndexer-DumpertProxy/1.0"}
+    if range_header:
+        request_headers["Range"] = range_header
+
+    try:
+        upstream = await run_in_threadpool(
+            lambda: requests.get(clean_url, headers=request_headers, timeout=30, stream=True)
+        )
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Dumpert media proxy failed: {exc}") from exc
+
+    if upstream.status_code >= 400:
+        upstream.close()
+        raise HTTPException(status_code=upstream.status_code, detail="Dumpert media upstream returned error")
+
+    passthrough_headers: Dict[str, str] = {}
+    for name in ("content-type", "content-length", "content-range", "accept-ranges", "cache-control", "etag", "last-modified"):
+        value = upstream.headers.get(name)
+        if value:
+            passthrough_headers[name] = value
+
+    def _iter_content():
+        try:
+            for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return StreamingResponse(
+        _iter_content(),
+        status_code=upstream.status_code,
+        headers=passthrough_headers,
+        media_type=upstream.headers.get("content-type"),
+    )
 
 # Track last received location for each device
 # Maps device_id -> (timestamp, latitude, longitude)
