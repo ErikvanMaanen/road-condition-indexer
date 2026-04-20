@@ -78,6 +78,8 @@
     const statusNote = document.getElementById('status-note');
     const video = document.getElementById('seamless-video');
     const logBox = document.getElementById('log-box');
+    let hlsInstance = null;
+    let hlsScriptPromise = null;
 
     function appendLog(message) {
         const stamp = new Date().toISOString();
@@ -94,6 +96,66 @@
     function clearError() {
         errorEl.textContent = '';
         errorEl.style.display = 'none';
+    }
+
+    function destroyHlsInstance() {
+        if (hlsInstance) {
+            hlsInstance.destroy();
+            hlsInstance = null;
+        }
+    }
+
+    function canPlayNativeHls() {
+        const support = video.canPlayType('application/vnd.apple.mpegurl');
+        return support === 'probably' || support === 'maybe';
+    }
+
+    function loadHlsScript() {
+        if (window.Hls) return Promise.resolve(window.Hls);
+        if (hlsScriptPromise) return hlsScriptPromise;
+
+        hlsScriptPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.3/dist/hls.min.js';
+            script.onload = () => resolve(window.Hls);
+            script.onerror = () => reject(new Error('Kon hls.js niet laden vanaf CDN.'));
+            document.head.appendChild(script);
+        });
+        return hlsScriptPromise;
+    }
+
+    async function setPlaybackSource(sourceUrl, isHlsPlaylist) {
+        destroyHlsInstance();
+        video.removeAttribute('src');
+
+        if (!isHlsPlaylist || canPlayNativeHls()) {
+            video.src = sourceUrl;
+            appendLog(isHlsPlaylist ? 'HLS wordt native afgespeeld door de browser.' : 'Directe mediabron ingesteld (geen HLS).');
+            return;
+        }
+
+        const Hls = await loadHlsScript();
+        if (!Hls || !Hls.isSupported()) {
+            throw new Error('HLS wordt niet ondersteund in deze browser (native + hls.js niet beschikbaar).');
+        }
+
+        hlsInstance = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 90,
+        });
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () => {
+            hlsInstance.loadSource(sourceUrl);
+        });
+        hlsInstance.on(Hls.Events.ERROR, (eventName, data) => {
+            const level = data && data.fatal ? 'FATAL' : 'WARN';
+            appendLog(`HLS.js ${level}: type=${data?.type || '-'} details=${data?.details || '-'}`);
+            if (data?.fatal) {
+                destroyHlsInstance();
+            }
+        });
+        appendLog('HLS playlist ingesteld via hls.js.');
     }
 
     function parseItemId(value) {
@@ -185,6 +247,7 @@
 
     async function playSeamless() {
         clearError();
+        destroyHlsInstance();
         video.pause();
         video.removeAttribute('src');
         video.load();
@@ -193,6 +256,7 @@
         itemIdInput.value = item.id || '';
         const media = pickMediaUrls(item);
         const preferred = media.mp4 || media.webm || media.m3u8;
+        const usingHls = !media.mp4 && !media.webm && !!media.m3u8;
 
         if (!preferred) throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in payload.');
 
@@ -207,16 +271,16 @@
         try {
             await prewarmProxyStream(preferred);
             appendLog('Warmup geslaagd: eerste bytes op de achtergrond geladen via proxy.');
-            video.src = proxySource;
+            await setPlaybackSource(proxySource, usingHls);
             statusNote.textContent = `Seamless playback via backend proxy voor item ${item.id || 'n/a'}.`;
         } catch (error) {
             appendLog(`Warmup/proxy fallback naar direct URL: ${error.message}`);
-            video.src = preferred;
+            await setPlaybackSource(preferred, usingHls);
             statusNote.textContent = `Fallback: directe streambron voor item ${item.id || 'n/a'}.`;
         }
 
         video.load();
-        appendLog(`Playback bron ingesteld: ${video.src}`);
+        appendLog(`Playback bron ingesteld: ${usingHls ? '(HLS playlist geladen)' : video.src}`);
     }
 
     ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'stalled', 'waiting', 'error', 'ended'].forEach((evt) => {
