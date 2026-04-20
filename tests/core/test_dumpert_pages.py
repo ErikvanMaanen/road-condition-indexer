@@ -3,7 +3,10 @@
 import importlib
 import os
 
+import pytest
 from fastapi.dependencies import utils as fastapi_utils
+
+pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
 REQUIRED_VARS = {
