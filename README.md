@@ -275,6 +275,12 @@ For detailed testing documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 This project includes comprehensive documentation organized into the following guides:
 
+- **[docs/README.md](docs/README.md)** - Documentation hub and navigation across all technical docs
+- **[docs/AI_AGENT_CONTEXT.md](docs/AI_AGENT_CONTEXT.md)** - Fast-start context for AI agents and contributors
+- **[docs/FEATURE_CATALOG.md](docs/FEATURE_CATALOG.md)** - Full feature and endpoint catalog
+- **[docs/WEBSITE_GUIDE.md](docs/WEBSITE_GUIDE.md)** - Website page/module behaviors and frontend architecture
+- **[docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)** - Setup, startup, and operational runbook
+- **[docs/DOCUMENTATION_MAINTENANCE.md](docs/DOCUMENTATION_MAINTENANCE.md)** - Required process for keeping docs current
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guidelines, testing, logging, and code architecture
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Azure deployment, CI/CD, and production configuration
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues, error codes, and recovery procedures
