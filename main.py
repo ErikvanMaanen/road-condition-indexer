@@ -47,7 +47,7 @@ from datetime import datetime, timedelta
 from html import unescape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse
 
 import pytz
 
@@ -1611,6 +1611,34 @@ def _validate_dumpert_media_url(raw_url: str) -> str:
     return raw_url
 
 
+def _proxied_dumpert_url(media_url: str) -> str:
+    return f"/api/dumpert/media-proxy?url={quote(media_url, safe='')}"
+
+
+def _rewrite_m3u8_playlist(playlist_text: str, source_url: str) -> str:
+    """Rewrite playlist URLs so all nested requests stay routed through the proxy."""
+    rewritten_lines: List[str] = []
+    for line in playlist_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            rewritten_lines.append(line)
+            continue
+        if stripped.startswith("#"):
+            def _replace_attr(match: re.Match[str]) -> str:
+                attr_url = match.group(1)
+                resolved = urljoin(source_url, attr_url)
+                return f'URI="{_proxied_dumpert_url(resolved)}"'
+
+            rewritten = re.sub(r'URI="([^"]+)"', _replace_attr, line)
+            rewritten_lines.append(rewritten)
+            continue
+
+        resolved = urljoin(source_url, stripped)
+        rewritten_lines.append(_proxied_dumpert_url(resolved))
+
+    return "\n".join(rewritten_lines) + ("\n" if playlist_text.endswith("\n") else "")
+
+
 @app.get("/api/dumpert/media-diagnostics")
 async def dumpert_media_diagnostics(url: str = Query(..., min_length=10)):
     """Return remote media response diagnostics (status/headers/sniff bytes)."""
@@ -1679,6 +1707,18 @@ async def dumpert_media_proxy(
     if upstream.status_code >= 400:
         upstream.close()
         raise HTTPException(status_code=upstream.status_code, detail="Dumpert media upstream returned error")
+
+    content_type = (upstream.headers.get("content-type") or "").lower()
+    is_m3u8 = ".m3u8" in clean_url.lower() or "mpegurl" in content_type
+    if is_m3u8 and not range_header:
+        playlist_content = upstream.text
+        upstream.close()
+        rewritten = _rewrite_m3u8_playlist(playlist_content, clean_url)
+        return Response(
+            content=rewritten.encode("utf-8"),
+            media_type="application/vnd.apple.mpegurl",
+            headers={"cache-control": upstream.headers.get("cache-control", "no-cache")},
+        )
 
     passthrough_headers: Dict[str, str] = {}
     for name in ("content-type", "content-length", "content-range", "accept-ranges", "cache-control", "etag", "last-modified"):
