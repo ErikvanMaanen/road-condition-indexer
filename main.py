@@ -1574,21 +1574,139 @@ async def dumpert_toppers_proxy(
     if page < 0 or page > 10:
         raise HTTPException(status_code=400, detail="Page must be between 0 and 10")
 
+    request_id = uuid.uuid4().hex[:8]
     url = f"https://api-live.dumpert.nl/mobile_api/json/toppers/{page}/"
     headers = {"origin": "Dumpert Top Loader"}
     if nsfw == "1":
         headers["x-dumpert-nsfw"] = "1"
 
+    log_info(
+        f"[Dumpert toppers:{request_id}] Fetching page={page} nsfw={nsfw or '0'} from upstream",
+        LogCategory.GENERAL,
+    )
+
     try:
+        started = time.perf_counter()
         resp = await run_in_threadpool(
             lambda: requests.get(url, headers=headers, timeout=10)
         )
         resp.raise_for_status()
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        try:
+            payload = resp.json()
+            item_count = len(payload.get("items") or [])
+        except ValueError:
+            item_count = -1
+        log_info(
+            f"[Dumpert toppers:{request_id}] Upstream ok status={resp.status_code} elapsed_ms={elapsed_ms} bytes={len(resp.content)} items={item_count}",
+            LogCategory.GENERAL,
+        )
         return Response(content=resp.content, media_type="application/json")
     except requests.exceptions.Timeout as exc:
+        log_warning(f"[Dumpert toppers:{request_id}] Timeout: {exc}", LogCategory.GENERAL)
         raise HTTPException(status_code=504, detail="Dumpert API timeout") from exc
     except requests.exceptions.RequestException as exc:
+        log_error(f"[Dumpert toppers:{request_id}] Request failed: {exc}", LogCategory.GENERAL)
         raise HTTPException(status_code=502, detail=f"Dumpert API error: {exc}") from exc
+
+
+def _extract_dumpert_media_urls(value: Any, bucket: List[str]) -> None:
+    if not value:
+        return
+    if isinstance(value, str):
+        if re.match(r"^https?://", value, flags=re.IGNORECASE):
+            bucket.append(value)
+        return
+    if isinstance(value, list):
+        for entry in value:
+            _extract_dumpert_media_urls(entry, bucket)
+        return
+    if isinstance(value, dict):
+        for entry in value.values():
+            _extract_dumpert_media_urls(entry, bucket)
+
+
+def _build_dumpert_stream_plan(item: Dict[str, Any]) -> Dict[str, Any]:
+    urls: List[str] = []
+    _extract_dumpert_media_urls(item, urls)
+    unique_urls = sorted(set(urls))
+
+    stream_sources: Dict[str, str] = {
+        "mp4": next((u for u in unique_urls if re.search(r"\.mp4(?:\?|$)", u, flags=re.IGNORECASE)), ""),
+        "webm": next((u for u in unique_urls if re.search(r"\.webm(?:\?|$)", u, flags=re.IGNORECASE)), ""),
+        "m3u8": next((u for u in unique_urls if re.search(r"\.m3u8(?:\?|$)", u, flags=re.IGNORECASE)), ""),
+    }
+
+    candidates: List[Dict[str, str]] = []
+    for kind in ("mp4", "webm", "m3u8"):
+        src = stream_sources.get(kind) or ""
+        if not src:
+            continue
+        candidates.append({"name": f"proxy-prewarm-{kind}", "url": _proxied_dumpert_url(src), "mode": "proxy_prewarm"})
+        candidates.append({"name": f"proxy-direct-{kind}", "url": _proxied_dumpert_url(src), "mode": "proxy_direct"})
+        candidates.append({"name": f"source-prewarm-{kind}", "url": src, "mode": "source_prewarm"})
+        candidates.append({"name": f"source-direct-{kind}", "url": src, "mode": "source_direct"})
+
+    preferred = stream_sources.get("mp4") or stream_sources.get("webm") or stream_sources.get("m3u8") or ""
+    ad_markers = ["ad", "advert", "vast", "preroll", "commercial"]
+    ad_hits = [u for u in unique_urls if any(marker in u.lower() for marker in ad_markers)]
+
+    return {
+        "item": {
+            "id": item.get("id"),
+            "title": item.get("title"),
+            "description": item.get("description"),
+        },
+        "stream_sources": stream_sources,
+        "preferred_stream": preferred,
+        "stream_candidates": candidates,
+        "ad_signals": {
+            "detected": bool(ad_hits),
+            "matches": ad_hits[:10],
+            "message": "Mogelijk advertentie-gerelateerde bron eerst geladen." if ad_hits else "",
+        },
+        "source_url_count": len(unique_urls),
+    }
+
+
+@app.get("/api/dumpert/bootstrap")
+async def dumpert_bootstrap(
+    request: Request,
+    page: int = Query(0, ge=0, le=10),
+    nsfw: Optional[str] = Query(None, pattern=r"^[01]$"),
+    item_id: Optional[str] = Query(None, min_length=3),
+):
+    """Load toppers, pick first/matching item and return stream extraction + fallback plan."""
+    request_id = uuid.uuid4().hex[:8]
+    client_ip = request.client.host if request and request.client else "unknown"
+    log_info(
+        f"[Dumpert bootstrap:{request_id}] Start page={page} nsfw={nsfw or '0'} item_id={item_id or '-'} ip={client_ip}",
+        LogCategory.GENERAL,
+    )
+
+    upstream = await dumpert_toppers_proxy(page=page, request=request, nsfw=nsfw)
+    payload = json.loads(upstream.body.decode("utf-8"))
+    items = payload.get("items") or []
+    if not items:
+        log_warning(f"[Dumpert bootstrap:{request_id}] No items returned", LogCategory.GENERAL)
+        raise HTTPException(status_code=404, detail="No Dumpert items available for requested page")
+
+    selected = items[0]
+    if item_id:
+        target = str(item_id).lower()
+        selected = next((entry for entry in items if str(entry.get("id") or "").lower() == target), selected)
+
+    plan = _build_dumpert_stream_plan(selected)
+    log_info(
+        f"[Dumpert bootstrap:{request_id}] Selected item={plan['item'].get('id')} candidates={len(plan['stream_candidates'])} ad_detected={plan['ad_signals']['detected']}",
+        LogCategory.GENERAL,
+    )
+    if not plan["preferred_stream"]:
+        log_warning(
+            f"[Dumpert bootstrap:{request_id}] No preferred stream found for item={plan['item'].get('id')}",
+            LogCategory.GENERAL,
+        )
+    return plan
 
 
 def _validate_dumpert_media_url(raw_url: str) -> str:
@@ -1643,6 +1761,8 @@ def _rewrite_m3u8_playlist(playlist_text: str, source_url: str) -> str:
 async def dumpert_media_diagnostics(url: str = Query(..., min_length=10)):
     """Return remote media response diagnostics (status/headers/sniff bytes)."""
     media_url = _validate_dumpert_media_url(url)
+    request_id = uuid.uuid4().hex[:8]
+    log_info(f"[Dumpert diagnostics:{request_id}] url={media_url}", LogCategory.GENERAL)
 
     def _fetch_diagnostics() -> Dict[str, Optional[str]]:
         session = requests.Session()
@@ -1672,8 +1792,13 @@ async def dumpert_media_diagnostics(url: str = Query(..., min_length=10)):
 
     try:
         payload = await run_in_threadpool(_fetch_diagnostics)
+        log_info(
+            f"[Dumpert diagnostics:{request_id}] status={payload.get('status')} type={payload.get('content_type')} len={payload.get('content_length')} range={payload.get('content_range')}",
+            LogCategory.GENERAL,
+        )
         return payload
     except requests.exceptions.RequestException as exc:
+        log_error(f"[Dumpert diagnostics:{request_id}] failed: {exc}", LogCategory.GENERAL)
         raise HTTPException(status_code=502, detail=f"Dumpert media diagnostics failed: {exc}") from exc
 
 
@@ -1685,6 +1810,7 @@ async def dumpert_media_proxy(
 ):
     """Stream Dumpert media through this backend to bypass browser CORS constraints."""
     media_url = _validate_dumpert_media_url(url)
+    request_id = uuid.uuid4().hex[:8]
     parsed = urlparse(media_url)
     pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "range_start"]
     clean_url = parsed._replace(query=urlencode(pairs)).geturl()
@@ -1696,16 +1822,31 @@ async def dumpert_media_proxy(
     request_headers = {"User-Agent": "RoadConditionIndexer-DumpertProxy/1.0"}
     if range_header:
         request_headers["Range"] = range_header
+    log_info(
+        f"[Dumpert proxy:{request_id}] start url={clean_url} range={range_header or '-'}",
+        LogCategory.GENERAL,
+    )
 
     try:
+        started = time.perf_counter()
         upstream = await run_in_threadpool(
             lambda: requests.get(clean_url, headers=request_headers, timeout=30, stream=True)
         )
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        log_info(
+            f"[Dumpert proxy:{request_id}] upstream status={upstream.status_code} elapsed_ms={elapsed_ms} type={upstream.headers.get('content-type', '-')}",
+            LogCategory.GENERAL,
+        )
     except requests.exceptions.RequestException as exc:
+        log_error(f"[Dumpert proxy:{request_id}] failed: {exc}", LogCategory.GENERAL)
         raise HTTPException(status_code=502, detail=f"Dumpert media proxy failed: {exc}") from exc
 
     if upstream.status_code >= 400:
         upstream.close()
+        log_warning(
+            f"[Dumpert proxy:{request_id}] upstream error status={upstream.status_code}",
+            LogCategory.GENERAL,
+        )
         raise HTTPException(status_code=upstream.status_code, detail="Dumpert media upstream returned error")
 
     content_type = (upstream.headers.get("content-type") or "").lower()
@@ -1714,6 +1855,10 @@ async def dumpert_media_proxy(
         playlist_content = upstream.text
         upstream.close()
         rewritten = _rewrite_m3u8_playlist(playlist_content, clean_url)
+        log_info(
+            f"[Dumpert proxy:{request_id}] rewritten playlist lines={len(rewritten.splitlines())}",
+            LogCategory.GENERAL,
+        )
         return Response(
             content=rewritten.encode("utf-8"),
             media_type="application/vnd.apple.mpegurl",

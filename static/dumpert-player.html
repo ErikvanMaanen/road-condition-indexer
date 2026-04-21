@@ -55,7 +55,7 @@
         </div>
     </section>
 
-    <div class="status-note" id="status-note">De player doet eerst een achtergrond-check (diagnostics + byte-range prewarm) en start daarna met de beste streambron.</div>
+    <div class="status-note" id="status-note">De player doet een achtergrond-check (diagnostics + multi-strategy prewarm), probeert meerdere streamroutes en meldt advertentie-signalen vooraf.</div>
     <div id="error" class="status-message status-error" role="alert" aria-live="polite"></div>
 
     <video id="seamless-video" controls playsinline preload="auto"></video>
@@ -81,9 +81,10 @@
     let hlsInstance = null;
     let hlsScriptPromise = null;
 
-    function appendLog(message) {
+    function appendLog(message, context) {
         const stamp = new Date().toISOString();
-        logBox.value += `[${stamp}] ${message}\n`;
+        const ctx = context ? ` | ${JSON.stringify(context)}` : '';
+        logBox.value += `[${stamp}] ${message}${ctx}\n`;
         logBox.scrollTop = logBox.scrollHeight;
     }
 
@@ -201,18 +202,26 @@
         return payload.items;
     }
 
-    async function resolveItem() {
+    async function resolveItemWithStreamPlan() {
         const requestedId = parseItemId(itemIdInput.value);
-        const items = await fetchToppersPage(0, nsfwEl.value);
-        if (!items.length) throw new Error('Geen Dumpert items gevonden in toppers pagina 0.');
+        const query = new URLSearchParams({ page: '0' });
+        if (nsfwEl.value === '1') query.set('nsfw', '1');
+        if (requestedId) query.set('item_id', requestedId);
 
-        let chosen = items[0];
-        if (requestedId) {
-            const match = items.find((item) => String(item.id || '').toLowerCase() === requestedId.toLowerCase());
-            chosen = match || items[0];
-            if (!match) appendLog(`Item ${requestedId} niet gevonden op page0, fallback ${items[0].id}.`);
+        const response = await fetch(`/api/dumpert/bootstrap?${query.toString()}`);
+        if (!response.ok) {
+            const details = await response.text().catch(() => response.statusText);
+            throw new Error(`Bootstrap mislukt (${response.status}): ${details}`);
         }
-        return chosen;
+        const payload = await response.json();
+        if (!payload || !payload.item || !Array.isArray(payload.stream_candidates)) {
+            throw new Error('Onverwacht bootstrap formaat ontvangen.');
+        }
+        if (payload.ad_signals?.detected) {
+            statusNote.textContent = 'Let op: er zijn advertentie-signalen gevonden in de streambronnen.';
+            appendLog('Advertentie-signalen gevonden, gebruiker geïnformeerd.', payload.ad_signals);
+        }
+        return payload;
     }
 
     function proxiedUrl(url, rangeStart) {
@@ -245,6 +254,23 @@
         }
     }
 
+    function candidateToOriginalMediaUrl(candidateUrl) {
+        if (!candidateUrl.includes('/api/dumpert/media-proxy?url=')) return candidateUrl;
+        const encoded = candidateUrl.split('url=')[1]?.split('&')[0] || '';
+        return decodeURIComponent(encoded);
+    }
+
+    async function tryBackgroundLoad(candidate) {
+        const started = performance.now();
+        appendLog('Achtergrond poging gestart.', candidate);
+        if (candidate.mode.includes('prewarm')) {
+            await prewarmProxyStream(candidateToOriginalMediaUrl(candidate.url));
+        }
+        const elapsedMs = Math.round(performance.now() - started);
+        appendLog(`Achtergrond poging geslaagd in ${elapsedMs}ms`, candidate);
+        return true;
+    }
+
     async function playSeamless() {
         clearError();
         destroyHlsInstance();
@@ -252,35 +278,44 @@
         video.removeAttribute('src');
         video.load();
 
-        const item = await resolveItem();
-        itemIdInput.value = item.id || '';
-        const media = pickMediaUrls(item);
-        const preferred = media.mp4 || media.webm || media.m3u8;
+        const plan = await resolveItemWithStreamPlan();
+        const item = plan.item || {};
+        const media = plan.stream_sources || {};
+        const preferred = plan.preferred_stream;
         const usingHls = !media.mp4 && !media.webm && !!media.m3u8;
+        itemIdInput.value = item.id || '';
 
-        if (!preferred) throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in payload.');
+        if (!preferred) throw new Error('Geen video URL (mp4/webm/m3u8) gevonden in bootstrap payload.');
 
         statusNote.textContent = `Item ${item.id || 'n/a'} wordt voorbereid voor seamless playback.`;
-        appendLog(`Gekozen item: ${item.id || 'onbekend'} - ${item.title || 'zonder titel'}`);
+        appendLog(`Gekozen item: ${item.id || 'onbekend'} - ${item.title || 'zonder titel'}`, { sourceUrlCount: plan.source_url_count || 0 });
         appendLog(`Bronnen: mp4=${media.mp4 || '-'} | webm=${media.webm || '-'} | m3u8=${media.m3u8 || '-'}`);
+        appendLog('Beschikbare laadstrategieën ontvangen.', { candidates: plan.stream_candidates.length });
 
         const diag = await fetchDiagnostics(preferred);
         appendLog(`Diagnostics: status=${diag.status} type=${diag.content_type || '-'} len=${diag.content_length || '-'} range=${diag.accept_ranges || '-'} sniff=${diag.sniff || '-'}`);
 
-        const proxySource = proxiedUrl(preferred);
-        try {
-            await prewarmProxyStream(preferred);
-            appendLog('Warmup geslaagd: eerste bytes op de achtergrond geladen via proxy.');
-            await setPlaybackSource(proxySource, usingHls);
-            statusNote.textContent = `Seamless playback via backend proxy voor item ${item.id || 'n/a'}.`;
-        } catch (error) {
-            appendLog(`Warmup/proxy fallback naar direct URL: ${error.message}`);
-            await setPlaybackSource(preferred, usingHls);
-            statusNote.textContent = `Fallback: directe streambron voor item ${item.id || 'n/a'}.`;
+        let lastError = null;
+        for (const candidate of plan.stream_candidates) {
+            try {
+                await tryBackgroundLoad(candidate);
+                await setPlaybackSource(candidate.url, usingHls);
+                statusNote.textContent = `Playback actief via strategie: ${candidate.name} (item ${item.id || 'n/a'}).`;
+                appendLog('Playback bron gekozen en naar front-end doorgezet.', candidate);
+                lastError = null;
+                break;
+            } catch (error) {
+                lastError = error;
+                appendLog(`Strategie mislukt: ${error.message}`, candidate);
+            }
+        }
+
+        if (lastError) {
+            throw new Error(`Geen enkele streamstrategie werkte: ${lastError.message}`);
         }
 
         video.load();
-        appendLog(`Playback bron ingesteld: ${usingHls ? '(HLS playlist geladen)' : video.src}`);
+        appendLog(`Playback bron ingesteld: ${usingHls ? '(HLS playlist geladen)' : video.src}`, { currentSrc: video.currentSrc || '-' });
     }
 
     ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'stalled', 'waiting', 'error', 'ended'].forEach((evt) => {
@@ -297,10 +332,14 @@
     loadSampleBtn.addEventListener('click', async () => {
         clearError();
         try {
-            const items = await fetchToppersPage(0, nsfwEl.value);
-            if (!items.length) throw new Error('Geen items op toppers pagina 0.');
-            itemIdInput.value = items[0].id || '';
-            appendLog(`Sample geladen: ${items[0].id || 'onbekend'} - ${items[0].title || 'zonder titel'}`);
+            const plan = await resolveItemWithStreamPlan();
+            itemIdInput.value = plan.item?.id || '';
+            appendLog(`Sample geladen: ${plan.item?.id || 'onbekend'} - ${plan.item?.title || 'zonder titel'}`);
+            appendLog('Bootstrap data ontvangen en geparsed voor front-end.', {
+                hasPreferred: Boolean(plan.preferred_stream),
+                candidateCount: (plan.stream_candidates || []).length,
+                adSignals: Boolean(plan.ad_signals?.detected),
+            });
         } catch (error) {
             showError(error.message);
         }
