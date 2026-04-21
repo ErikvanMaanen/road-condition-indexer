@@ -35,6 +35,8 @@ def test_dumpert_player_page_exposes_seamless_background_stream_flow(monkeypatch
 
     assert response.status_code == 200
     assert 'Seamless player' in response.text
-    assert 'achtergrond-check (diagnostics + byte-range prewarm)' in response.text
+    assert 'achtergrond-check (diagnostics + multi-strategy prewarm)' in response.text
+    assert 'meerdere streamroutes' in response.text
+    assert 'advertentie-signalen' in response.text
     assert 'Seamless afspelen' in response.text
     assert 'Start alle 10 oplossingen' not in response.text
