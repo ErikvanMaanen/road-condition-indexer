@@ -703,7 +703,6 @@ const RCI_NAV_GROUPS = [
         items: [
             { label: 'Dumpert', href: '/static/dumpert.html', paths: ['/static/dumpert.html'] },
             { label: 'Solution', href: '/static/solution.html', paths: ['/static/solution.html'] },
-            { label: 'Chris', href: '/static/chris.html', paths: ['/static/chris.html'] },
             { label: 'Timezone Test', href: '/static/timezone-test.html', paths: ['/static/timezone-test.html'] }
         ]
     }
