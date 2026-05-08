@@ -43,7 +43,7 @@ class _FakeResponse:
 
 def test_bootstrap_returns_first_item_and_stream_candidates(monkeypatch):
     main = _load_main(monkeypatch)
-    monkeypatch.setattr(main, "is_authenticated", lambda _request: True)
+    main.app.dependency_overrides[main.admin_dependency] = lambda: None
 
     upstream_payload = {
         "items": [
@@ -78,7 +78,7 @@ def test_bootstrap_returns_first_item_and_stream_candidates(monkeypatch):
 
 def test_bootstrap_detects_ad_signals(monkeypatch):
     main = _load_main(monkeypatch)
-    monkeypatch.setattr(main, "is_authenticated", lambda _request: True)
+    main.app.dependency_overrides[main.admin_dependency] = lambda: None
 
     upstream_payload = {
         "items": [

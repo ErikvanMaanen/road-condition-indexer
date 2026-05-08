@@ -1,136 +1,87 @@
-    <link rel="stylesheet" href="/static/site.css">
-    <script src="/static/utils.js"></script>
-</head>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Login - Road Condition Indexer</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
     <script src="/static/utils.js"></script>
     <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
+        body.auth-screen {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
             padding: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        
-        .login-container {
-            background: white;
+        .auth-card {
+            background: var(--rci-card-bg, #fff);
+            color: var(--rci-text, #1f2937);
+            width: min(92vw, 430px);
             padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
+            border-radius: 14px;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
         }
-        
-        .logo-title {
+        .auth-logo-title {
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 2rem;
-            color: #333;
-        }
-        
-        .logo-title img {
-            height: 3em;
-            margin-right: 0.5em;
-        }
-        
-        .logo-title h1 {
-            margin: 0;
-            font-size: 1.8rem;
-            font-weight: 300;
-        }
-        
-        .login-form {
-            margin-top: 1.5rem;
-        }
-        
-        .login-form h2 {
-            color: #555;
+            gap: 0.75rem;
             margin-bottom: 1.5rem;
-            font-weight: 400;
+            text-align: center;
         }
-        
-        .form-group {
-            margin-bottom: 1.5rem;
-            text-align: left;
+        .auth-logo-title img { height: 3rem; }
+        .auth-logo-title h1 { margin: 0; font-size: 1.65rem; font-weight: 600; }
+        .auth-form h2 { margin: 0 0 0.75rem; text-align: center; }
+        .auth-helper {
+            margin: 0 0 1.25rem;
+            color: var(--rci-muted, #64748b);
+            font-size: 0.95rem;
+            line-height: 1.45;
+            text-align: center;
         }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #555;
-            font-weight: 500;
-        }
-        
+        .form-group { margin-bottom: 1rem; text-align: left; }
+        .form-group label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+        .form-group small { display: block; margin-top: 0.35rem; color: var(--rci-muted, #64748b); }
         .form-group input {
             width: 100%;
             padding: 0.75rem;
-            border: 2px solid #e1e5e9;
-            border-radius: 5px;
+            border: 2px solid #d8dee9;
+            border-radius: 8px;
             font-size: 1rem;
-            transition: border-color 0.3s ease;
             box-sizing: border-box;
         }
-        
         .form-group input:focus {
             outline: none;
             border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
         }
-        
-        .login-button {
+        .btn-auth-primary {
             width: 100%;
-            padding: 0.75rem;
+            padding: 0.85rem;
+            margin-top: 0.5rem;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 5px;
+            color: #fff;
+            border: 0;
+            border-radius: 8px;
             font-size: 1rem;
-            font-weight: 500;
+            font-weight: 700;
             cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
-        
-        .login-button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        
-        .login-button:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .error-message {
-            color: #e74c3c;
+        .btn-auth-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .auth-message {
+            display: none;
             margin-top: 1rem;
             padding: 0.75rem;
-            background: #ffeaea;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-            display: none;
+            border-radius: 8px;
+            line-height: 1.4;
         }
-        
-        .success-message {
-            color: #27ae60;
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background: #eafaf1;
-            border: 1px solid #c3e6cb;
-            border-radius: 5px;
-            display: none;
-        }
+        .auth-message.error { color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; }
+        .auth-message.success { color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; }
     </style>
 </head>
 <body class="auth-screen" data-page="login">
@@ -142,9 +93,19 @@
     </div>
     <form id="login-form" class="auth-form" onsubmit="event.preventDefault(); doLogin();" novalidate>
         <h2>Sign In</h2>
+        <p class="auth-helper">Sign in as <strong>Fiets</strong> (User) or <strong>Techno</strong> (Admin). First-time users leave the current password blank and choose a new password.</p>
         <div class="form-group">
-            <label for="pw">Password</label>
-            <input type="password" id="pw" autocomplete="current-password" required aria-required="true" />
+            <label for="username">Username</label>
+            <input type="text" id="username" autocomplete="username" required aria-required="true">
+        </div>
+        <div class="form-group">
+            <label for="pw">Current password</label>
+            <input type="password" id="pw" autocomplete="current-password" aria-describedby="first-login-help">
+            <small id="first-login-help">Leave blank only when setting your initial password.</small>
+        </div>
+        <div class="form-group">
+            <label for="new-pw">New password for first sign-in</label>
+            <input type="password" id="new-pw" autocomplete="new-password">
         </div>
         <button type="submit" class="btn-auth-primary" id="login-submit">Sign In</button>
         <div id="error-message" class="auth-message error" aria-live="polite"></div>
@@ -155,84 +116,80 @@
 function showMessage(message, isError = false) {
     const errorDiv = document.getElementById('error-message');
     const successDiv = document.getElementById('success-message');
-    
-    // Hide both messages first
     errorDiv.style.display = 'none';
     successDiv.style.display = 'none';
-    
     if (isError) {
         errorDiv.textContent = message;
         errorDiv.style.display = 'block';
-    } else {
+    } else if (message) {
         successDiv.textContent = message;
         successDiv.style.display = 'block';
     }
 }
 
 async function doLogin() {
+    const username = document.getElementById('username').value.trim();
     const pw = document.getElementById('pw').value;
+    const newPw = document.getElementById('new-pw').value;
     const submitButton = document.getElementById('login-submit');
-    
-    // Hide any previous messages
-    document.getElementById('error-message').style.display = 'none';
-    document.getElementById('success-message').style.display = 'none';
-    
-    // Disable button and show loading state
+
+    if (!username) {
+        showMessage('Enter your username.', true);
+        document.getElementById('username').focus();
+        return;
+    }
+
     submitButton.disabled = true;
     submitButton.textContent = 'Signing in...';
-    
+    showMessage('', false);
+
     try {
+        const payload = { username, password: pw };
+        if (newPw) payload.new_password = newPw;
         const res = await fetch('/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: pw })
+            body: JSON.stringify(payload)
         });
-        
+
         if (res.ok) {
             const params = new URLSearchParams(location.search);
             const next = params.get('next') || '/';
             showMessage('Login successful! Redirecting...', false);
-            
-            // Small delay to show success message
-            setTimeout(() => {
-                location.href = next;
-            }, 1000);
+            setTimeout(() => { location.href = next; }, 500);
         } else {
-            // Handle different error types
             let errorMessage = 'Login failed';
-            if (res.status === 401) {
-                errorMessage = 'Invalid password. Please try again.';
+            if (res.status === 409) {
+                errorMessage = 'This account has no password yet. Leave current password blank, enter a new password, and sign in again.';
+                document.getElementById('new-pw').focus();
+            } else if (res.status === 401) {
+                errorMessage = 'Invalid username or password.';
+                document.getElementById('pw').value = '';
+                document.getElementById('pw').focus();
+            } else if (res.status === 403) {
+                errorMessage = 'Your account cannot access the requested page.';
             } else if (res.status >= 500) {
                 errorMessage = 'Server error. Please try again later.';
             }
-            
             showMessage(errorMessage, true);
-            document.getElementById('pw').value = '';
-            document.getElementById('pw').focus();
         }
     } catch (error) {
-        // Handle network errors
         console.error('Login error:', error);
         showMessage('Network error. Please check your connection and try again.', true);
-        document.getElementById('pw').focus();
     } finally {
-        // Re-enable button
         submitButton.disabled = false;
-    submitButton.textContent = 'Sign In';
+        submitButton.textContent = 'Sign In';
     }
 }
 
-// Add Enter key support for password field
 document.addEventListener('DOMContentLoaded', () => {
-    const pwField = document.getElementById('pw');
-    pwField.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            doLogin();
-        }
+    const usernameField = document.getElementById('username');
+    ['username', 'pw', 'new-pw'].forEach((id) => {
+        document.getElementById(id).addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
     });
-    
-    // Focus on password field when page loads
-    pwField.focus();
+    usernameField.focus();
 });
 </script>
 </body>

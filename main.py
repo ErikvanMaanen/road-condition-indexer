@@ -37,13 +37,16 @@ def load_environment_config():
 load_environment_config()
 import asyncio
 import difflib
+import base64
 import hashlib
+import hmac
 import json
 import math
 import re
+import secrets
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, Literal
@@ -1223,13 +1226,41 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Road Condition Indexer", lifespan=lifespan)
 
 
-# Serve all static files automatically (public, no auth)
-from fastapi.staticfiles import StaticFiles
+class RoleProtectedStaticFiles(StaticFiles):
+    """Serve static assets while enforcing auth for directly requested HTML pages."""
 
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+    async def get_response(self, path: str, scope):
+        requested_name = Path(path).name
+        if requested_name.endswith(".html") and requested_name not in PUBLIC_STATIC_HTML:
+            required_role = ROLE_ADMIN if requested_name in MAINTENANCE_PAGES else ROLE_USER
+            user = get_current_user_from_scope(scope)
+            if user is None:
+                return RedirectResponse(url=f"/static/login.html?next=/static/{path}")
+            if required_role == ROLE_ADMIN and user.get("role") != ROLE_ADMIN:
+                return Response(status_code=403, content="Forbidden")
+        return await super().get_response(path, scope)
 
-# MD5 hash for the default password
-PASSWORD_HASH = "08457aa99f426e5e8410798acd74c23b"
+
+app.mount("/static", RoleProtectedStaticFiles(directory=BASE_DIR / "static"), name="static")
+
+SESSION_COOKIE_NAME = "rci_session"
+SESSION_TTL_SECONDS = int(os.getenv("RCI_SESSION_TTL_SECONDS", str(12 * 60 * 60)))
+SESSION_SECRET = os.getenv("RCI_SESSION_SECRET") or os.getenv("SECRET_KEY") or "rci-development-session-secret"
+ROLE_USER = "User"
+ROLE_ADMIN = "Admin"
+PASSWORD_HASH_ITERATIONS = 260_000
+
+MAINTENANCE_PAGES = {
+    "maintenance.html",
+    "database.html",
+    "tools.html",
+    "av-tools.html",
+    "memo.html",
+    "monitor.html",
+    "comprehensive-logs.html",
+    "dumpert.html",
+}
+PUBLIC_STATIC_HTML = {"login.html"}
 
 # Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
@@ -1324,56 +1355,192 @@ def get_sql_client():
         return None
     return SqlManagementClient(cred, subscription)
 
-def verify_password(pw: str) -> bool:
-    """Return True if the MD5 hash of ``pw`` matches PASSWORD_HASH."""
-    return hashlib.md5(pw.encode()).hexdigest() == PASSWORD_HASH
+def hash_password(password: str) -> str:
+    """Hash a password with PBKDF2-HMAC-SHA256 and a per-password salt."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_HASH_ITERATIONS,
+    )
+    return "pbkdf2_sha256${iterations}${salt}${digest}".format(
+        iterations=PASSWORD_HASH_ITERATIONS,
+        salt=base64.urlsafe_b64encode(salt).decode("ascii"),
+        digest=base64.urlsafe_b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, stored_hash: Optional[str]) -> bool:
+    """Return True when a plaintext password matches the stored password hash."""
+    if not stored_hash:
+        return password == ""
+
+    try:
+        algorithm, iterations, salt_b64, digest_b64 = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        expected = base64.urlsafe_b64decode(digest_b64.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            base64.urlsafe_b64decode(salt_b64.encode("ascii")),
+            int(iterations),
+        )
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+
+def _session_signature(payload: str) -> str:
+    return hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def create_session_token(user: Dict[str, Any]) -> str:
+    """Create a signed, time-limited session token for a user."""
+    expires_at = int(time.time()) + SESSION_TTL_SECONDS
+    payload = "|".join([str(user["id"]), str(user["username"]), str(user["role"]), str(expires_at)])
+    token = f"{payload}|{_session_signature(payload)}"
+    return base64.urlsafe_b64encode(token.encode("utf-8")).decode("ascii")
+
+
+def decode_session_token(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Validate a session cookie and return its user payload."""
+    if not token:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("ascii")).decode("utf-8")
+        user_id, username, role, expires_at, signature = decoded.rsplit("|", 4)
+        payload = "|".join([user_id, username, role, expires_at])
+        if not hmac.compare_digest(signature, _session_signature(payload)):
+            return None
+        if int(expires_at) < int(time.time()):
+            return None
+        return {"id": int(user_id), "username": username, "role": role}
+    except Exception:
+        return None
+
+
+def get_current_user_from_scope(scope) -> Optional[Dict[str, Any]]:
+    headers = dict(scope.get("headers") or [])
+    cookie_header = headers.get(b"cookie", b"").decode("latin-1")
+    cookies = {}
+    for part in cookie_header.split(";"):
+        if "=" in part:
+            key, value = part.strip().split("=", 1)
+            cookies[key] = value
+    return decode_session_token(cookies.get(SESSION_COOKIE_NAME))
+
+
+def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Return the authenticated user from the signed session cookie, if any."""
+    return decode_session_token(request.cookies.get(SESSION_COOKIE_NAME))
+
 
 def is_authenticated(request: Request) -> bool:
-    """Return True if request has valid auth cookie."""
-    return request.cookies.get("auth") == PASSWORD_HASH
+    """Return True if request has a valid user session."""
+    return get_current_user(request) is not None
+
+
+def require_role(request: Request, required_role: str = ROLE_USER) -> Dict[str, Any]:
+    """Require an authenticated user and, optionally, the Admin role."""
+    user = get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if required_role == ROLE_ADMIN and user.get("role") != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return user
+
 
 def password_dependency(request: Request) -> None:
-    """Authenticate using cookie or optional ``pw`` query parameter."""
-    cookie = request.cookies.get("auth")
-    if cookie == PASSWORD_HASH:
-        return
-    pw = request.query_params.get("pw")
-    if pw and verify_password(pw):
-        return
-    raise HTTPException(status_code=401, detail="Unauthorized")
+    """Require any authenticated application user."""
+    require_role(request, ROLE_USER)
+
+
+def admin_dependency(request: Request) -> None:
+    """Require an authenticated Admin user."""
+    require_role(request, ROLE_ADMIN)
 
 
 class LoginRequest(BaseModel):
-    password: str = Field(..., min_length=1)
+    username: str = Field(..., min_length=1)
+    password: str = ""
+    new_password: Optional[str] = Field(None, min_length=1)
 
 
 @app.post("/login")
 def login(req: LoginRequest, request: Request):
-    """Set auth cookie if password is correct."""
+    """Authenticate a named user, setting an initial password when needed."""
     client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    if verify_password(req.password):
-        # Successful login
-        resp = Response(status_code=204)
-        resp.set_cookie("auth", PASSWORD_HASH, httponly=True, path="/")
-        
-        log_info(f"Successful login from IP: {client_ip}", LogCategory.USER_ACTION)
-        return resp
-    else:
-        # Failed login
-        log_warning(f"Failed login attempt from IP: {client_ip}", LogCategory.USER_ACTION)
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    if hasattr(db_manager, "init_tables"):
+        db_manager.init_tables()
+
+    user = db_manager.get_user_by_username(username)
+    if not user:
+        log_warning(f"Failed login attempt for unknown user '{username}' from IP: {client_ip}", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-@app.get("/auth_check")
-def auth_check(request: Request):
-    """Return 204 if auth cookie valid else 401."""
-    if is_authenticated(request):
-        return Response(status_code=204)
-    else:
-        client_ip = get_client_ip(request)
-        log_warning(f"Authentication check failed from IP: {client_ip}", LogCategory.USER_ACTION)
+    password_hash = user.get("password_hash")
+    password_needs_setup = not password_hash
+    if password_needs_setup:
+        if req.password != "":
+            raise HTTPException(status_code=401, detail="Initial password is blank")
+        if not req.new_password:
+            raise HTTPException(status_code=409, detail="Password setup required")
+        db_manager.set_user_password_hash(int(user["id"]), hash_password(req.new_password))
+    elif not verify_password(req.password, password_hash):
+        log_warning(f"Failed login attempt for user '{user['username']}' from IP: {client_ip}", LogCategory.USER_ACTION)
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    db_manager.record_user_login(int(user["id"]))
+    resp = Response(status_code=204)
+    resp.set_cookie(
+        SESSION_COOKIE_NAME,
+        create_session_token(user),
+        httponly=True,
+        path="/",
+        samesite="lax",
+    )
+    log_info(f"Successful login for user '{user['username']}' ({user['role']}) from IP: {client_ip}", LogCategory.USER_ACTION)
+    return resp
+
+
+@app.post("/logout")
+def logout():
+    """Clear the signed session cookie."""
+    resp = Response(status_code=204)
+    resp.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return resp
+
+
+@app.get("/auth_check")
+def auth_check(request: Request, role: str = Query(ROLE_USER)):
+    """Return 204 if the current session has the requested role."""
+    required_role = ROLE_ADMIN if role == ROLE_ADMIN else ROLE_USER
+    require_role(request, required_role)
+    return Response(status_code=204)
+
+
+@app.get("/api/me")
+def get_me(request: Request):
+    """Return the current authenticated user."""
+    return require_role(request, ROLE_USER)
+
+
+
+
+def serve_protected_html(request: Request, filename: str, required_role: str = ROLE_USER):
+    """Serve an HTML page after enforcing the requested role."""
+    user = get_current_user(request)
+    if user is None:
+        return RedirectResponse(url=f"/static/login.html?next=/{filename}")
+    if required_role == ROLE_ADMIN and user.get("role") != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return FileResponse(BASE_DIR / "static" / filename)
 
 @app.get("/health")
 def health_check():
@@ -1447,6 +1614,11 @@ def get_login_page():
     """Serve the login page - this should be accessible without authentication."""
     return FileResponse(BASE_DIR / "static" / "login.html")
 
+@app.get("/login.html")
+def get_login_page_alias():
+    """Serve the login page alias for older redirects."""
+    return FileResponse(BASE_DIR / "static" / "login.html")
+
 
 @app.get("/static/logs-partial.html")
 def get_logs_partial():
@@ -1469,65 +1641,49 @@ def get_map_components_js():
 @app.get("/welcome.html")
 def read_welcome(request: Request):
     """Serve the welcome page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/welcome.html")
-    return FileResponse(BASE_DIR / "static" / "welcome.html")
+    return serve_protected_html(request, "welcome.html")
 
 
 @app.get("/device.html")
 def read_device(request: Request):
     """Serve the device filter page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/device.html")
-    return FileResponse(BASE_DIR / "static" / "device.html")
+    return serve_protected_html(request, "device.html")
 
 
 @app.get("/maintenance.html")
 def read_maintenance(request: Request):
     """Serve the maintenance page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/maintenance.html")
-    return FileResponse(BASE_DIR / "static" / "maintenance.html")
+    return serve_protected_html(request, "maintenance.html", ROLE_ADMIN)
 
 
 @app.get("/database.html")
 def read_database(request: Request):
     """Serve the database management page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/database.html")
-    return FileResponse(BASE_DIR / "static" / "database.html")
+    return serve_protected_html(request, "database.html", ROLE_ADMIN)
 
 
 @app.get("/tools.html")
 def read_tools(request: Request):
     """Serve the tools page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/tools.html")
-    return FileResponse(BASE_DIR / "static" / "tools.html")
+    return serve_protected_html(request, "tools.html", ROLE_ADMIN)
 
 
 @app.get("/av-tools.html")
 def read_av_tools(request: Request):
     """Serve the audio and video tools page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/av-tools.html")
-    return FileResponse(BASE_DIR / "static" / "av-tools.html")
+    return serve_protected_html(request, "av-tools.html", ROLE_ADMIN)
 
 
 @app.get("/memo.html")
 def read_memo_page(request: Request):
     """Serve the memo management page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/memo.html")
-    return FileResponse(BASE_DIR / "static" / "memo.html")
+    return serve_protected_html(request, "memo.html", ROLE_ADMIN)
 
 
 @app.get("/monitor.html")
 def read_monitor_page(request: Request):
     """Serve the monitor management page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/monitor.html")
-    return FileResponse(BASE_DIR / "static" / "monitor.html")
+    return serve_protected_html(request, "monitor.html", ROLE_ADMIN)
 
 
 @app.get("/logs-partial.html")
@@ -1539,23 +1695,20 @@ def read_logs_partial(request: Request):
 @app.get("/comprehensive-logs.html")
 def read_comprehensive_logs(request: Request):
     """Serve the comprehensive logs page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/comprehensive-logs.html")
-    return FileResponse(BASE_DIR / "static" / "comprehensive-logs.html")
+    return serve_protected_html(request, "comprehensive-logs.html", ROLE_ADMIN)
 
 
 @app.get("/dumpert.html")
 def read_dumpert_page(request: Request):
     """Serve the Dumpert Top Loader page."""
-    if not is_authenticated(request):
-        return RedirectResponse(url="/static/login.html?next=/dumpert.html")
-    return FileResponse(BASE_DIR / "static" / "dumpert.html")
+    return serve_protected_html(request, "dumpert.html", ROLE_ADMIN)
 
 
 @app.get("/api/dumpert/toppers/{page}")
 async def dumpert_toppers_proxy(
     page: int,
     request: Request,
+    dep: None = Depends(admin_dependency),
     nsfw: Optional[str] = Query(None, pattern=r"^[01]$"),
 ):
     """Proxy the Dumpert toppers API to work around CORS restrictions.
@@ -1664,6 +1817,7 @@ def _build_dumpert_stream_plan(item: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/api/dumpert/bootstrap")
 async def dumpert_bootstrap(
     request: Request,
+    dep: None = Depends(admin_dependency),
     page: int = Query(0, ge=0, le=10),
     nsfw: Optional[str] = Query(None, pattern=r"^[01]$"),
     item_id: Optional[str] = Query(None, min_length=3),
@@ -2444,7 +2598,7 @@ class MonitorToggleRequest(BaseModel):
 
 
 @app.delete("/nickname")
-def delete_device_nickname(entry: DeviceDeletionEntry, dep: None = Depends(password_dependency)):
+def delete_device_nickname(entry: DeviceDeletionEntry, dep: None = Depends(admin_dependency)):
     """Delete a device nickname/registration."""
     try:
         db_manager.delete_device_nickname(entry.device_id)
@@ -2455,7 +2609,7 @@ def delete_device_nickname(entry: DeviceDeletionEntry, dep: None = Depends(passw
 
 
 @app.delete("/device_data")
-def delete_device_data(entry: DeviceDeletionEntry, dep: None = Depends(password_dependency)):
+def delete_device_data(entry: DeviceDeletionEntry, dep: None = Depends(admin_dependency)):
     """Delete device data including bike_data and source_data records."""
     try:
         deleted_counts = db_manager.delete_device_data(entry.device_id, entry.delete_data)
@@ -2878,7 +3032,7 @@ async def download_video(entry: VideoDownloadRequest):
 
 
 @app.get("/debuglog")
-def get_debuglog(dep: None = Depends(password_dependency)):
+def get_debuglog(dep: None = Depends(admin_dependency)):
     """Get in-memory debug log for compatibility."""
     return {"log": DEBUG_LOG}
 
@@ -2888,7 +3042,8 @@ def get_enhanced_debuglog(
     level: Optional[str] = Query(None, description="Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     category: Optional[str] = Query(None, description="Log category filter"),
     device_id: Optional[str] = Query(None, description="Device ID filter"),
-    limit: Optional[int] = Query(100, description="Maximum number of logs to return")
+    limit: Optional[int] = Query(100, description="Maximum number of logs to return"),
+    dep: None = Depends(admin_dependency),
 ):
     """Get enhanced debug logs with filtering capabilities."""
     try:
@@ -3368,7 +3523,7 @@ def get_manage_debug_logs(
     category_filter: Optional[str] = Query(None, description="Log category filter"),
     device_id_filter: Optional[str] = Query(None, description="Device ID filter"),
     limit: Optional[int] = Query(100, description="Maximum number of logs to return"),
-    dep: None = Depends(password_dependency)
+    dep: None = Depends(admin_dependency)
 ):
     """Get debug logs from database with filtering - requires authentication."""
     try:
@@ -3422,7 +3577,7 @@ def get_manage_debug_logs(
 
 
 @app.post("/manage/repair_database")
-def repair_database(dep: None = Depends(password_dependency)):
+def repair_database(dep: None = Depends(admin_dependency)):
     """Repair database integrity issues - requires authentication."""
     try:
         log_debug("Starting manual database repair")
@@ -3457,7 +3612,7 @@ def repair_database(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/tables")
-def manage_tables(dep: None = Depends(password_dependency)):
+def manage_tables(dep: None = Depends(admin_dependency)):
     """Return table contents for management page."""
     try:
         names = db_manager.execute_query("SELECT name FROM sys.tables")
@@ -3476,7 +3631,7 @@ def manage_tables(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/table_rows")
-def get_table_rows(table: str, dep: None = Depends(password_dependency)):
+def get_table_rows(table: str, dep: None = Depends(admin_dependency)):
     """Return all rows from the specified table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(table):
@@ -3491,7 +3646,7 @@ def get_table_rows(table: str, dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/table_range")
-def get_table_range(table: str, dep: None = Depends(password_dependency)):
+def get_table_range(table: str, dep: None = Depends(admin_dependency)):
     """Return min and max timestamp for a table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(table):
@@ -3520,7 +3675,7 @@ class TestdataRequest(BaseModel):
 
 
 @app.post("/manage/insert_testdata")
-def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependency)):
+def insert_testdata(req: TestdataRequest, dep: None = Depends(admin_dependency)):
     """Insert a simple test record into a table."""
     try:
         if req.table == TABLE_BIKE_DATA:
@@ -3552,7 +3707,7 @@ def insert_testdata(req: TestdataRequest, dep: None = Depends(password_dependenc
 
 
 @app.post("/manage/test_table")
-def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
+def test_table(req: TestdataRequest, dep: None = Depends(admin_dependency)):
     """Insert, read and delete two test rows for a table."""
     try:
         rows = db_manager.test_table_operations(req.table)
@@ -3566,7 +3721,7 @@ def test_table(req: TestdataRequest, dep: None = Depends(password_dependency)):
 
 
 @app.delete("/manage/delete_all")
-def delete_all(table: str, dep: None = Depends(password_dependency)):
+def delete_all(table: str, dep: None = Depends(admin_dependency)):
     """Delete all rows from the specified table."""
     if table not in (TABLE_BIKE_DATA, TABLE_DEBUG_LOG, TABLE_DEVICE_NICKNAMES):
         raise HTTPException(status_code=400, detail="Unknown table")
@@ -3584,7 +3739,7 @@ class BackupRequest(BaseModel):
 
 
 @app.post("/manage/backup_table")
-def backup_table(req: BackupRequest, dep: None = Depends(password_dependency)):
+def backup_table(req: BackupRequest, dep: None = Depends(admin_dependency)):
     """Create a backup copy of the given table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.table):
@@ -3607,7 +3762,7 @@ class RenameRequest(BaseModel):
 
 
 @app.post("/manage/rename_table")
-def rename_table(req: RenameRequest, dep: None = Depends(password_dependency)):
+def rename_table(req: RenameRequest, dep: None = Depends(admin_dependency)):
     """Rename a table."""
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     if not name_re.match(req.old_name) or not name_re.match(req.new_name):
@@ -3655,7 +3810,7 @@ class SetSkuRequest(BaseModel):
 
 
 @app.get("/manage/record")
-def get_record(record_id: int, dep: None = Depends(password_dependency)):
+def get_record(record_id: int, dep: None = Depends(admin_dependency)):
     """Return a single RCI_bike_data record by id."""
     try:
         result = db_manager.execute_query(
@@ -3675,7 +3830,7 @@ def get_record(record_id: int, dep: None = Depends(password_dependency)):
 
 
 @app.put("/manage/update_record")
-def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)):
+def update_record(update: RecordUpdate, dep: None = Depends(admin_dependency)):
     """Update fields of a RCI_bike_data row."""
     fields = []
     params = []
@@ -3714,7 +3869,7 @@ def update_record(update: RecordUpdate, dep: None = Depends(password_dependency)
 
 
 @app.delete("/manage/delete_record")
-def delete_record(record_id: int, dep: None = Depends(password_dependency)):
+def delete_record(record_id: int, dep: None = Depends(admin_dependency)):
     """Delete a RCI_bike_data row by id."""
     try:
         affected_rows = db_manager.execute_non_query(
@@ -3734,7 +3889,7 @@ def delete_record(record_id: int, dep: None = Depends(password_dependency)):
 
 
 @app.post("/manage/merge_device_ids")
-def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(password_dependency)):
+def merge_device_ids(req: MergeDeviceRequest, dep: None = Depends(admin_dependency)):
     """Merge records from old device id into new id."""
     if req.old_id == req.new_id:
         raise HTTPException(status_code=400, detail="IDs must be different")
@@ -3789,7 +3944,7 @@ def get_filtered_records(
     ids: Optional[List[int]] = Query(None),
     start_id: Optional[int] = Query(None),
     end_id: Optional[int] = Query(None),
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     """Return RCI_bike_data rows filtered by id, device and time."""
     try:
@@ -3834,7 +3989,7 @@ def delete_filtered_records(
     ids: Optional[List[int]] = Query(None),
     start_id: Optional[int] = Query(None),
     end_id: Optional[int] = Query(None),
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     """Delete RCI_bike_data rows matching the given filters."""
     try:
@@ -3872,7 +4027,7 @@ def delete_filtered_records(
 
 
 @app.get("/manage/db_size")
-def get_db_size(dep: None = Depends(password_dependency)):
+def get_db_size(dep: None = Depends(admin_dependency)):
     """Return current database size and max size in GB."""
     try:
         size_mb, max_gb = db_manager.get_database_size()
@@ -3884,7 +4039,7 @@ def get_db_size(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/db_sku")
-def get_db_sku(dep: None = Depends(password_dependency)):
+def get_db_sku(dep: None = Depends(admin_dependency)):
     """Return current DB SKU and available options."""
     client = get_sql_client()
     group = os.getenv("AZURE_RESOURCE_GROUP")
@@ -3909,7 +4064,7 @@ def get_db_sku(dep: None = Depends(password_dependency)):
 
 
 @app.post("/manage/set_db_sku")
-def set_db_sku(req: SetSkuRequest, dep: None = Depends(password_dependency)):
+def set_db_sku(req: SetSkuRequest, dep: None = Depends(admin_dependency)):
     """Change the database SKU."""
     client = get_sql_client()
     group = os.getenv("AZURE_RESOURCE_GROUP")
@@ -3932,7 +4087,7 @@ def set_db_sku(req: SetSkuRequest, dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/app_plan")
-def get_app_plan(dep: None = Depends(password_dependency)):
+def get_app_plan(dep: None = Depends(admin_dependency)):
     """Return info about the App Service plan if configured."""
     client = get_web_client()
     group = os.getenv("AZURE_RESOURCE_GROUP")
@@ -3952,7 +4107,7 @@ def get_app_plan(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/app_plan_skus")
-def get_app_plan_skus(dep: None = Depends(password_dependency)):
+def get_app_plan_skus(dep: None = Depends(admin_dependency)):
     """Return selectable SKUs for the current App Service plan."""
     client = get_web_client()
     group = os.getenv("AZURE_RESOURCE_GROUP")
@@ -3974,7 +4129,7 @@ def get_app_plan_skus(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/table_summary")
-def get_table_summary(dep: None = Depends(password_dependency)):
+def get_table_summary(dep: None = Depends(admin_dependency)):
     """Return record count and last update for all tables."""
     try:
         tables = db_manager.get_table_summary()
@@ -3986,7 +4141,7 @@ def get_table_summary(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/last_rows")
-def get_last_rows(table: str, limit: int = Query(10, ge=1, le=100), dep: None = Depends(password_dependency)):
+def get_last_rows(table: str, limit: int = Query(10, ge=1, le=100), dep: None = Depends(admin_dependency)):
     """Return the latest rows from a table."""
     try:
         rows = db_manager.get_last_table_rows(table, limit)
@@ -4006,7 +4161,7 @@ class LogConfigRequest(BaseModel):
 
 
 @app.post("/manage/log_config")
-def set_log_config(config: LogConfigRequest, dep: None = Depends(password_dependency)):
+def set_log_config(config: LogConfigRequest, dep: None = Depends(admin_dependency)):
     """Set logging configuration."""
     try:
         # Set log level
@@ -4033,7 +4188,7 @@ def set_log_config(config: LogConfigRequest, dep: None = Depends(password_depend
 
 
 @app.get("/manage/log_config")
-def get_log_config(dep: None = Depends(password_dependency)):
+def get_log_config(dep: None = Depends(admin_dependency)):
     """Get current logging configuration."""
     try:
         return {
@@ -4048,7 +4203,7 @@ def get_log_config(dep: None = Depends(password_dependency)):
 
 
 @app.delete("/manage/debug_logs")
-def clear_debug_logs(dep: None = Depends(password_dependency)):
+def clear_debug_logs(dep: None = Depends(admin_dependency)):
     """Clear all debug logs from the database."""
     try:
         count = db_manager.execute_non_query(f"DELETE FROM {TABLE_DEBUG_LOG}")
@@ -4060,7 +4215,7 @@ def clear_debug_logs(dep: None = Depends(password_dependency)):
 
 
 @app.post("/manage/archive_logs")
-def archive_logs(dep: None = Depends(password_dependency)):
+def archive_logs(dep: None = Depends(admin_dependency)):
     """Archive all current logs to the archive table and clear the main logs table."""
     try:
         result = db_manager.archive_logs()
@@ -4072,7 +4227,7 @@ def archive_logs(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/table_schema")
-def get_table_schema(table: str, dep: None = Depends(password_dependency)):
+def get_table_schema(table: str, dep: None = Depends(admin_dependency)):
     """Get detailed schema information for a table."""
     try:
         schema = db_manager.get_table_schema(table)
@@ -4087,7 +4242,7 @@ def get_table_schema(table: str, dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/verify_tables")
-def verify_tables(dep: None = Depends(password_dependency)):
+def verify_tables(dep: None = Depends(admin_dependency)):
     """Verify table integrity and structure."""
     try:
         result = db_manager.verify_tables()
@@ -4099,7 +4254,7 @@ def verify_tables(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/verify_data")
-def verify_data(dep: None = Depends(password_dependency)):
+def verify_data(dep: None = Depends(admin_dependency)):
     """Verify data consistency and integrity."""
     try:
         result = db_manager.verify_data()
@@ -4111,7 +4266,7 @@ def verify_data(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/verify_indexes")
-def verify_indexes(dep: None = Depends(password_dependency)):
+def verify_indexes(dep: None = Depends(admin_dependency)):
     """Verify database indexes and performance."""
     try:
         result = db_manager.verify_indexes()
@@ -4123,7 +4278,7 @@ def verify_indexes(dep: None = Depends(password_dependency)):
 
 
 @app.get("/manage/verify_constraints")
-def verify_constraints(dep: None = Depends(password_dependency)):
+def verify_constraints(dep: None = Depends(admin_dependency)):
     """Verify foreign key constraints and referential integrity."""
     try:
         result = db_manager.verify_constraints()
@@ -4143,13 +4298,13 @@ class ThresholdSettings(BaseModel):
 
 
 @app.get("/api/thresholds")
-def get_thresholds(dep: None = Depends(password_dependency)):
+def get_thresholds(dep: None = Depends(admin_dependency)):
     """Get current threshold settings."""
     return current_thresholds
 
 
 @app.post("/api/thresholds")
-def set_thresholds(settings: ThresholdSettings, dep: None = Depends(password_dependency)):
+def set_thresholds(settings: ThresholdSettings, dep: None = Depends(admin_dependency)):
     """Update threshold settings."""
     # Validate frequency range
     if settings.freq_min >= settings.freq_max:
@@ -4169,7 +4324,7 @@ def set_thresholds(settings: ThresholdSettings, dep: None = Depends(password_dep
 
 
 @app.get("/api/monitors/metadata")
-def get_monitor_metadata(dep: None = Depends(password_dependency)):
+def get_monitor_metadata(dep: None = Depends(admin_dependency)):
     """Return metadata to initialize the monitor UI."""
     return {
         "status": "ok",
@@ -4183,7 +4338,7 @@ def get_monitor_metadata(dep: None = Depends(password_dependency)):
 def list_monitors(
     include_history: bool = Query(False, description="Include recent results"),
     history_limit: int = Query(20, ge=1, le=200, description="Number of historical records"),
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     """Return configured monitors."""
     try:
@@ -4238,7 +4393,7 @@ def _prepare_monitor_payload(request: MonitorRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/monitors")
-def create_monitor_endpoint(request: MonitorRequest, dep: None = Depends(password_dependency)):
+def create_monitor_endpoint(request: MonitorRequest, dep: None = Depends(admin_dependency)):
     payload = _prepare_monitor_payload(request)
 
     try:
@@ -4255,7 +4410,7 @@ def create_monitor_endpoint(request: MonitorRequest, dep: None = Depends(passwor
 def update_monitor_endpoint(
     monitor_id: int,
     request: MonitorRequest,
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     payload = _prepare_monitor_payload(request)
 
@@ -4275,7 +4430,7 @@ def update_monitor_endpoint(
 def toggle_monitor_endpoint(
     monitor_id: int,
     request: MonitorToggleRequest,
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     try:
         monitor = db_manager.set_monitor_enabled(monitor_id, request.is_enabled)
@@ -4290,7 +4445,7 @@ def toggle_monitor_endpoint(
 
 
 @app.delete("/api/monitors/{monitor_id}")
-def delete_monitor_endpoint(monitor_id: int, dep: None = Depends(password_dependency)):
+def delete_monitor_endpoint(monitor_id: int, dep: None = Depends(admin_dependency)):
     try:
         deleted = db_manager.delete_monitor(monitor_id)
         if not deleted:
@@ -4304,7 +4459,7 @@ def delete_monitor_endpoint(monitor_id: int, dep: None = Depends(password_depend
 
 
 @app.get("/api/monitors/{monitor_id}")
-def get_monitor_endpoint(monitor_id: int, dep: None = Depends(password_dependency)):
+def get_monitor_endpoint(monitor_id: int, dep: None = Depends(admin_dependency)):
     try:
         monitor = db_manager.get_monitor(monitor_id)
         if monitor is None:
@@ -4321,7 +4476,7 @@ def get_monitor_endpoint(monitor_id: int, dep: None = Depends(password_dependenc
 def get_monitor_logs(
     monitor_id: int,
     limit: int = Query(100, ge=1, le=500),
-    dep: None = Depends(password_dependency),
+    dep: None = Depends(admin_dependency),
 ):
     try:
         monitor = db_manager.get_monitor(monitor_id)
@@ -4341,7 +4496,7 @@ def get_monitor_logs(
 
 
 @app.get("/api/monitors/{monitor_id}/history")
-def get_monitor_history(monitor_id: int, dep: None = Depends(password_dependency)):
+def get_monitor_history(monitor_id: int, dep: None = Depends(admin_dependency)):
     try:
         monitor = db_manager.get_monitor(monitor_id)
         if monitor is None:
@@ -4360,7 +4515,7 @@ def get_monitor_history(monitor_id: int, dep: None = Depends(password_dependency
 
 
 @app.post("/api/monitors/{monitor_id}/run")
-def run_monitor_now(monitor_id: int, dep: None = Depends(password_dependency)):
+def run_monitor_now(monitor_id: int, dep: None = Depends(admin_dependency)):
     try:
         monitor = db_manager.get_monitor(monitor_id)
         if monitor is None:
@@ -4603,7 +4758,7 @@ def get_shared_object(shared_id: int):
 
 
 @app.put("/api/shared/{shared_id}/note")
-def update_shared_object_note(shared_id: int, request: SharedObjectNoteUpdate, dep: None = Depends(password_dependency)):
+def update_shared_object_note(shared_id: int, request: SharedObjectNoteUpdate, dep: None = Depends(admin_dependency)):
     """Update the note for a shared object."""
     try:
         # Check if object exists
@@ -4622,7 +4777,7 @@ def update_shared_object_note(shared_id: int, request: SharedObjectNoteUpdate, d
 
 
 @app.delete("/api/shared/{shared_id}")
-def delete_shared_object(shared_id: int, dep: None = Depends(password_dependency)):
+def delete_shared_object(shared_id: int, dep: None = Depends(admin_dependency)):
     """Delete a shared object."""
     try:
         # Check if object exists
@@ -4643,6 +4798,7 @@ def delete_shared_object(shared_id: int, dep: None = Depends(password_dependency
 # Memo management endpoints
 @app.post("/api/memos/transcribe")
 async def transcribe_memo(
+    dep: None = Depends(admin_dependency),
     media: Optional[UploadFile] = File(
         None, description="Audio- of videobestand voor transcriptie"
     ),
@@ -4720,7 +4876,7 @@ async def transcribe_memo(
 
 
 @app.post("/api/memos")
-def create_memo(request: MemoCreateRequest):
+def create_memo(request: MemoCreateRequest, dep: None = Depends(admin_dependency)):
     """Create a new memo entry."""
     content = request.content.strip()
     if not content:
@@ -4735,7 +4891,10 @@ def create_memo(request: MemoCreateRequest):
 
 
 @app.get("/api/memos")
-def list_memos(limit: Optional[int] = Query(None, ge=1, le=200, description="Maximum number of memos")):
+def list_memos(
+    limit: Optional[int] = Query(None, ge=1, le=200, description="Maximum number of memos"),
+    dep: None = Depends(admin_dependency),
+):
     """Return stored memos in reverse chronological order."""
     try:
         memos = db_manager.get_memos(limit)
@@ -4746,7 +4905,7 @@ def list_memos(limit: Optional[int] = Query(None, ge=1, le=200, description="Max
 
 
 @app.put("/api/memos/{memo_id}")
-def update_memo(memo_id: int, request: MemoUpdateRequest):
+def update_memo(memo_id: int, request: MemoUpdateRequest, dep: None = Depends(admin_dependency)):
     """Update an existing memo."""
     content = request.content.strip()
     if not content:
@@ -4765,7 +4924,7 @@ def update_memo(memo_id: int, request: MemoUpdateRequest):
 
 
 @app.delete("/api/memos/{memo_id}")
-def delete_memo(memo_id: int):
+def delete_memo(memo_id: int, dep: None = Depends(admin_dependency)):
     """Archive an existing memo instead of deleting it permanently."""
     try:
         archived = db_manager.archive_memo(memo_id)
@@ -4782,4 +4941,4 @@ def delete_memo(memo_id: int):
 @app.get("/shared.html")
 def read_shared(request: Request):
     """Serve the shared objects page."""
-    return FileResponse(BASE_DIR / "static" / "shared.html")
+    return serve_protected_html(request, "shared.html")

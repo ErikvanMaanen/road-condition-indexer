@@ -66,6 +66,7 @@ TABLE_MEMOS = "RCI_memos"
 TABLE_MEMO_ARCHIVE = "memo_archive"
 TABLE_MONITORS = "RCI_monitors"
 TABLE_MONITOR_RESULTS = "RCI_monitor_results"
+TABLE_USERS = "RCI_users"
 
 # Base directory for the application
 BASE_DIR = Path(__file__).resolve().parent
@@ -327,6 +328,64 @@ class DatabaseManager:
 
     def _create_sqlserver_tables(self, conn):
         """Create tables for SQL Server."""
+        # Create users table for role-based authentication
+        conn.execute(
+            text(f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables WHERE name = '{TABLE_USERS}'
+            )
+            BEGIN
+                CREATE TABLE {TABLE_USERS} (
+                    id INT IDENTITY PRIMARY KEY,
+                    username NVARCHAR(100) NOT NULL UNIQUE,
+                    role NVARCHAR(20) NOT NULL,
+                    password_hash NVARCHAR(512) NULL,
+                    created_at DATETIME2 DEFAULT SYSUTCDATETIME(),
+                    updated_at DATETIME2 DEFAULT SYSUTCDATETIME(),
+                    last_login_at DATETIME2 NULL,
+                    CONSTRAINT CK_RCI_users_role CHECK (role IN ('User', 'Admin'))
+                )
+            END
+            """)
+        )
+
+        # Add user-management columns when upgrading an existing table
+        for column_name, column_definition in (
+            ("password_hash", "NVARCHAR(512) NULL"),
+            ("created_at", "DATETIME2 DEFAULT SYSUTCDATETIME()"),
+            ("updated_at", "DATETIME2 DEFAULT SYSUTCDATETIME()"),
+            ("last_login_at", "DATETIME2 NULL"),
+        ):
+            conn.execute(
+                text(f"""
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM sys.columns
+                    WHERE object_id = OBJECT_ID('{TABLE_USERS}') AND name = '{column_name}'
+                )
+                BEGIN
+                    ALTER TABLE {TABLE_USERS} ADD {column_name} {column_definition}
+                END
+                """)
+            )
+
+        # Ensure the initial application users exist without passwords. Passwords
+        # are set by the users during their first successful sign-in flow.
+        conn.execute(text(f"""
+            IF NOT EXISTS (SELECT 1 FROM {TABLE_USERS} WHERE username = 'Fiets')
+            BEGIN
+                INSERT INTO {TABLE_USERS} (username, role, password_hash)
+                VALUES ('Fiets', 'User', NULL)
+            END
+        """))
+        conn.execute(text(f"""
+            IF NOT EXISTS (SELECT 1 FROM {TABLE_USERS} WHERE username = 'Techno')
+            BEGIN
+                INSERT INTO {TABLE_USERS} (username, role, password_hash)
+                VALUES ('Techno', 'Admin', NULL)
+            END
+        """))
+
         # Create bike data table
         conn.execute(
             text(f"""
@@ -1433,7 +1492,49 @@ class DatabaseManager:
             # Return defaults if there's any error
             return 0.0, None
 
-    def execute_query(self, query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """Return a user record for a case-insensitive username lookup."""
+        rows = self.execute_query(
+            f"""
+            SELECT TOP 1 id, username, role, password_hash, created_at, updated_at, last_login_at
+            FROM {TABLE_USERS}
+            WHERE LOWER(username) = LOWER(:username)
+            """,
+            {"username": username},
+        )
+        return rows[0] if rows else None
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Return a user record by id."""
+        rows = self.execute_query(
+            f"""
+            SELECT TOP 1 id, username, role, password_hash, created_at, updated_at, last_login_at
+            FROM {TABLE_USERS}
+            WHERE id = :user_id
+            """,
+            {"user_id": user_id},
+        )
+        return rows[0] if rows else None
+
+    def set_user_password_hash(self, user_id: int, password_hash: str) -> None:
+        """Persist a password hash for a user."""
+        self.execute_non_query(
+            f"""
+            UPDATE {TABLE_USERS}
+            SET password_hash = :password_hash, updated_at = SYSUTCDATETIME()
+            WHERE id = :user_id
+            """,
+            {"password_hash": password_hash, "user_id": user_id},
+        )
+
+    def record_user_login(self, user_id: int) -> None:
+        """Record the latest successful login timestamp for a user."""
+        self.execute_non_query(
+            f"UPDATE {TABLE_USERS} SET last_login_at = SYSUTCDATETIME() WHERE id = :user_id",
+            {"user_id": user_id},
+        )
+
+    def execute_query(self, query: str, params: Optional[Union[Tuple, Dict]] = None) -> List[Dict[str, Any]]:
         """Execute a query and return results as a list of dictionaries."""
         query_short = query[:100] + "..." if len(query) > 100 else query
         self.log_debug(f"Executing query: {query_short}", LogLevel.DEBUG, LogCategory.QUERY)
@@ -1484,7 +1585,7 @@ class DatabaseManager:
                           LogLevel.ERROR, LogCategory.QUERY, include_stack=True)
             raise
 
-    def execute_scalar(self, query: str, params: Optional[Tuple] = None) -> Any:
+    def execute_scalar(self, query: str, params: Optional[Union[Tuple, Dict]] = None) -> Any:
         """Execute a query and return a single scalar value."""
         query_short = query[:100] + "..." if len(query) > 100 else query
         self.log_debug(f"Executing scalar query: {query_short}", LogLevel.DEBUG, LogCategory.QUERY)

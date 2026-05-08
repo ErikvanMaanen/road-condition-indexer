@@ -439,9 +439,9 @@ async function authFetch(url, options = {}) {
         credentials: 'include'
     });
     
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
         const currentUrl = encodeURIComponent(window.location.href);
-        window.location.href = `/login.html?next=${currentUrl}`;
+        window.location.href = `/static/login.html?next=${currentUrl}`;
         return;
     }
     
