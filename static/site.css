@@ -771,3 +771,16 @@ body.memo-camera-overlay-fullscreen { overflow:hidden; }
 [data-theme="dark"] .monitor-log-panel { background:#1f2a33; border:1px solid #2f3d47; }
 [data-theme="dark"] .monitor-log-change { background:#23303a; border-color:#2f3d47; }
 [data-theme="dark"] .monitor-graph-empty { color:#9fb3c8; }
+
+/* Maintenance hub navigation */
+.maintenance-hub { margin:1rem 0 1.5rem; }
+.maintenance-hub-header { margin-bottom:1rem; }
+.maintenance-hub-header h2 { margin:0 0 .35rem; }
+.maintenance-hub-header p { margin:0; }
+.maintenance-hub-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:1rem; }
+.maintenance-hub-group { border:1px solid var(--rci-border); border-radius:8px; padding:1rem; background:var(--rci-surface); box-shadow:var(--rci-shadow); }
+.maintenance-hub-group h3 { margin:0 0 .75rem; color:var(--rci-primary); font-size:1rem; }
+.maintenance-hub-group a { display:block; padding:.45rem .55rem; margin:.25rem 0; border-radius:6px; color:var(--rci-link); text-decoration:none; background:var(--rci-bg-alt); }
+.maintenance-hub-group a:hover,
+.maintenance-hub-group a:focus { background:var(--rci-surface-alt); text-decoration:underline; outline:none; }
+.maintenance-hub-group a[aria-current="page"] { font-weight:700; color:var(--rci-text); border:1px solid var(--rci-primary-accent); }

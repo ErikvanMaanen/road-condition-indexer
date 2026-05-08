@@ -237,13 +237,44 @@
 </head>
 <body>
 <nav id="page-links" class="page-links mb-1">
-    <a href="/">Main</a>
+    <a href="/">Road Condition Indexer</a>
     <a href="device.html">Device View</a>
-    <a href="database.html">Database Management</a>
-    <a href="tools.html">Tools</a>
+    <a href="maintenance.html">Maintenance Hub</a>
     <button type="button" data-role="theme-toggle" class="theme-toggle focus-ring" aria-label="Toggle dark mode">🌙 Dark</button>
 </nav>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Maintenance</h1>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Maintenance Hub</h1>
+
+<section class="maintenance-hub rci-card" aria-labelledby="maintenance-hub-title">
+    <div class="maintenance-hub-header">
+        <h2 id="maintenance-hub-title">Hidden tools and support pages</h2>
+        <p class="rci-muted">The public Road Condition Indexer experience stays focused on the main map and Device View. Use this hub to access maintenance, media, memo, and technical utilities.</p>
+    </div>
+    <div class="maintenance-hub-grid">
+        <article class="maintenance-hub-group">
+            <h3>RCI Tools</h3>
+            <a href="database.html">Database Maintenance</a>
+            <a href="maintenance.html" aria-current="page">Maintenance</a>
+        </article>
+        <article class="maintenance-hub-group">
+            <h3>Audio/Video Tools</h3>
+            <a href="av-tools.html">Audio/Video Tools</a>
+        </article>
+        <article class="maintenance-hub-group">
+            <h3>Technical Tools</h3>
+            <a href="tools.html">Tools</a>
+            <a href="monitor.html">Monitor</a>
+        </article>
+        <article class="maintenance-hub-group">
+            <h3>Memos/Shared</h3>
+            <a href="memo.html">Memo's</a>
+            <a href="shared.html">Shared Objects</a>
+        </article>
+        <article class="maintenance-hub-group">
+            <h3>Dumpert</h3>
+            <a href="dumpert.html">Dumpert Top Loader</a>
+        </article>
+    </div>
+</section>
 
 <!-- Database Log Viewer (collapsible section) -->
 <div class="section">
