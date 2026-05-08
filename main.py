@@ -1531,6 +1531,153 @@ def get_me(request: Request):
     return require_role(request, ROLE_USER)
 
 
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    role: str = Field(ROLE_USER)
+    password: Optional[str] = Field(None, min_length=1)
+
+
+class UserUpdateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    role: str = Field(ROLE_USER)
+
+
+class UserPasswordRequest(BaseModel):
+    password: Optional[str] = Field(None, min_length=1)
+
+
+def normalize_user_role(role: str) -> str:
+    """Return a canonical role value or reject unsupported roles."""
+    normalized = role.strip().lower()
+    if normalized == ROLE_USER.lower():
+        return ROLE_USER
+    if normalized == ROLE_ADMIN.lower():
+        return ROLE_ADMIN
+    raise HTTPException(status_code=400, detail="Role must be User or Admin")
+
+
+def sanitize_username(username: str) -> str:
+    """Validate and normalize a username supplied from user management."""
+    sanitized = username.strip()
+    if not sanitized:
+        raise HTTPException(status_code=400, detail="Username is required")
+    if len(sanitized) > 100:
+        raise HTTPException(status_code=400, detail="Username must be 100 characters or fewer")
+    return sanitized
+
+
+def public_user_record(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a user record safe for API responses."""
+    return {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "password_set": bool(user.get("password_set") or user.get("password_hash")),
+        "created_at": user.get("created_at"),
+        "updated_at": user.get("updated_at"),
+        "last_login_at": user.get("last_login_at"),
+    }
+
+
+@app.get("/manage/users")
+def manage_list_users(dep: None = Depends(admin_dependency)):
+    """List application users for the maintenance page."""
+    try:
+        users = db_manager.list_users()
+        return {"users": [public_user_record(user) for user in users], "roles": [ROLE_USER, ROLE_ADMIN]}
+    except Exception as exc:
+        log_error(f"Failed to list users: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to list users") from exc
+
+
+@app.post("/manage/users", status_code=201)
+def manage_create_user(req: UserCreateRequest, dep: None = Depends(admin_dependency)):
+    """Create an application user."""
+    username = sanitize_username(req.username)
+    role = normalize_user_role(req.role)
+    password_hash = hash_password(req.password) if req.password else None
+    try:
+        existing = db_manager.get_user_by_username(username)
+        if existing:
+            raise HTTPException(status_code=409, detail="Username already exists")
+        user = db_manager.create_user(username, role, password_hash)
+        log_info(f"Created user '{username}' with role '{role}'", LogCategory.USER_ACTION)
+        return {"user": public_user_record(user)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to create user '{username}': {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create user") from exc
+
+
+@app.put("/manage/users/{user_id}")
+def manage_update_user(user_id: int, req: UserUpdateRequest, request: Request, dep: None = Depends(admin_dependency)):
+    """Update an application user's username or role."""
+    username = sanitize_username(req.username)
+    role = normalize_user_role(req.role)
+    current_user = require_role(request, ROLE_ADMIN)
+    try:
+        existing = db_manager.get_user_by_id(user_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="User not found")
+        duplicate = db_manager.get_user_by_username(username)
+        if duplicate and int(duplicate["id"]) != user_id:
+            raise HTTPException(status_code=409, detail="Username already exists")
+        if int(current_user["id"]) == user_id and existing.get("role") == ROLE_ADMIN and role != ROLE_ADMIN:
+            raise HTTPException(status_code=400, detail="You cannot remove your own Admin role")
+        user = db_manager.update_user(user_id, username, role)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        log_info(f"Updated user id {user_id} to '{username}' with role '{role}'", LogCategory.USER_ACTION)
+        return {"user": public_user_record(user)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to update user id {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update user") from exc
+
+
+@app.post("/manage/users/{user_id}/password")
+def manage_set_user_password(user_id: int, req: UserPasswordRequest, dep: None = Depends(admin_dependency)):
+    """Set or reset a user's password."""
+    try:
+        user = db_manager.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if req.password:
+            db_manager.set_user_password_hash(user_id, hash_password(req.password))
+            message = "Password updated"
+        else:
+            db_manager.clear_user_password(user_id)
+            message = "Password reset; user must set a password on next sign-in"
+        log_info(f"Password state changed for user id {user_id}", LogCategory.USER_ACTION)
+        updated = db_manager.get_user_by_id(user_id) or user
+        return {"status": "ok", "message": message, "user": public_user_record(updated)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to update password for user id {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update password") from exc
+
+
+@app.delete("/manage/users/{user_id}")
+def manage_delete_user(user_id: int, request: Request, dep: None = Depends(admin_dependency)):
+    """Delete an application user."""
+    current_user = require_role(request, ROLE_ADMIN)
+    if int(current_user["id"]) == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own user account")
+    try:
+        existing = db_manager.get_user_by_id(user_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="User not found")
+        db_manager.delete_user(user_id)
+        log_warning(f"Deleted user '{existing.get('username')}' (id {user_id})", LogCategory.USER_ACTION)
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(f"Failed to delete user id {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete user") from exc
 
 
 def serve_protected_html(request: Request, filename: str, required_role: str = ROLE_USER):
