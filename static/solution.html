@@ -13,50 +13,130 @@
 <h1 class="mb-1"><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Solution</h1>
 <p>Solving the system of equations:</p>
 <pre class="text-md">
-    x + y = 6
-    x × y = 36
+    a + b + c + d = 7.11
+    a × b × c × d = 7.11
 </pre>
-<p>Substituting <em>y = 6 − x</em> into <em>xy = 36</em> gives <em>x(6 − x) = 36</em>,
-which simplifies to <em>x² − 6x + 36 = 0</em>. Using the quadratic formula,
-<em>x = 3 ± 3√3i</em>. Then <em>y = 6 − x = 3 ∓ 3√3i</em>.</p>
-<div id="solution-text" class="mt-1"></div>
-<canvas id="solution-canvas" width="400" height="300" class="mt-1 border"></canvas>
+
+<h2>There is not one unique solution</h2>
+<p>
+    The system has four unknowns but only two equations, so it has an infinite
+    family of solutions. Pick any non-zero values for <em>a</em> and <em>b</em>,
+    then solve for <em>c</em> and <em>d</em> using their required sum and product.
+</p>
+<pre class="text-md">
+    c + d = 7.11 − a − b
+    c × d = 7.11 ÷ (a × b)
+
+    c,d = ((7.11 − a − b) ± √((7.11 − a − b)² − 4 × 7.11 ÷ (a × b))) ÷ 2
+</pre>
+<p>
+    Real-number choices for <em>c</em> and <em>d</em> exist when the discriminant is
+    non-negative. If it is negative, the same formula gives a complex conjugate pair.
+</p>
+
+<h2>Example real solution</h2>
+<p>
+    By choosing the symmetric case <em>a = b</em> and <em>c = d</em>, one real solution is:
+</p>
+<pre id="example-solution" class="text-md"></pre>
+<p id="example-check"></p>
+
+<h2>Generate a solution from a and b</h2>
+<p>Enter non-zero values for <em>a</em> and <em>b</em> to calculate matching values for <em>c</em> and <em>d</em>.</p>
+<div class="input-panel" aria-label="Solution generator inputs">
+    <div class="input-group input-group--compact">
+        <label for="value-a">a</label>
+        <input id="value-a" type="number" step="any" value="2.4796737141">
+    </div>
+    <div class="input-group input-group--compact">
+        <label for="value-b">b</label>
+        <input id="value-b" type="number" step="any" value="2.4796737141">
+    </div>
+    <button id="calculate-solution" class="btn btn-primary" type="button">Calculate c and d</button>
+</div>
+<div id="solution-text" class="status-message status-success mt-1" aria-live="polite"></div>
+
 <script>
-const sum = 6;
-const product = 36;
-const real = sum / 2; // 3
-const imaginary = Math.sqrt(4 * product - sum * sum) / 2; // 3*sqrt(3)
-const solutions = [
-    { x: real, y: imaginary },
-    { x: real, y: -imaginary }
-];
-// Display textual solutions
-const text = `Solutions: (x, y) = (${real.toFixed(2)} + ${imaginary.toFixed(2)}i, ${real.toFixed(2)} - ${imaginary.toFixed(2)}i) and (${real.toFixed(2)} - ${imaginary.toFixed(2)}i, ${real.toFixed(2)} + ${imaginary.toFixed(2)}i)`;
-document.getElementById('solution-text').innerText = text;
-// Draw complex plane
-const canvas = document.getElementById('solution-canvas');
-const ctx = canvas.getContext('2d');
-const origin = { x: canvas.width / 2, y: canvas.height / 2 };
-const scale = 20;
-ctx.strokeStyle = '#000';
-ctx.beginPath();
-ctx.moveTo(0, origin.y);
-ctx.lineTo(canvas.width, origin.y); // Real axis
-ctx.moveTo(origin.x, 0);
-ctx.lineTo(origin.x, canvas.height); // Imaginary axis
-ctx.stroke();
-ctx.fillStyle = 'red';
-for (const p of solutions) {
-    const px = origin.x + p.x * scale;
-    const py = origin.y - p.y * scale;
-    ctx.beginPath();
-    ctx.arc(px, py, 5, 0, Math.PI * 2);
-    ctx.fill();
+const targetSum = 7.11;
+const targetProduct = 7.11;
+
+function formatNumber(value) {
+    return Number.parseFloat(value.toFixed(10)).toString();
 }
-ctx.fillStyle = 'black';
-ctx.font = '12px sans-serif';
-ctx.fillText('Re', canvas.width - 20, origin.y - 5);
-ctx.fillText('Im', origin.x + 5, 15);
+
+function formatSignedImaginary(real, imaginary) {
+    const sign = imaginary < 0 ? '−' : '+';
+    return `${formatNumber(real)} ${sign} ${formatNumber(Math.abs(imaginary))}i`;
+}
+
+function calculateCD(a, b) {
+    const pairSum = targetSum - a - b;
+    const pairProduct = targetProduct / (a * b);
+    const rawDiscriminant = pairSum * pairSum - 4 * pairProduct;
+    const discriminant = Math.abs(rawDiscriminant) < 1e-12 ? 0 : rawDiscriminant;
+
+    if (discriminant >= 0) {
+        const root = Math.sqrt(discriminant);
+        return {
+            complex: false,
+            c: (pairSum + root) / 2,
+            d: (pairSum - root) / 2,
+            pairSum,
+            pairProduct,
+            discriminant
+        };
+    }
+
+    return {
+        complex: true,
+        real: pairSum / 2,
+        imaginary: Math.sqrt(-discriminant) / 2,
+        pairSum,
+        pairProduct,
+        discriminant
+    };
+}
+
+function describeSolution(a, b, result) {
+    if (result.complex) {
+        const c = formatSignedImaginary(result.real, result.imaginary);
+        const d = formatSignedImaginary(result.real, -result.imaginary);
+        return `a = ${formatNumber(a)}, b = ${formatNumber(b)}, c = ${c}, d = ${d}`;
+    }
+
+    return `a = ${formatNumber(a)}, b = ${formatNumber(b)}, c = ${formatNumber(result.c)}, d = ${formatNumber(result.d)}`;
+}
+
+function updateGeneratedSolution() {
+    const a = Number.parseFloat(document.getElementById('value-a').value);
+    const b = Number.parseFloat(document.getElementById('value-b').value);
+    const output = document.getElementById('solution-text');
+
+    output.style.display = 'block';
+    output.classList.remove('status-success', 'status-error');
+
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a === 0 || b === 0) {
+        output.classList.add('status-error');
+        output.textContent = 'Please enter finite, non-zero values for both a and b.';
+        return;
+    }
+
+    const result = calculateCD(a, b);
+    output.classList.add('status-success');
+    output.textContent = `${describeSolution(a, b, result)}. Discriminant = ${formatNumber(result.discriminant)}.`;
+}
+
+const symmetricProduct = Math.sqrt(targetProduct);
+const symmetricSum = targetSum / 2;
+const symmetricRoot = Math.sqrt(symmetricSum * symmetricSum - 4 * symmetricProduct);
+const repeatedHigh = (symmetricSum + symmetricRoot) / 2;
+const repeatedLow = (symmetricSum - symmetricRoot) / 2;
+const exampleText = `a = ${formatNumber(repeatedHigh)}, b = ${formatNumber(repeatedHigh)}, c = ${formatNumber(repeatedLow)}, d = ${formatNumber(repeatedLow)}`;
+
+document.getElementById('example-solution').textContent = exampleText;
+document.getElementById('example-check').textContent = `Check: sum = ${formatNumber(2 * repeatedHigh + 2 * repeatedLow)} and product = ${formatNumber(repeatedHigh * repeatedHigh * repeatedLow * repeatedLow)}.`;
+document.getElementById('calculate-solution').addEventListener('click', updateGeneratedSolution);
+updateGeneratedSolution();
 </script>
 </body>
 </html>
