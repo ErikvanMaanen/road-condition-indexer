@@ -1118,16 +1118,9 @@ window.addEventListener('beforeunload', () => {
 // Authentication wrapper function
 async function authFetch(url, options) {
     let res = await fetch(url, options);
-    if (res.status === 401) {
-        const pw = prompt('Password:');
-        if (!pw) throw new Error('Password required');
-        const loginRes = await fetch('/login', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({password: pw})
-        });
-        if (!loginRes.ok) throw new Error('Login failed');
-        res = await fetch(url, options);
+    if (res.status === 401 || res.status === 403) {
+        window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Authentication required');
     }
     
     // Check for server errors

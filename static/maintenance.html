@@ -638,16 +638,9 @@ function debounce(func, wait) {
 
 async function authFetch(url, options) {
     let res = await fetch(url, options);
-    if (res.status === 401) {
-        const pw = prompt('Password:');
-        if (!pw) throw new Error('Password required');
-        const loginRes = await fetch('/login', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({password: pw})
-        });
-        if (!loginRes.ok) throw new Error('Login failed');
-        res = await fetch(url, options);
+    if (res.status === 401 || res.status === 403) {
+        window.location.href = '/static/login.html?next=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Authentication required');
     }
     return res;
 }
@@ -938,11 +931,11 @@ document.getElementById('fastapi-test-btn').addEventListener('click', async func
     resultDiv.textContent = '';
     try {
         // Use a simple endpoint for health check, e.g. /auth_check or /logs
-        const response = await fetch('/auth_check');
+        const response = await fetch('/auth_check?role=Admin');
         if (response.status === 204) {
             resultDiv.textContent = '✅ FastAPI server is running and responded with 204 (No Content)';
             resultDiv.style.color = '#2e7d32';
-        } else if (response.status === 401) {
+        } else if (response.status === 401 || response.status === 403) {
             resultDiv.textContent = '⚠️ FastAPI server is running but authentication is required (401)';
             resultDiv.style.color = '#f57c00';
         } else {
