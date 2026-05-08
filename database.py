@@ -1534,6 +1534,62 @@ class DatabaseManager:
             {"user_id": user_id},
         )
 
+    def list_users(self) -> List[Dict[str, Any]]:
+        """Return users for the maintenance user-management screen."""
+        return self.execute_query(
+            f"""
+            SELECT id, username, role,
+                   CASE WHEN password_hash IS NULL OR password_hash = '' THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS password_set,
+                   created_at, updated_at, last_login_at
+            FROM {TABLE_USERS}
+            ORDER BY username
+            """
+        )
+
+    def create_user(self, username: str, role: str, password_hash: Optional[str] = None) -> Dict[str, Any]:
+        """Create a user and return the saved record."""
+        self.execute_non_query(
+            f"""
+            INSERT INTO {TABLE_USERS} (username, role, password_hash)
+            VALUES (:username, :role, :password_hash)
+            """,
+            {"username": username, "role": role, "password_hash": password_hash},
+        )
+        created = self.get_user_by_username(username)
+        if created is None:
+            raise RuntimeError("Created user could not be loaded")
+        return created
+
+    def update_user(self, user_id: int, username: str, role: str) -> Optional[Dict[str, Any]]:
+        """Update username and role for a user, returning the updated record when found."""
+        self.execute_non_query(
+            f"""
+            UPDATE {TABLE_USERS}
+            SET username = :username, role = :role, updated_at = SYSUTCDATETIME()
+            WHERE id = :user_id
+            """,
+            {"username": username, "role": role, "user_id": user_id},
+        )
+        return self.get_user_by_id(user_id)
+
+    def clear_user_password(self, user_id: int) -> None:
+        """Clear a user's password so they can set a new one during their next sign-in."""
+        self.execute_non_query(
+            f"""
+            UPDATE {TABLE_USERS}
+            SET password_hash = NULL, updated_at = SYSUTCDATETIME()
+            WHERE id = :user_id
+            """,
+            {"user_id": user_id},
+        )
+
+    def delete_user(self, user_id: int) -> None:
+        """Delete a user account."""
+        self.execute_non_query(
+            f"DELETE FROM {TABLE_USERS} WHERE id = :user_id",
+            {"user_id": user_id},
+        )
+
     def execute_query(self, query: str, params: Optional[Union[Tuple, Dict]] = None) -> List[Dict[str, Any]]:
         """Execute a query and return results as a list of dictionaries."""
         query_short = query[:100] + "..." if len(query) > 100 else query

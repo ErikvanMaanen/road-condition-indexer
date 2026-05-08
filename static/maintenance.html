@@ -233,6 +233,60 @@
             color: #fff !important;
             font-weight: bold;
         }
+
+        .user-management-grid {
+            display: grid;
+            grid-template-columns: minmax(260px, 360px) 1fr;
+            gap: 1rem;
+            align-items: start;
+        }
+        .user-management-form, .user-management-list {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        .user-management-form input, .user-management-form select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.45rem;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .user-management-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+        .user-table th, .user-table td {
+            border: 1px solid #e5e5e5;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .user-table th { background: #f0f0f0; }
+        .user-table button { margin: 0 0.25rem 0.25rem 0; }
+        .role-badge, .password-badge {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 0.15rem 0.55rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .role-badge-admin { background: #fee2e2; color: #991b1b; }
+        .role-badge-user { background: #dbeafe; color: #1e40af; }
+        .password-badge-set { background: #dcfce7; color: #166534; }
+        .password-badge-empty { background: #fef3c7; color: #92400e; }
+        #user-management-message { margin-top: 0.75rem; min-height: 1.4rem; }
+        @media (max-width: 850px) {
+            .user-management-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -275,6 +329,44 @@
         </article>
     </div>
 </section>
+
+<!-- User Management (collapsible section) -->
+<div class="section">
+    <div class="section-header" onclick="toggleSection('user-management')">
+        <span>👥 User Management</span>
+        <span class="section-toggle" id="user-management-toggle">▶</span>
+    </div>
+    <div class="section-content" id="user-management-content">
+        <p class="rci-muted">Create users, assign roles, reset passwords, and remove accounts. Empty passwords require users to set their password on their next sign-in.</p>
+        <div class="user-management-grid">
+            <form id="user-form" class="user-management-form" onsubmit="event.preventDefault(); saveUser();">
+                <h3 id="user-form-title">Create user</h3>
+                <input type="hidden" id="user-id">
+                <label for="user-username">Username</label>
+                <input type="text" id="user-username" maxlength="100" required>
+                <label for="user-role">Role</label>
+                <select id="user-role">
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                </select>
+                <label for="user-password">Password</label>
+                <input type="password" id="user-password" autocomplete="new-password" placeholder="Optional for new users">
+                <small>Leave blank when editing to keep the current password. Use “Clear password” to force first-sign-in setup.</small>
+                <div class="user-management-actions">
+                    <button type="submit" id="save-user-btn">Create User</button>
+                    <button type="button" onclick="resetUserForm()">Cancel</button>
+                </div>
+                <div id="user-management-message" aria-live="polite"></div>
+            </form>
+            <div class="user-management-list">
+                <div class="control-group">
+                    <button type="button" onclick="loadUsers()">Refresh Users</button>
+                </div>
+                <div id="user-list">Loading users...</div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Database Log Viewer (collapsible section) -->
 <div class="section">
@@ -598,7 +690,7 @@ async function archiveLogs() {
 // Load logs on page load
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize all sections as collapsed by default
-    ['log-viewer', 'tables', 'fastapi-health'].forEach(sectionId => {
+    ['user-management', 'log-viewer', 'tables', 'fastapi-health'].forEach(sectionId => {
         const content = document.getElementById(sectionId + '-content');
         const toggle = document.getElementById(sectionId + '-toggle');
         if (content && toggle) {
@@ -608,6 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     loadDatabaseLogs();
+    loadUsers();
     
     // Enable auto-refresh by default
     const autoRefreshBtn = document.getElementById('auto-refresh-btn');
@@ -643,6 +736,176 @@ async function authFetch(url, options) {
         throw new Error('Authentication required');
     }
     return res;
+}
+
+function formatUserDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+}
+
+function setUserMessage(message, isError = false) {
+    const el = document.getElementById('user-management-message');
+    if (!el) return;
+    el.textContent = message || '';
+    el.style.color = isError ? '#b91c1c' : '#166534';
+}
+
+async function parseApiError(response) {
+    try {
+        const data = await response.json();
+        return data.detail || response.statusText;
+    } catch (_error) {
+        return response.statusText;
+    }
+}
+
+async function loadUsers() {
+    const container = document.getElementById('user-list');
+    if (!container) return;
+    container.textContent = 'Loading users...';
+    try {
+        const res = await authFetch('/manage/users');
+        if (!res.ok) throw new Error(await parseApiError(res));
+        const data = await res.json();
+        const users = data.users || [];
+        if (users.length === 0) {
+            container.textContent = 'No users found.';
+            return;
+        }
+        const table = document.createElement('table');
+        table.className = 'user-table';
+        const thead = document.createElement('thead');
+        thead.innerHTML = '<tr><th>Username</th><th>Role</th><th>Password</th><th>Last Login</th><th>Actions</th></tr>';
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        users.forEach(user => {
+            const tr = document.createElement('tr');
+            const roleClass = user.role === 'Admin' ? 'role-badge-admin' : 'role-badge-user';
+            const passwordClass = user.password_set ? 'password-badge-set' : 'password-badge-empty';
+            const passwordText = user.password_set ? 'Set' : 'Needs setup';
+            tr.innerHTML = `
+                <td><strong>${escapeHtml(user.username)}</strong><br><small>ID ${user.id}</small></td>
+                <td><span class="role-badge ${roleClass}">${escapeHtml(user.role)}</span></td>
+                <td><span class="password-badge ${passwordClass}">${passwordText}</span></td>
+                <td>${escapeHtml(formatUserDate(user.last_login_at))}</td>
+                <td></td>
+            `;
+            const actions = tr.querySelector('td:last-child');
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.textContent = 'Edit';
+            editBtn.onclick = () => editUser(user);
+            actions.appendChild(editBtn);
+            const resetBtn = document.createElement('button');
+            resetBtn.type = 'button';
+            resetBtn.textContent = 'Clear password';
+            resetBtn.onclick = () => clearUserPassword(user.id, user.username);
+            actions.appendChild(resetBtn);
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.className = 'btn-red';
+            deleteBtn.onclick = () => deleteUser(user.id, user.username);
+            actions.appendChild(deleteBtn);
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        container.innerHTML = '';
+        container.appendChild(table);
+    } catch (error) {
+        container.textContent = `Failed to load users: ${error.message}`;
+    }
+}
+
+function resetUserForm() {
+    document.getElementById('user-id').value = '';
+    document.getElementById('user-username').value = '';
+    document.getElementById('user-role').value = 'User';
+    document.getElementById('user-password').value = '';
+    document.getElementById('user-form-title').textContent = 'Create user';
+    document.getElementById('save-user-btn').textContent = 'Create User';
+    setUserMessage('');
+}
+
+function editUser(user) {
+    document.getElementById('user-id').value = user.id;
+    document.getElementById('user-username').value = user.username;
+    document.getElementById('user-role').value = user.role;
+    document.getElementById('user-password').value = '';
+    document.getElementById('user-form-title').textContent = `Edit ${user.username}`;
+    document.getElementById('save-user-btn').textContent = 'Save User';
+    setUserMessage('Leave password blank to keep the existing password.');
+    const content = document.getElementById('user-management-content');
+    const toggle = document.getElementById('user-management-toggle');
+    if (content && toggle && content.style.display !== 'block') {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+    }
+}
+
+async function saveUser() {
+    const id = document.getElementById('user-id').value;
+    const username = document.getElementById('user-username').value.trim();
+    const role = document.getElementById('user-role').value;
+    const password = document.getElementById('user-password').value;
+    const payload = { username, role };
+    if (!id && password) payload.password = password;
+    const btn = document.getElementById('save-user-btn');
+    btn.disabled = true;
+    try {
+        const res = await authFetch(id ? `/manage/users/${encodeURIComponent(id)}` : '/manage/users', {
+            method: id ? 'PUT' : 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await parseApiError(res));
+        if (id && password) {
+            const passRes = await authFetch(`/manage/users/${encodeURIComponent(id)}/password`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password}),
+            });
+            if (!passRes.ok) throw new Error(await parseApiError(passRes));
+        }
+        resetUserForm();
+        setUserMessage(id ? 'User updated.' : 'User created.');
+        await loadUsers();
+    } catch (error) {
+        setUserMessage(error.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function clearUserPassword(id, username) {
+    if (!confirm(`Clear the password for ${username}? They will need to set a new password on next sign-in.`)) return;
+    try {
+        const res = await authFetch(`/manage/users/${encodeURIComponent(id)}/password`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+        if (!res.ok) throw new Error(await parseApiError(res));
+        setUserMessage(`Password cleared for ${username}.`);
+        await loadUsers();
+    } catch (error) {
+        setUserMessage(error.message, true);
+    }
+}
+
+async function deleteUser(id, username) {
+    if (!confirm(`Delete user ${username}? This cannot be undone.`)) return;
+    try {
+        const res = await authFetch(`/manage/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await parseApiError(res));
+        resetUserForm();
+        setUserMessage(`Deleted ${username}.`);
+        await loadUsers();
+    } catch (error) {
+        setUserMessage(error.message, true);
+    }
 }
 
 async function loadSummary() {
