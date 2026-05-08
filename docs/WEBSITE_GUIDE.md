@@ -35,7 +35,7 @@ The website is server-hosted static content with API-driven dynamic behavior.
 - `static/dumpert.html`: Dumpert content browsing.
 
 ### Supporting/special pages
-- `static/solution.html`, `static/chris.html`, `static/timezone-test.html`: environment/support pages used for specific workflows or testing.
+- `static/solution.html`, `static/timezone-test.html`: environment/support pages used for specific workflows or testing.
 
 ## 3. Frontend JavaScript modules
 
