@@ -2728,6 +2728,138 @@ class VideoDownloadRequest(BaseModel):
     url: str
 
 
+class McpToolTestRequest(BaseModel):
+    url: str = Field(..., max_length=2000)
+    token: Optional[str] = Field(default=None, max_length=4000)
+    transport: Optional[Literal["streamable_http", "sse", "http"]] = "streamable_http"
+    method: Literal["initialize", "tools/list", "prompts/list", "resources/list", "tools/call"] = "tools/list"
+    tool_name: Optional[str] = Field(default=None, max_length=200)
+    arguments: Optional[Dict[str, Any]] = None
+    timeout_seconds: int = Field(default=20, ge=1, le=60)
+
+
+def _mcp_extract_json_response(response: requests.Response) -> Any:
+    """Return a JSON-RPC payload from JSON or SSE-style MCP responses."""
+    content_type = response.headers.get("Content-Type", "")
+    if "application/json" in content_type.lower():
+        return response.json()
+
+    text = response.text.strip()
+    if not text:
+        return {}
+
+    # Some MCP servers stream JSON-RPC responses as Server-Sent Events. Prefer
+    # the last JSON data frame, which is commonly the completed result.
+    json_candidates: List[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("data:"):
+            payload = line[5:].strip()
+            if payload and payload != "[DONE]":
+                json_candidates.append(payload)
+    json_candidates.append(text)
+
+    for candidate in reversed(json_candidates):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+
+    return {"raw": text}
+
+
+def _mcp_json_rpc_payload(method: str, request: McpToolTestRequest, request_id: Union[int, str]) -> Dict[str, Any]:
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "road-condition-indexer", "version": "1.0"},
+            },
+        }
+    if method == "tools/call":
+        if not request.tool_name:
+            raise HTTPException(status_code=400, detail="tool_name is required for tools/call")
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {"name": request.tool_name, "arguments": request.arguments or {}},
+        }
+    return {"jsonrpc": "2.0", "id": request_id, "method": method, "params": {}}
+
+
+def _post_mcp_json_rpc(
+    request: McpToolTestRequest,
+    method: str,
+    request_id: Union[int, str],
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> Tuple[Any, Dict[str, str]]:
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2024-11-05",
+    }
+    if request.token:
+        headers["Authorization"] = f"Bearer {request.token}"
+    if extra_headers:
+        headers.update({key: value for key, value in extra_headers.items() if value})
+
+    payload = _mcp_json_rpc_payload(method, request, request_id)
+    response = requests.post(request.url, json=payload, headers=headers, timeout=request.timeout_seconds)
+    response.raise_for_status()
+    return _mcp_extract_json_response(response), dict(response.headers)
+
+
+def _header_value(headers: Dict[str, str], name: str) -> str:
+    for key, value in headers.items():
+        if key.lower() == name.lower():
+            return value
+    return ""
+
+
+@app.post("/ai/mcp/test")
+def test_mcp_tool(request: McpToolTestRequest, dep: None = Depends(admin_dependency)):
+    """Proxy a small MCP JSON-RPC request for the AI Features test console."""
+    parsed_url = urlparse(request.url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise HTTPException(status_code=400, detail="MCP URL must be a valid HTTPS URL")
+
+    try:
+        initialize_response = None
+        initialize_headers: Dict[str, str] = {}
+        if request.method != "initialize":
+            try:
+                initialize_response, initialize_headers = _post_mcp_json_rpc(request, "initialize", "init")
+            except requests.RequestException as exc:
+                initialize_response = {
+                    "warning": f"Initialize request failed; attempted {request.method} anyway.",
+                    "detail": str(exc),
+                }
+
+        session_id = _header_value(initialize_headers, "mcp-session-id")
+        session_headers = {"Mcp-Session-Id": session_id} if session_id else None
+        result, response_headers = _post_mcp_json_rpc(request, request.method, "test", session_headers)
+    except requests.RequestException as exc:
+        detail = str(exc)
+        if getattr(exc, "response", None) is not None and exc.response is not None:
+            detail = f"{detail}: {exc.response.text[:500]}"
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    return {
+        "status": "ok",
+        "transport": request.transport,
+        "method": request.method,
+        "initialize": initialize_response,
+        "initialize_headers": {"mcp-session-id": _header_value(initialize_headers, "mcp-session-id")},
+        "result": result,
+        "response_headers": {"content-type": response_headers.get("Content-Type", "")},
+    }
+
+
 class MonitorRequest(BaseModel):
     name: str = Field(..., max_length=150)
     service_type: str = Field(..., max_length=50)
