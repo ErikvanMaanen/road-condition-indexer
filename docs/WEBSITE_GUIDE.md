@@ -33,7 +33,6 @@ The website is server-hosted static content with API-driven dynamic behavior.
 - `static/monitor.html`: monitor creation, toggling, execution, and history display.
 - `static/av-tools.html`: media/noise-reduction tooling UI.
 - `static/dumpert.html`: Dumpert content browsing.
-- `static/dumpert-player.html`: media playback/proxy consumption view.
 
 ### Supporting/special pages
 - `static/solution.html`, `static/chris.html`, `static/timezone-test.html`: environment/support pages used for specific workflows or testing.
