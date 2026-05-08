@@ -76,6 +76,18 @@ AZURE_SQL_PORT=1433
 pip install -r requirements.txt
 ```
 
+For local browser-based development tools, such as screenshot capture, install the
+optional development dependencies and managed Chromium binary:
+```bash
+pip install -r requirements-dev.txt
+bin/install_browser.sh
+source .browser.env
+```
+
+The browser binary is stored under `.cache/ms-playwright/` by default and is
+ignored by Git. Override `PLAYWRIGHT_BROWSERS_PATH` before running the installer
+if you want to keep the binary in a different location.
+
 ### 3. Run Development Server
 ```bash
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload

@@ -1,0 +1,6 @@
+# Development dependencies for local tooling.
+# Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Provides a managed Chromium browser binary for local screenshot capture.
+playwright>=1.44.0

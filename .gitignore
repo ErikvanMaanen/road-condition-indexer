@@ -37,3 +37,7 @@ static/vendor/
 # Allow specific lib files but ignore others
 static/lib/*
 !static/lib/README.md
+# Local browser binaries and screenshot artifacts
+.cache/
+.browser.env
+screenshots/
