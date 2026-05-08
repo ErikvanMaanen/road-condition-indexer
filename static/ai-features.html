@@ -169,6 +169,60 @@
                 <pre id="omi-python-snippet" class="result-box ai-code-block" tabindex="0"></pre>
             </div>
         </div>
+
+        <section class="rci-card ai-mcp-console" aria-labelledby="omi-mcp-console-title">
+            <div class="ai-console-header">
+                <div>
+                    <h2 id="omi-mcp-console-title">MCP tools and function tester</h2>
+                    <p class="rci-muted">List the tools exposed by the configured MCP server, inspect their schemas, and run a small test call through the Road Condition Indexer admin proxy.</p>
+                </div>
+                <span id="omi-tool-count" class="pill muted">No tools loaded</span>
+            </div>
+
+            <div class="ai-form-grid ai-test-grid">
+                <label>
+                    <span>Discovery method</span>
+                    <select id="omi-mcp-method">
+                        <option value="tools/list" selected>List tools / functions</option>
+                        <option value="prompts/list">List prompts</option>
+                        <option value="resources/list">List resources</option>
+                        <option value="initialize">Initialize only</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Tool to test</span>
+                    <select id="omi-tool-select">
+                        <option value="">Load tools to populate options</option>
+                    </select>
+                </label>
+                <label class="full-width">
+                    <span>Tool arguments JSON</span>
+                    <textarea id="omi-tool-arguments" rows="6" spellcheck="false">{
+  "query": "morning routine",
+  "limit": 5
+}</textarea>
+                </label>
+            </div>
+
+            <div class="ai-form-actions">
+                <button type="button" id="omi-list-tools" class="focus-ring">List MCP tools / functions</button>
+                <button type="button" id="omi-test-tool" class="secondary-button focus-ring">Test selected tool</button>
+                <button type="button" id="omi-copy-result" class="secondary-button focus-ring">Copy result</button>
+            </div>
+            <div id="omi-test-status" class="status-message" role="status" aria-live="polite"></div>
+
+            <div class="ai-tool-results">
+                <div>
+                    <h4>Available tools / functions</h4>
+                    <div id="omi-tools-list" class="ai-tool-list" tabindex="0">Connect to an MCP server to list tools.</div>
+                </div>
+                <div>
+                    <h4>Test response</h4>
+                    <pre id="omi-test-result" class="result-box ai-code-block" tabindex="0"></pre>
+                </div>
+            </div>
+        </section>
+
     </div>
 </div>
 
