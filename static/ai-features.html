@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Features</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/site.css">
+    <script src="/static/utils.js"></script>
+    <script src="/static/ai-features.js" defer></script>
+</head>
+<body>
+<nav id="page-links" class="page-links mb-1" data-rci-navigation aria-label="Primary navigation"></nav>
+<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">AI Features</h1>
+
+<section class="rci-card ai-hero" aria-labelledby="ai-features-title">
+    <div>
+        <p class="eyebrow">External agents, MCP servers, and assistant workflows</p>
+        <h2 id="ai-features-title">Configure AI integrations from one place</h2>
+        <p class="rci-muted">Use this page to plan AI functionality, manage connection details for external assistants, and prepare MCP server configuration snippets. The first available integration is Omi MCP.</p>
+    </div>
+    <div class="ai-hero-status" aria-label="Configured AI feature areas">
+        <span>🤖 Agents</span>
+        <span>🔌 MCP Servers</span>
+        <span>⚙️ Functionality</span>
+    </div>
+</section>
+
+<section class="ai-feature-grid" aria-label="AI feature areas">
+    <article class="rci-card ai-feature-card">
+        <h2>External Agents</h2>
+        <p>Reserve connection profiles for assistants such as desktop IDE agents, hosted copilots, and local workflow runners.</p>
+        <ul>
+            <li>Provider and agent name</li>
+            <li>Allowed tools and scopes</li>
+            <li>Default prompt or handoff notes</li>
+        </ul>
+        <span class="pill muted">Planned</span>
+    </article>
+    <article class="rci-card ai-feature-card ai-feature-card-active">
+        <h2>MCP Servers</h2>
+        <p>Configure Model Context Protocol servers that agents can use for memories, conversation search, or other context tools.</p>
+        <ul>
+            <li>Server URL and transport</li>
+            <li>Bearer token authorization</li>
+            <li>Client-ready config snippets</li>
+        </ul>
+        <span class="pill success">Omi available</span>
+    </article>
+    <article class="rci-card ai-feature-card">
+        <h2>Functionality</h2>
+        <p>Track higher-level AI capabilities you may enable later, such as summarization, road-condition insights, and memo workflows.</p>
+        <ul>
+            <li>Feature toggles</li>
+            <li>Task templates</li>
+            <li>Safety and privacy notes</li>
+        </ul>
+        <span class="pill muted">Planned</span>
+    </article>
+</section>
+
+<div class="section ai-section">
+    <div class="section-header" onclick="toggleSection('omi-mcp')">
+        <span>🔌 Omi MCP Server</span>
+        <span class="section-toggle" id="omi-mcp-toggle">▶</span>
+    </div>
+    <div class="section-content" id="omi-mcp-content">
+        <div class="ai-two-column">
+            <form id="omi-mcp-form" class="ai-config-form" autocomplete="off">
+                <div class="ai-form-header">
+                    <div>
+                        <h2>Connection settings</h2>
+                        <p class="rci-muted">Store Omi MCP connection details in this browser so you can generate client configuration snippets without retyping them.</p>
+                    </div>
+                    <label class="toggle-row">
+                        <input type="checkbox" id="omi-enabled">
+                        <span>Enabled</span>
+                    </label>
+                </div>
+
+                <div class="ai-form-grid">
+                    <label>
+                        <span>Display name</span>
+                        <input type="text" id="omi-display-name" value="Omi" maxlength="80">
+                    </label>
+                    <label>
+                        <span>Server key</span>
+                        <input type="text" id="omi-server-key" value="omi" maxlength="40" pattern="[a-zA-Z0-9_-]+">
+                    </label>
+                    <label class="full-width">
+                        <span>MCP URL</span>
+                        <input type="url" id="omi-url" value="https://api.omi.me/v1/mcp/sse" required>
+                    </label>
+                    <label>
+                        <span>VS Code server type</span>
+                        <select id="omi-vscode-type">
+                            <option value="sse" selected>SSE</option>
+                            <option value="http">HTTP</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>SDK transport</span>
+                        <select id="omi-transport">
+                            <option value="streamable_http" selected>Streamable HTTP</option>
+                            <option value="sse">SSE</option>
+                        </select>
+                    </label>
+                    <label class="full-width">
+                        <span>Bearer token</span>
+                        <div class="secret-input-row">
+                            <input type="password" id="omi-token" placeholder="omi_mcp_..." pattern="omi_mcp_.+" aria-describedby="omi-token-help">
+                            <button type="button" id="omi-toggle-token" class="secondary-button">Show</button>
+                        </div>
+                        <small id="omi-token-help">Create the key in the Omi app under Settings → Developer → MCP. Token values remain in browser local storage only.</small>
+                    </label>
+                    <label class="full-width">
+                        <span>Notes</span>
+                        <textarea id="omi-notes" rows="3" placeholder="Usage notes, owner, or scope restrictions"></textarea>
+                    </label>
+                </div>
+
+                <div class="ai-form-actions">
+                    <button type="submit" class="focus-ring">Save Omi MCP settings</button>
+                    <button type="button" id="omi-reset" class="secondary-button focus-ring">Reset defaults</button>
+                    <button type="button" id="omi-clear" class="secondary-button focus-ring">Clear saved settings</button>
+                </div>
+                <div id="omi-status" class="status-message" role="status" aria-live="polite"></div>
+            </form>
+
+            <aside class="ai-reference rci-card" aria-labelledby="omi-reference-title">
+                <h2 id="omi-reference-title">Omi quick reference</h2>
+                <dl>
+                    <dt>Website</dt>
+                    <dd><a href="https://omi.me" target="_blank" rel="noopener">omi.me</a></dd>
+                    <dt>Docs</dt>
+                    <dd><a href="https://docs.omi.me" target="_blank" rel="noopener">docs.omi.me</a></dd>
+                    <dt>Auth</dt>
+                    <dd>Bearer token in the <code>Authorization</code> header</dd>
+                    <dt>Key format</dt>
+                    <dd><code>omi_mcp_...</code></dd>
+                    <dt>Tools</dt>
+                    <dd>Memories and conversations: list, semantic search, create/edit/delete memories, and transcript lookup.</dd>
+                </dl>
+                <details>
+                    <summary>Error codes</summary>
+                    <ul>
+                        <li><code>-32602</code>: invalid parameters</li>
+                        <li><code>-32001</code>: resource not found</li>
+                        <li><code>-32002</code>: locked content</li>
+                        <li><code>-32601</code>: unknown tool name</li>
+                    </ul>
+                </details>
+            </aside>
+        </div>
+
+        <div class="ai-snippet-toolbar">
+            <label><input type="checkbox" id="omi-include-token"> Include saved token in snippets</label>
+            <button type="button" id="omi-copy-vscode" class="secondary-button focus-ring">Copy VS Code config</button>
+            <button type="button" id="omi-copy-python" class="secondary-button focus-ring">Copy Python SDK example</button>
+        </div>
+
+        <div class="compare-grid ai-snippet-grid">
+            <div class="json-col">
+                <h4>VS Code <code>.vscode/mcp.json</code></h4>
+                <pre id="omi-vscode-snippet" class="result-box ai-code-block" tabindex="0"></pre>
+            </div>
+            <div class="json-col">
+                <h4>Python SDK example</h4>
+                <pre id="omi-python-snippet" class="result-box ai-code-block" tabindex="0"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
