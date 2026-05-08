@@ -458,10 +458,79 @@ body.memo-camera-overlay-fullscreen { overflow:hidden; }
 .min-h-32 { min-height:32px; }
 .json-editor-container { height:420px; border:1px solid var(--rci-border); border-radius:4px; background:var(--rci-surface); }
 
-/* Theme panel integrated into page links */
-.page-links { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
-.page-links a { text-decoration:none; color:var(--rci-link); }
-.page-links a:hover { text-decoration:underline; }
+/* Shared top navigation */
+.page-links,
+.rci-top-nav {
+  display:flex;
+  align-items:stretch;
+  gap:1rem;
+  flex-wrap:wrap;
+  padding:.75rem;
+  border:1px solid var(--rci-border);
+  border-radius:var(--rci-radius);
+  background:var(--rci-surface);
+  box-shadow:var(--rci-shadow);
+}
+.rci-top-nav a { text-decoration:none; color:var(--rci-link); }
+.rci-top-nav a:hover { text-decoration:none; }
+.rci-nav-brand {
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  padding:.45rem .6rem;
+  border-radius:999px;
+  color:var(--rci-text);
+  font-weight:700;
+  white-space:nowrap;
+}
+.rci-nav-logo { width:1.5rem; height:1.5rem; object-fit:contain; }
+.rci-nav-groups {
+  display:flex;
+  align-items:stretch;
+  gap:.75rem;
+  flex:1 1 560px;
+  flex-wrap:wrap;
+}
+.rci-nav-group {
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  min-width:0;
+}
+.rci-nav-group-label {
+  color:var(--rci-text-muted);
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.06em;
+  line-height:1;
+  text-transform:uppercase;
+}
+.rci-nav-group-links { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; }
+.rci-nav-link {
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:.35rem .55rem;
+  border:1px solid transparent;
+  border-radius:999px;
+  color:var(--rci-link);
+  line-height:1.1;
+  white-space:nowrap;
+}
+.rci-nav-link:hover,
+.rci-nav-brand:hover { background:var(--rci-surface-alt); }
+.rci-nav-link[aria-current="page"],
+.rci-nav-brand[aria-current="page"] {
+  background:var(--rci-primary);
+  border-color:var(--rci-primary-accent);
+  color:#fff;
+}
+.rci-nav-actions { display:flex; align-items:center; margin-left:auto; }
+@media (max-width:760px){
+  .rci-top-nav { flex-direction:column; align-items:stretch; }
+  .rci-nav-groups { flex:1 1 auto; }
+  .rci-nav-actions { margin-left:0; }
+}
 
 /* Time range slider (database view) */
 .time-range-container { position:relative; margin:1rem 0; }

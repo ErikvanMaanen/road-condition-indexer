@@ -669,6 +669,116 @@ function toggleSettings() {
     togglePanel('settings-content', 'settings-toggle');
 }
 
+
+// ============================================================================
+// NAVIGATION UTILITIES
+// ============================================================================
+
+const RCI_NAV_GROUPS = [
+    {
+        label: 'Main',
+        items: [
+            { label: 'Device View', href: '/static/device.html', paths: ['/static/device.html'] },
+            { label: 'Memo\'s', href: '/static/memo.html', paths: ['/static/memo.html'] }
+        ]
+    },
+    {
+        label: 'Tools',
+        items: [
+            { label: 'Tools', href: '/static/tools.html', paths: ['/static/tools.html'] },
+            { label: 'Audio & Video', href: '/static/av-tools.html', paths: ['/static/av-tools.html'] },
+            { label: 'Shared Objects', href: '/static/shared.html', paths: ['/static/shared.html'] },
+            { label: 'Monitor', href: '/static/monitor.html', paths: ['/static/monitor.html'] }
+        ]
+    },
+    {
+        label: 'Maintenance',
+        items: [
+            { label: 'Database', href: '/static/database.html', paths: ['/static/database.html'] },
+            { label: 'Maintenance Hub', href: '/static/maintenance.html', paths: ['/static/maintenance.html'] }
+        ]
+    },
+    {
+        label: 'Labs',
+        items: [
+            { label: 'Dumpert', href: '/static/dumpert.html', paths: ['/static/dumpert.html'] },
+            { label: 'Solution', href: '/static/solution.html', paths: ['/static/solution.html'] },
+            { label: 'Chris', href: '/static/chris.html', paths: ['/static/chris.html'] },
+            { label: 'Timezone Test', href: '/static/timezone-test.html', paths: ['/static/timezone-test.html'] }
+        ]
+    }
+];
+
+function normalizeNavPath(pathname) {
+    if (!pathname || pathname === '/static/') return '/';
+    return pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+}
+
+function isCurrentNavItem(item, currentPath) {
+    return item.paths.some(path => normalizeNavPath(path) === currentPath);
+}
+
+function createNavLink(item, currentPath) {
+    const link = document.createElement('a');
+    link.href = item.href;
+    link.textContent = item.label;
+    link.className = 'rci-nav-link focus-ring';
+    if (isCurrentNavItem(item, currentPath)) {
+        link.setAttribute('aria-current', 'page');
+    }
+    return link;
+}
+
+function renderRciNavigation() {
+    const nav = document.querySelector('[data-rci-navigation]');
+    if (!nav) return;
+
+    const currentPath = normalizeNavPath(window.location.pathname);
+    nav.classList.add('rci-top-nav');
+    nav.innerHTML = '';
+
+    const brand = document.createElement('a');
+    brand.href = '/';
+    brand.className = 'rci-nav-brand focus-ring';
+    brand.innerHTML = '<img src="/static/logo.png" alt="" class="rci-nav-logo"> <span>Road Condition Indexer</span>';
+    if (currentPath === '/' || currentPath === '/index.html' || currentPath === '/static/index.html') {
+        brand.setAttribute('aria-current', 'page');
+    }
+    nav.appendChild(brand);
+
+    const groupsWrapper = document.createElement('div');
+    groupsWrapper.className = 'rci-nav-groups';
+
+    RCI_NAV_GROUPS.forEach(group => {
+        const groupElement = document.createElement('div');
+        groupElement.className = 'rci-nav-group';
+
+        const label = document.createElement('span');
+        label.className = 'rci-nav-group-label';
+        label.textContent = group.label;
+        groupElement.appendChild(label);
+
+        const links = document.createElement('div');
+        links.className = 'rci-nav-group-links';
+        group.items.forEach(item => links.appendChild(createNavLink(item, currentPath)));
+        groupElement.appendChild(links);
+        groupsWrapper.appendChild(groupElement);
+    });
+
+    nav.appendChild(groupsWrapper);
+
+    const actions = document.createElement('div');
+    actions.className = 'rci-nav-actions';
+    const themeButton = document.createElement('button');
+    themeButton.type = 'button';
+    themeButton.dataset.role = 'theme-toggle';
+    themeButton.className = 'theme-toggle focus-ring';
+    themeButton.setAttribute('aria-label', 'Toggle dark mode');
+    themeButton.textContent = '🌙 Dark';
+    actions.appendChild(themeButton);
+    nav.appendChild(actions);
+}
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -676,6 +786,7 @@ function toggleSettings() {
 // Initialize device ID when script loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeDeviceId();
+    renderRciNavigation();
 });
 
 // Theme toggling logic
