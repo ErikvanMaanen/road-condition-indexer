@@ -2738,6 +2738,24 @@ class McpToolTestRequest(BaseModel):
     timeout_seconds: int = Field(default=20, ge=1, le=60)
 
 
+class AiAgentChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str = Field(..., max_length=20000)
+
+
+class AiAgentChatRequest(BaseModel):
+    name: str = Field(..., max_length=100)
+    provider: Optional[str] = Field(default="", max_length=100)
+    runtime: str = Field(..., max_length=200)
+    instructions: Optional[str] = Field(default="", max_length=12000)
+    api_url: str = Field(..., max_length=2000)
+    api_key: Optional[str] = Field(default=None, max_length=4000)
+    message: str = Field(..., min_length=1, max_length=20000)
+    history: List[AiAgentChatMessage] = Field(default_factory=list, max_length=20)
+    mcp_services: List[Dict[str, Any]] = Field(default_factory=list, max_length=20)
+    timeout_seconds: int = Field(default=40, ge=1, le=120)
+
+
 def _mcp_extract_json_response(response: requests.Response) -> Any:
     """Return a JSON-RPC payload from JSON or SSE-style MCP responses."""
     content_type = response.headers.get("Content-Type", "")
@@ -2857,6 +2875,76 @@ def test_mcp_tool(request: McpToolTestRequest, dep: None = Depends(admin_depende
         "initialize_headers": {"mcp-session-id": _header_value(initialize_headers, "mcp-session-id")},
         "result": result,
         "response_headers": {"content-type": response_headers.get("Content-Type", "")},
+    }
+
+
+def _extract_agent_chat_content(payload: Any) -> str:
+    """Extract assistant text from common OpenAI-compatible chat responses."""
+    if not isinstance(payload, dict):
+        return ""
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0] or {}
+        message = first.get("message") if isinstance(first, dict) else None
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            return message["content"]
+        if isinstance(first, dict) and isinstance(first.get("text"), str):
+            return first["text"]
+    if isinstance(payload.get("output_text"), str):
+        return payload["output_text"]
+    return ""
+
+
+@app.post("/ai/agent/chat")
+def chat_with_ai_agent(request: AiAgentChatRequest, dep: None = Depends(admin_dependency)):
+    """Send a chat turn to an OpenAI-compatible agent endpoint from the AI Features console."""
+    parsed_url = urlparse(request.api_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise HTTPException(status_code=400, detail="Agent chat API URL must be a valid HTTPS URL")
+
+    enabled_services = [
+        {
+            "key": service.get("key"),
+            "name": service.get("name"),
+            "url": service.get("url"),
+            "transport": service.get("transport"),
+        }
+        for service in request.mcp_services
+        if isinstance(service, dict) and service.get("enabled", True)
+    ]
+    system_parts = [
+        request.instructions or f"You are {request.name}, an AI assistant for the Road Condition Indexer.",
+        "When tools are needed, say which MCP service and tool should be used; do not invent tool results.",
+    ]
+    if enabled_services:
+        system_parts.append(f"Available MCP services for this workspace: {json.dumps(enabled_services)}")
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": "\n\n".join(system_parts)}]
+    messages.extend({"role": item.role, "content": item.content} for item in request.history[-20:])
+    messages.append({"role": "user", "content": request.message})
+
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    if request.api_key:
+        headers["Authorization"] = f"Bearer {request.api_key}"
+
+    payload = {"model": request.runtime, "messages": messages}
+    try:
+        response = requests.post(request.api_url, json=payload, headers=headers, timeout=request.timeout_seconds)
+        response.raise_for_status()
+        response_payload = response.json()
+    except requests.RequestException as exc:
+        detail = str(exc)
+        if getattr(exc, "response", None) is not None and exc.response is not None:
+            detail = f"{detail}: {exc.response.text[:500]}"
+        raise HTTPException(status_code=502, detail=detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Agent chat endpoint did not return valid JSON") from exc
+
+    return {
+        "status": "ok",
+        "agent": {"name": request.name, "provider": request.provider, "runtime": request.runtime},
+        "message": _extract_agent_chat_content(response_payload),
+        "raw": response_payload,
     }
 
 

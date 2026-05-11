@@ -8,7 +8,9 @@
         name: 'Road Analyst Agent',
         provider: 'OpenAI / local workflow',
         key: 'road_analyst',
-        runtime: 'Configured in client',
+        runtime: 'gpt-4.1-mini',
+        apiUrl: '',
+        apiKey: '',
         tools: 'Read logs, inspect road-condition data, use enabled MCP services',
         instructions: 'Review the current road-condition context, identify anomalies, and return concise operational next steps.',
         notes: 'Default starter profile. Update it for the assistant or IDE agent you want to use.',
@@ -204,6 +206,8 @@
         elements.agentProvider.value = agent.provider || '';
         elements.agentKey.value = agent.key || '';
         elements.agentRuntime.value = agent.runtime || '';
+        elements.agentApiUrl.value = agent.apiUrl || '';
+        elements.agentApiKey.value = agent.apiKey || '';
         elements.agentTools.value = agent.tools || '';
         elements.agentInstructions.value = agent.instructions || '';
         elements.agentNotes.value = agent.notes || '';
@@ -244,6 +248,8 @@
             provider: elements.agentProvider.value.trim(),
             key: slugify(elements.agentKey.value, 'agent'),
             runtime: elements.agentRuntime.value.trim(),
+            apiUrl: elements.agentApiUrl.value.trim(),
+            apiKey: elements.agentApiKey.value.trim(),
             tools: elements.agentTools.value.trim(),
             instructions: elements.agentInstructions.value.trim(),
             notes: elements.agentNotes.value.trim(),
@@ -275,7 +281,7 @@
         if (keyError) return keyError;
         if (!config.name) return 'MCP display name is required.';
         if (!config.url) return 'MCP URL is required.';
-        if (!/^https?:\/\//i.test(config.url)) return 'MCP URL should start with http:// or https://.';
+        if (!/^https:\/\//i.test(config.url)) return 'MCP URL should start with https://.';
         return '';
     }
 
@@ -283,6 +289,7 @@
         const keyError = validateKey(config.key, 'Agent');
         if (keyError) return keyError;
         if (!config.name) return 'Agent display name is required.';
+        if (config.apiUrl && !/^https:\/\//i.test(config.apiUrl)) return 'Agent chat API URL must start with https://.';
         return '';
     }
 
@@ -467,6 +474,89 @@
         elements.mcpToggleToken.textContent = isHidden ? 'Hide' : 'Show';
     }
 
+    function toggleAgentKeyVisibility() {
+        const isHidden = elements.agentApiKey.type === 'password';
+        elements.agentApiKey.type = isHidden ? 'text' : 'password';
+        elements.agentToggleKey.textContent = isHidden ? 'Hide' : 'Show';
+    }
+
+    function appendChatMessage(role, content) {
+        const item = document.createElement('div');
+        item.className = `ai-chat-message ${role}`;
+        item.innerHTML = `<strong>${role === 'user' ? 'You' : 'Agent'}</strong><p>${escapeHtml(content)}</p>`;
+        elements.agentChatLog.appendChild(item);
+        elements.agentChatLog.scrollTop = elements.agentChatLog.scrollHeight;
+    }
+
+    function readChatHistory() {
+        try {
+            return JSON.parse(elements.agentChatLog.dataset.history || '[]');
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function writeChatHistory(history) {
+        elements.agentChatLog.dataset.history = JSON.stringify(history.slice(-20));
+    }
+
+    async function sendAgentChat() {
+        const config = readAgentForm();
+        const validationError = validateAgent(config);
+        if (validationError) {
+            setStatus(elements.agentChatStatus, validationError, 'error');
+            return;
+        }
+        if (!config.apiUrl) {
+            setStatus(elements.agentChatStatus, 'Add an HTTPS OpenAI-compatible chat API URL before chatting with this agent.', 'error');
+            return;
+        }
+        const message = elements.agentChatMessage.value.trim();
+        if (!message) {
+            setStatus(elements.agentChatStatus, 'Type a message before sending.', 'error');
+            return;
+        }
+        const history = readChatHistory();
+        appendChatMessage('user', message);
+        elements.agentChatMessage.value = '';
+        setStatus(elements.agentChatStatus, `Sending message to ${config.name}...`, 'warning');
+        try {
+            const response = await fetch('/ai/agent/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: config.name,
+                    provider: config.provider,
+                    runtime: config.runtime,
+                    instructions: config.instructions,
+                    api_url: config.apiUrl,
+                    api_key: config.apiKey,
+                    message,
+                    history,
+                    mcp_services: state.mcps.filter(mcp => mcp.enabled)
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                setStatus(elements.agentChatStatus, data.detail || `Agent chat failed with HTTP ${response.status}.`, 'error');
+                return;
+            }
+            const reply = data.message || JSON.stringify(data.raw || data, null, 2);
+            appendChatMessage('assistant', reply);
+            writeChatHistory([...history, { role: 'user', content: message }, { role: 'assistant', content: reply }]);
+            setStatus(elements.agentChatStatus, `${config.name} replied.`, 'success');
+        } catch (error) {
+            console.warn('Unable to chat with agent.', error);
+            setStatus(elements.agentChatStatus, 'Unable to reach the agent chat proxy from this browser.', 'error');
+        }
+    }
+
+    function clearAgentChat() {
+        elements.agentChatLog.innerHTML = '';
+        writeChatHistory([]);
+        setStatus(elements.agentChatStatus, 'Chat cleared.', 'warning');
+    }
+
     function generateAgentTest() {
         const config = readAgentForm();
         const validationError = validateAgent(config);
@@ -619,6 +709,107 @@
         if (data && method === 'tools/list') renderToolList(extractTools(data.result));
     }
 
+    function requiredJsonDescription() {
+        return `AI Features JSON provider contract
+
+Return one JSON object. It may include an "agents" array, an "mcps" array, or one object with "type": "agent" or "type": "mcp". Do not wrap the JSON in Markdown.
+
+Agent object required fields:
+- type: "agent" when importing a single object
+- name: display name, string, max 80 characters
+- key: unique slug using letters, numbers, underscores, or hyphens, max 50 characters
+
+Agent object optional fields:
+- enabled: boolean
+- provider: provider or platform label
+- runtime: model or runtime name used as the chat model
+- apiUrl: HTTPS OpenAI-compatible chat completions endpoint such as https://api.example.com/v1/chat/completions
+- apiKey: bearer token for that endpoint; omit when not needed
+- tools: comma-separated allowed tools/scopes
+- instructions: system instructions for chat
+- notes: owner, privacy, rollout, or environment notes
+- testScenario: reusable handoff test scenario
+
+MCP service object required fields:
+- type: "mcp" when importing a single object
+- name: display name, string, max 80 characters
+- key: unique slug using letters, numbers, underscores, or hyphens, max 50 characters
+- url: HTTPS MCP JSON-RPC/SSE endpoint
+
+MCP service object optional fields:
+- enabled: boolean
+- vscodeType: "sse" or "http"
+- transport: "streamable_http", "sse", or "http"
+- token: bearer token; omit when not needed
+- notes: docs link, owner, tool scope, or environment notes
+
+Example:
+{
+  "agents": [{
+    "name": "Operations Analyst",
+    "key": "operations_analyst",
+    "runtime": "gpt-4.1-mini",
+    "apiUrl": "https://api.example.com/v1/chat/completions",
+    "instructions": "Answer with concise road-operation next steps."
+  }],
+  "mcps": [{
+    "name": "Road Tools",
+    "key": "road_tools",
+    "url": "https://mcp.example.com/sse",
+    "transport": "streamable_http"
+  }]
+}`;
+    }
+
+    function normalizeImportedAgent(input) {
+        const agent = { ...clone(DEFAULT_AGENT), ...input, id: input.id || uniqueId('agent') };
+        if (!agent.apiUrl && input.api_url) agent.apiUrl = input.api_url;
+        if (!agent.apiKey && input.api_key) agent.apiKey = input.api_key;
+        agent.key = slugify(agent.key || agent.name, 'agent');
+        agent.enabled = Boolean(agent.enabled);
+        delete agent.type;
+        const validationError = validateAgent(agent);
+        if (validationError) throw new Error(`Agent ${agent.name || agent.key}: ${validationError}`);
+        return agent;
+    }
+
+    function normalizeImportedMcp(input) {
+        const mcp = { ...clone(DEFAULT_MCP), ...input, id: input.id || uniqueId('mcp') };
+        if (!mcp.vscodeType && input.vscode_type) mcp.vscodeType = input.vscode_type;
+        mcp.key = slugify(mcp.key || mcp.name, 'mcp');
+        mcp.enabled = Boolean(mcp.enabled);
+        delete mcp.type;
+        const validationError = validateMcp(mcp);
+        if (validationError) throw new Error(`MCP ${mcp.name || mcp.key}: ${validationError}`);
+        return mcp;
+    }
+
+    function importJsonConfig() {
+        let parsed;
+        try {
+            parsed = JSON.parse(elements.jsonProviderInput.value);
+        } catch (error) {
+            setStatus(elements.jsonProviderStatus, `JSON parse error: ${error.message}`, 'error');
+            return;
+        }
+        try {
+            const agents = Array.isArray(parsed.agents) ? parsed.agents : parsed.type === 'agent' ? [parsed] : [];
+            const mcps = Array.isArray(parsed.mcps) ? parsed.mcps : parsed.type === 'mcp' ? [parsed] : [];
+            if (!agents.length && !mcps.length) throw new Error('Provide an agents array, an mcps array, or a single typed object.');
+            const importedAgents = agents.map(normalizeImportedAgent);
+            const importedMcps = mcps.map(normalizeImportedMcp);
+            state.agents.push(...importedAgents);
+            state.mcps.push(...importedMcps);
+            if (importedAgents.length) state.selectedAgentId = importedAgents[0].id;
+            if (importedMcps.length) state.selectedMcpId = importedMcps[0].id;
+            saveWorkspace();
+            renderAll();
+            setStatus(elements.jsonProviderStatus, `Imported ${importedAgents.length} agent(s) and ${importedMcps.length} MCP service(s).`, 'success');
+        } catch (error) {
+            setStatus(elements.jsonProviderStatus, error.message, 'error');
+        }
+    }
+
     function bindElements() {
         elements.agentSummaryPill = $('agent-summary-pill');
         elements.mcpSummaryPill = $('mcp-summary-pill');
@@ -636,6 +827,9 @@
         elements.agentProvider = $('agent-provider');
         elements.agentKey = $('agent-key');
         elements.agentRuntime = $('agent-runtime');
+        elements.agentApiUrl = $('agent-api-url');
+        elements.agentApiKey = $('agent-api-key');
+        elements.agentToggleKey = $('agent-toggle-key');
         elements.agentTools = $('agent-tools');
         elements.agentInstructions = $('agent-instructions');
         elements.agentNotes = $('agent-notes');
@@ -648,6 +842,11 @@
         elements.copyAgentTest = $('copy-agent-test');
         elements.agentTestStatus = $('agent-test-status');
         elements.agentTestResult = $('agent-test-result');
+        elements.agentChatMessage = $('agent-chat-message');
+        elements.agentChatLog = $('agent-chat-log');
+        elements.sendAgentChat = $('send-agent-chat');
+        elements.clearAgentChat = $('clear-agent-chat');
+        elements.agentChatStatus = $('agent-chat-status');
         elements.mcpForm = $('mcp-form');
         elements.mcpEnabled = $('mcp-enabled');
         elements.mcpName = $('mcp-name');
@@ -677,6 +876,11 @@
         elements.toolsList = $('tools-list');
         elements.testResult = $('test-result');
         elements.toolCount = $('tool-count');
+        elements.jsonProviderInput = $('json-provider-input');
+        elements.importJsonConfig = $('import-json-config');
+        elements.copyJsonRequirements = $('copy-json-requirements');
+        elements.jsonProviderStatus = $('json-provider-status');
+        elements.jsonRequirements = $('json-requirements');
     }
 
     function bindEvents() {
@@ -692,8 +896,11 @@
         elements.agentForm.addEventListener('submit', saveAgent);
         elements.mcpForm.addEventListener('submit', saveMcp);
         elements.mcpToggleToken.addEventListener('click', toggleTokenVisibility);
+        elements.agentToggleKey.addEventListener('click', toggleAgentKeyVisibility);
         elements.mcpIncludeToken.addEventListener('change', renderSnippets);
         elements.runAgentTest.addEventListener('click', generateAgentTest);
+        elements.sendAgentChat.addEventListener('click', sendAgentChat);
+        elements.clearAgentChat.addEventListener('click', clearAgentChat);
         elements.copyAgentTest.addEventListener('click', () => copyText(elements.agentTestResult.textContent, 'Agent test package copied.', (message, type) => setStatus(elements.agentTestStatus, message, type)));
         elements.copyVsCode.addEventListener('click', () => copyText(elements.vscodeSnippet.textContent, 'VS Code MCP config copied.', (message, type) => setStatus(elements.mcpStatus, message, type)));
         elements.copyPython.addEventListener('click', () => copyText(elements.pythonSnippet.textContent, 'Python SDK example copied.', (message, type) => setStatus(elements.mcpStatus, message, type)));
@@ -701,6 +908,8 @@
         elements.testTool.addEventListener('click', () => sendMcpTest('tools/call', true));
         elements.toolSelect.addEventListener('change', applySelectedToolExample);
         elements.copyResult.addEventListener('click', () => copyText(elements.testResult.textContent, 'MCP test result copied.', (message, type) => setStatus(elements.mcpTestStatus, message, type)));
+        elements.importJsonConfig.addEventListener('click', importJsonConfig);
+        elements.copyJsonRequirements.addEventListener('click', () => copyText(requiredJsonDescription(), 'JSON provider requirements copied.', (message, type) => setStatus(elements.jsonProviderStatus, message, type)));
 
         [
             elements.mcpName,
@@ -726,5 +935,6 @@
         state.selectedAgentId = workspace.selectedAgentId;
         state.selectedMcpId = workspace.selectedMcpId;
         renderAll();
+        elements.jsonRequirements.textContent = requiredJsonDescription();
     });
 })();
