@@ -15,216 +15,281 @@
 
 <section class="rci-card ai-hero" aria-labelledby="ai-features-title">
     <div>
-        <p class="eyebrow">External agents, MCP servers, and assistant workflows</p>
-        <h2 id="ai-features-title">Configure AI integrations from one place</h2>
-        <p class="rci-muted">Use this page to plan AI functionality, manage connection details for external assistants, and prepare MCP server configuration snippets. The first available integration is Omi MCP.</p>
+        <p class="eyebrow">Agent and MCP service workspace</p>
+        <h2 id="ai-features-title">Define, compare, and test AI integrations</h2>
+        <p class="rci-muted">Keep a compact overview of agent profiles and MCP services, expand only the configuration or test section you need, and store reusable setup details in this browser.</p>
     </div>
-    <div class="ai-hero-status" aria-label="Configured AI feature areas">
-        <span>🤖 Agents</span>
-        <span>🔌 MCP Servers</span>
-        <span>⚙️ Functionality</span>
+    <div class="ai-hero-status" aria-label="AI feature summary">
+        <span id="agent-summary-pill">🤖 0 agents</span>
+        <span id="mcp-summary-pill">🔌 0 MCP services</span>
+        <span id="enabled-summary-pill">✅ 0 enabled</span>
     </div>
 </section>
 
-<section class="ai-feature-grid" aria-label="AI feature areas">
-    <article class="rci-card ai-feature-card">
-        <h2>External Agents</h2>
-        <p>Reserve connection profiles for assistants such as desktop IDE agents, hosted copilots, and local workflow runners.</p>
-        <ul>
-            <li>Provider and agent name</li>
-            <li>Allowed tools and scopes</li>
-            <li>Default prompt or handoff notes</li>
-        </ul>
-        <span class="pill muted">Planned</span>
+<section class="ai-overview-grid" aria-label="AI configuration overview">
+    <article class="rci-card ai-overview-card">
+        <span class="ai-overview-icon">🤖</span>
+        <div>
+            <h2>Agents</h2>
+            <p id="agent-overview-text">Create profiles for IDE assistants, local workflow runners, hosted copilots, or custom automations.</p>
+        </div>
     </article>
-    <article class="rci-card ai-feature-card ai-feature-card-active">
-        <h2>MCP Servers</h2>
-        <p>Configure Model Context Protocol servers that agents can use for memories, conversation search, or other context tools.</p>
-        <ul>
-            <li>Server URL and transport</li>
-            <li>Bearer token authorization</li>
-            <li>Client-ready config snippets</li>
-        </ul>
-        <span class="pill success">Omi available</span>
+    <article class="rci-card ai-overview-card">
+        <span class="ai-overview-icon">🔌</span>
+        <div>
+            <h2>MCP services</h2>
+            <p id="mcp-overview-text">Manage service URLs, transports, auth headers, snippets, and live tool tests.</p>
+        </div>
     </article>
-    <article class="rci-card ai-feature-card">
-        <h2>Functionality</h2>
-        <p>Track higher-level AI capabilities you may enable later, such as summarization, road-condition insights, and memo workflows.</p>
-        <ul>
-            <li>Feature toggles</li>
-            <li>Task templates</li>
-            <li>Safety and privacy notes</li>
-        </ul>
-        <span class="pill muted">Planned</span>
+    <article class="rci-card ai-overview-card">
+        <span class="ai-overview-icon">🧪</span>
+        <div>
+            <h2>Test bench</h2>
+            <p>Use collapsible test panels to validate handoff prompts, list MCP tools, and call selected MCP functions.</p>
+        </div>
     </article>
 </section>
 
-<div class="section ai-section">
-    <div class="section-header" onclick="toggleSection('omi-mcp')">
-        <span>🔌 Omi MCP Server</span>
-        <span class="section-toggle" id="omi-mcp-toggle">▶</span>
-    </div>
-    <div class="section-content" id="omi-mcp-content">
-        <div class="ai-two-column">
-            <form id="omi-mcp-form" class="ai-config-form" autocomplete="off">
-                <div class="ai-form-header">
-                    <div>
-                        <h2>Connection settings</h2>
-                        <p class="rci-muted">Store Omi MCP connection details in this browser so you can generate client configuration snippets without retyping them.</p>
-                    </div>
-                    <label class="toggle-row">
-                        <input type="checkbox" id="omi-enabled">
-                        <span>Enabled</span>
-                    </label>
-                </div>
-
-                <div class="ai-form-grid">
-                    <label>
-                        <span>Display name</span>
-                        <input type="text" id="omi-display-name" value="Omi" maxlength="80">
-                    </label>
-                    <label>
-                        <span>Server key</span>
-                        <input type="text" id="omi-server-key" value="omi" maxlength="40" pattern="[a-zA-Z0-9_-]+">
-                    </label>
-                    <label class="full-width">
-                        <span>MCP URL</span>
-                        <input type="url" id="omi-url" value="https://api.omi.me/v1/mcp/sse" required>
-                    </label>
-                    <label>
-                        <span>VS Code server type</span>
-                        <select id="omi-vscode-type">
-                            <option value="sse" selected>SSE</option>
-                            <option value="http">HTTP</option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>SDK transport</span>
-                        <select id="omi-transport">
-                            <option value="streamable_http" selected>Streamable HTTP</option>
-                            <option value="sse">SSE</option>
-                        </select>
-                    </label>
-                    <label class="full-width">
-                        <span>Bearer token</span>
-                        <div class="secret-input-row">
-                            <input type="password" id="omi-token" placeholder="omi_mcp_..." pattern="omi_mcp_.+" aria-describedby="omi-token-help">
-                            <button type="button" id="omi-toggle-token" class="secondary-button">Show</button>
-                        </div>
-                        <small id="omi-token-help">Create the key in the Omi app under Settings → Developer → MCP. Token values remain in browser local storage only.</small>
-                    </label>
-                    <label class="full-width">
-                        <span>Notes</span>
-                        <textarea id="omi-notes" rows="3" placeholder="Usage notes, owner, or scope restrictions"></textarea>
-                    </label>
-                </div>
-
-                <div class="ai-form-actions">
-                    <button type="submit" class="focus-ring">Save Omi MCP settings</button>
-                    <button type="button" id="omi-reset" class="secondary-button focus-ring">Reset defaults</button>
-                    <button type="button" id="omi-clear" class="secondary-button focus-ring">Clear saved settings</button>
-                </div>
-                <div id="omi-status" class="status-message" role="status" aria-live="polite"></div>
-            </form>
-
-            <aside class="ai-reference rci-card" aria-labelledby="omi-reference-title">
-                <h2 id="omi-reference-title">Omi quick reference</h2>
-                <dl>
-                    <dt>Website</dt>
-                    <dd><a href="https://omi.me" target="_blank" rel="noopener">omi.me</a></dd>
-                    <dt>Docs</dt>
-                    <dd><a href="https://docs.omi.me" target="_blank" rel="noopener">docs.omi.me</a></dd>
-                    <dt>Auth</dt>
-                    <dd>Bearer token in the <code>Authorization</code> header</dd>
-                    <dt>Key format</dt>
-                    <dd><code>omi_mcp_...</code></dd>
-                    <dt>Tools</dt>
-                    <dd>Memories and conversations: list, semantic search, create/edit/delete memories, and transcript lookup.</dd>
-                </dl>
-                <details>
-                    <summary>Error codes</summary>
-                    <ul>
-                        <li><code>-32602</code>: invalid parameters</li>
-                        <li><code>-32001</code>: resource not found</li>
-                        <li><code>-32002</code>: locked content</li>
-                        <li><code>-32601</code>: unknown tool name</li>
-                    </ul>
-                </details>
-            </aside>
-        </div>
-
-        <div class="ai-snippet-toolbar">
-            <label><input type="checkbox" id="omi-include-token"> Include saved token in snippets</label>
-            <button type="button" id="omi-copy-vscode" class="secondary-button focus-ring">Copy VS Code config</button>
-            <button type="button" id="omi-copy-python" class="secondary-button focus-ring">Copy Python SDK example</button>
-        </div>
-
-        <div class="compare-grid ai-snippet-grid">
-            <div class="json-col">
-                <h4>VS Code <code>.vscode/mcp.json</code></h4>
-                <pre id="omi-vscode-snippet" class="result-box ai-code-block" tabindex="0"></pre>
+<section class="ai-workspace" aria-label="AI workspace">
+    <aside class="rci-card ai-inventory" aria-labelledby="ai-inventory-title">
+        <div class="ai-panel-title-row">
+            <div>
+                <p class="eyebrow">Overview</p>
+                <h2 id="ai-inventory-title">Saved configurations</h2>
             </div>
-            <div class="json-col">
-                <h4>Python SDK example</h4>
-                <pre id="omi-python-snippet" class="result-box ai-code-block" tabindex="0"></pre>
-            </div>
+            <button type="button" id="ai-reset-all" class="secondary-button focus-ring">Reset all</button>
         </div>
 
-        <section class="rci-card ai-mcp-console" aria-labelledby="omi-mcp-console-title">
-            <div class="ai-console-header">
+        <div class="ai-inventory-group">
+            <div class="ai-inventory-heading">
+                <h3>Agents</h3>
+                <button type="button" id="add-agent" class="focus-ring">Add agent</button>
+            </div>
+            <div id="agent-list" class="ai-config-list" role="listbox" aria-label="Agent configurations"></div>
+        </div>
+
+        <div class="ai-inventory-group">
+            <div class="ai-inventory-heading">
+                <h3>MCP services</h3>
+                <button type="button" id="add-mcp" class="focus-ring">Add MCP</button>
+            </div>
+            <div id="mcp-list" class="ai-config-list" role="listbox" aria-label="MCP service configurations"></div>
+        </div>
+    </aside>
+
+    <main class="ai-editor-stack">
+        <section class="rci-card ai-editor-card" aria-labelledby="agent-editor-title">
+            <div class="ai-editor-header">
                 <div>
-                    <h2 id="omi-mcp-console-title">MCP tools and function tester</h2>
-                    <p class="rci-muted">List the tools exposed by the configured MCP server, inspect their schemas, and run a small test call through the Road Condition Indexer admin proxy.</p>
+                    <p class="eyebrow">Agent configuration</p>
+                    <h2 id="agent-editor-title">Define an agent profile</h2>
+                    <p class="rci-muted">Store provider details, allowed scopes, default instructions, and a reusable test scenario.</p>
                 </div>
-                <span id="omi-tool-count" class="pill muted">No tools loaded</span>
+                <span id="selected-agent-pill" class="pill muted">No agent selected</span>
             </div>
 
-            <div class="ai-form-grid ai-test-grid">
-                <label>
-                    <span>Discovery method</span>
-                    <select id="omi-mcp-method">
-                        <option value="tools/list" selected>List tools / functions</option>
-                        <option value="prompts/list">List prompts</option>
-                        <option value="resources/list">List resources</option>
-                        <option value="initialize">Initialize only</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Tool to test</span>
-                    <select id="omi-tool-select">
-                        <option value="">Load tools to populate options</option>
-                    </select>
-                </label>
-                <label class="full-width">
-                    <span>Tool arguments JSON</span>
-                    <textarea id="omi-tool-arguments" rows="6" spellcheck="false">{
+            <details class="ai-collapse" open>
+                <summary>Configuration</summary>
+                <form id="agent-form" class="ai-config-form" autocomplete="off">
+                    <div class="ai-form-header compact">
+                        <label class="toggle-row"><input type="checkbox" id="agent-enabled"> <span>Enabled</span></label>
+                        <button type="button" id="delete-agent" class="danger-button focus-ring">Remove agent</button>
+                    </div>
+                    <div class="ai-form-grid">
+                        <label>
+                            <span>Display name</span>
+                            <input type="text" id="agent-name" maxlength="80" required>
+                        </label>
+                        <label>
+                            <span>Provider</span>
+                            <input type="text" id="agent-provider" maxlength="80" placeholder="OpenAI, Claude, Cursor, local runner">
+                        </label>
+                        <label>
+                            <span>Agent key</span>
+                            <input type="text" id="agent-key" maxlength="50" pattern="[a-zA-Z0-9_-]+" required>
+                        </label>
+                        <label>
+                            <span>Runtime / model</span>
+                            <input type="text" id="agent-runtime" maxlength="100" placeholder="gpt-4.1, desktop IDE, workflow runner">
+                        </label>
+                        <label class="full-width">
+                            <span>Allowed tools and scopes</span>
+                            <input type="text" id="agent-tools" maxlength="240" placeholder="read logs, query MCP memories, summarize road events">
+                        </label>
+                        <label class="full-width">
+                            <span>Default instructions</span>
+                            <textarea id="agent-instructions" rows="4" placeholder="Describe the agent role, guardrails, and handoff notes."></textarea>
+                        </label>
+                        <label class="full-width">
+                            <span>Notes</span>
+                            <textarea id="agent-notes" rows="3" placeholder="Owner, environment, privacy notes, or rollout status."></textarea>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="submit" class="focus-ring">Save agent</button>
+                        <button type="button" id="new-agent" class="secondary-button focus-ring">New blank agent</button>
+                    </div>
+                    <div id="agent-status" class="status-message" role="status" aria-live="polite"></div>
+                </form>
+            </details>
+
+            <details class="ai-collapse">
+                <summary>Test agent handoff</summary>
+                <div class="ai-test-panel">
+                    <div class="ai-form-grid">
+                        <label class="full-width">
+                            <span>Scenario</span>
+                            <textarea id="agent-test-scenario" rows="4" placeholder="Ask this agent to investigate a road-condition anomaly and summarize next steps."></textarea>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="button" id="run-agent-test" class="focus-ring">Generate handoff test</button>
+                        <button type="button" id="copy-agent-test" class="secondary-button focus-ring">Copy test package</button>
+                    </div>
+                    <div id="agent-test-status" class="status-message" role="status" aria-live="polite"></div>
+                    <pre id="agent-test-result" class="result-box ai-code-block" tabindex="0"></pre>
+                </div>
+            </details>
+        </section>
+
+        <section class="rci-card ai-editor-card" aria-labelledby="mcp-editor-title">
+            <div class="ai-editor-header">
+                <div>
+                    <p class="eyebrow">MCP service configuration</p>
+                    <h2 id="mcp-editor-title">Define an MCP service</h2>
+                    <p class="rci-muted">Save connection settings, generate client snippets, and test service capabilities through the admin proxy.</p>
+                </div>
+                <span id="selected-mcp-pill" class="pill muted">No MCP selected</span>
+            </div>
+
+            <details class="ai-collapse" open>
+                <summary>Configuration</summary>
+                <form id="mcp-form" class="ai-config-form" autocomplete="off">
+                    <div class="ai-form-header compact">
+                        <label class="toggle-row"><input type="checkbox" id="mcp-enabled"> <span>Enabled</span></label>
+                        <button type="button" id="delete-mcp" class="danger-button focus-ring">Remove MCP</button>
+                    </div>
+                    <div class="ai-form-grid">
+                        <label>
+                            <span>Display name</span>
+                            <input type="text" id="mcp-name" maxlength="80" required>
+                        </label>
+                        <label>
+                            <span>Server key</span>
+                            <input type="text" id="mcp-key" maxlength="50" pattern="[a-zA-Z0-9_-]+" required>
+                        </label>
+                        <label class="full-width">
+                            <span>MCP URL</span>
+                            <input type="url" id="mcp-url" required>
+                        </label>
+                        <label>
+                            <span>VS Code server type</span>
+                            <select id="mcp-vscode-type">
+                                <option value="sse">SSE</option>
+                                <option value="http">HTTP</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>SDK transport</span>
+                            <select id="mcp-transport">
+                                <option value="streamable_http">Streamable HTTP</option>
+                                <option value="sse">SSE</option>
+                            </select>
+                        </label>
+                        <label class="full-width">
+                            <span>Bearer token</span>
+                            <div class="secret-input-row">
+                                <input type="password" id="mcp-token" placeholder="token value stored in this browser only">
+                                <button type="button" id="mcp-toggle-token" class="secondary-button">Show</button>
+                            </div>
+                            <small>Tokens remain in browser local storage. Leave blank for unauthenticated local services.</small>
+                        </label>
+                        <label class="full-width">
+                            <span>Notes</span>
+                            <textarea id="mcp-notes" rows="3" placeholder="Docs link, owner, tool scope, or environment notes."></textarea>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="submit" class="focus-ring">Save MCP service</button>
+                        <button type="button" id="new-mcp" class="secondary-button focus-ring">New blank MCP</button>
+                    </div>
+                    <div id="mcp-status" class="status-message" role="status" aria-live="polite"></div>
+                </form>
+            </details>
+
+            <details class="ai-collapse">
+                <summary>Generated snippets</summary>
+                <div class="ai-test-panel">
+                    <div class="ai-snippet-toolbar">
+                        <label><input type="checkbox" id="mcp-include-token"> Include saved token in snippets</label>
+                        <button type="button" id="copy-vscode" class="secondary-button focus-ring">Copy VS Code config</button>
+                        <button type="button" id="copy-python" class="secondary-button focus-ring">Copy Python SDK example</button>
+                    </div>
+                    <div class="compare-grid ai-snippet-grid">
+                        <div class="json-col">
+                            <h4>VS Code <code>.vscode/mcp.json</code></h4>
+                            <pre id="vscode-snippet" class="result-box ai-code-block" tabindex="0"></pre>
+                        </div>
+                        <div class="json-col">
+                            <h4>Python SDK example</h4>
+                            <pre id="python-snippet" class="result-box ai-code-block" tabindex="0"></pre>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="ai-collapse">
+                <summary>MCP tools and function tester</summary>
+                <div class="ai-test-panel">
+                    <div class="ai-console-header">
+                        <p class="rci-muted">List tools exposed by the selected service, inspect schemas, and run a small test call.</p>
+                        <span id="tool-count" class="pill muted">No tools loaded</span>
+                    </div>
+                    <div class="ai-form-grid ai-test-grid">
+                        <label>
+                            <span>Discovery method</span>
+                            <select id="mcp-method">
+                                <option value="tools/list" selected>List tools / functions</option>
+                                <option value="prompts/list">List prompts</option>
+                                <option value="resources/list">List resources</option>
+                                <option value="initialize">Initialize only</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Tool to test</span>
+                            <select id="tool-select">
+                                <option value="">Load tools to populate options</option>
+                            </select>
+                        </label>
+                        <label class="full-width">
+                            <span>Tool arguments JSON</span>
+                            <textarea id="tool-arguments" rows="6" spellcheck="false">{
   "query": "morning routine",
   "limit": 5
 }</textarea>
-                </label>
-            </div>
-
-            <div class="ai-form-actions">
-                <button type="button" id="omi-list-tools" class="focus-ring">List MCP tools / functions</button>
-                <button type="button" id="omi-test-tool" class="secondary-button focus-ring">Test selected tool</button>
-                <button type="button" id="omi-copy-result" class="secondary-button focus-ring">Copy result</button>
-            </div>
-            <div id="omi-test-status" class="status-message" role="status" aria-live="polite"></div>
-
-            <div class="ai-tool-results">
-                <div>
-                    <h4>Available tools / functions</h4>
-                    <div id="omi-tools-list" class="ai-tool-list" tabindex="0">Connect to an MCP server to list tools.</div>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="button" id="list-tools" class="focus-ring">List MCP tools / functions</button>
+                        <button type="button" id="test-tool" class="secondary-button focus-ring">Test selected tool</button>
+                        <button type="button" id="copy-result" class="secondary-button focus-ring">Copy result</button>
+                    </div>
+                    <div id="mcp-test-status" class="status-message" role="status" aria-live="polite"></div>
+                    <div class="ai-tool-results">
+                        <div>
+                            <h4>Available tools / functions</h4>
+                            <div id="tools-list" class="ai-tool-list" tabindex="0">Connect to an MCP server to list tools.</div>
+                        </div>
+                        <div>
+                            <h4>Test response</h4>
+                            <pre id="test-result" class="result-box ai-code-block" tabindex="0"></pre>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h4>Test response</h4>
-                    <pre id="omi-test-result" class="result-box ai-code-block" tabindex="0"></pre>
-                </div>
-            </div>
+            </details>
         </section>
-
-    </div>
-</div>
+    </main>
+</section>
 
 </body>
 </html>
