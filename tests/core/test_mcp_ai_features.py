@@ -144,3 +144,71 @@ def test_mcp_test_endpoint_calls_selected_tool(monkeypatch):
     assert response.status_code == 200
     assert captured_call == {"name": "search_memories", "arguments": {"query": "road", "limit": 2}}
     assert response.json()["result"]["result"]["content"][0]["text"] == "ok"
+
+
+def test_agent_chat_endpoint_requires_admin(monkeypatch):
+    main = load_main(monkeypatch)
+    client = TestClient(main.app)
+
+    response = client.post(
+        "/ai/agent/chat",
+        json={
+            "name": "Road Analyst",
+            "runtime": "test-model",
+            "api_url": "https://api.example.com/v1/chat/completions",
+            "message": "hello",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_agent_chat_endpoint_posts_openai_compatible_payload(monkeypatch):
+    main = load_main(monkeypatch)
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured.update({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        return FakeMcpResponse(
+            {
+                "choices": [
+                    {"message": {"role": "assistant", "content": "Use the road_tools MCP service to inspect anomalies."}}
+                ]
+            }
+        )
+
+    monkeypatch.setattr(main.requests, "post", fake_post)
+    client = TestClient(main.app)
+    login_admin(client)
+
+    response = client.post(
+        "/ai/agent/chat",
+        json={
+            "name": "Road Analyst",
+            "provider": "OpenAI-compatible",
+            "runtime": "test-model",
+            "instructions": "Be concise.",
+            "api_url": "https://api.example.com/v1/chat/completions",
+            "api_key": "agent_secret",
+            "message": "What should I do?",
+            "history": [{"role": "user", "content": "Find a problem."}],
+            "mcp_services": [
+                {
+                    "enabled": True,
+                    "key": "road_tools",
+                    "name": "Road Tools",
+                    "url": "https://mcp.example.com/sse",
+                    "transport": "streamable_http",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["url"] == "https://api.example.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer agent_secret"
+    assert captured["json"]["model"] == "test-model"
+    assert captured["json"]["messages"][0]["role"] == "system"
+    assert "road_tools" in captured["json"]["messages"][0]["content"]
+    assert captured["json"]["messages"][-1] == {"role": "user", "content": "What should I do?"}
+    assert response.json()["message"] == "Use the road_tools MCP service to inspect anomalies."

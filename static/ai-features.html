@@ -110,7 +110,19 @@
                         </label>
                         <label>
                             <span>Runtime / model</span>
-                            <input type="text" id="agent-runtime" maxlength="100" placeholder="gpt-4.1, desktop IDE, workflow runner">
+                            <input type="text" id="agent-runtime" maxlength="100" placeholder="gpt-4.1-mini, desktop IDE, workflow runner">
+                        </label>
+                        <label class="full-width">
+                            <span>OpenAI-compatible chat API URL</span>
+                            <input type="url" id="agent-api-url" placeholder="https://api.example.com/v1/chat/completions">
+                            <small>Used by the chat console. Leave blank for agents that are documented only.</small>
+                        </label>
+                        <label class="full-width">
+                            <span>Chat API bearer token</span>
+                            <div class="secret-input-row">
+                                <input type="password" id="agent-api-key" placeholder="token value stored in this browser only">
+                                <button type="button" id="agent-toggle-key" class="secondary-button">Show</button>
+                            </div>
                         </label>
                         <label class="full-width">
                             <span>Allowed tools and scopes</span>
@@ -134,6 +146,26 @@
             </details>
 
             <details class="ai-collapse">
+                <summary>Chat with agent</summary>
+                <div class="ai-test-panel">
+                    <div id="agent-chat-log" class="ai-chat-log" aria-live="polite" data-history="[]">
+                        <p class="rci-muted">Configure an HTTPS OpenAI-compatible chat endpoint above, then send a message to the selected agent. Enabled MCP services are included as context so the agent can request tools deliberately.</p>
+                    </div>
+                    <div class="ai-form-grid">
+                        <label class="full-width">
+                            <span>Message</span>
+                            <textarea id="agent-chat-message" rows="4" placeholder="Ask the selected agent to inspect road-condition context, request MCP tools, or summarize next steps."></textarea>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="button" id="send-agent-chat" class="focus-ring">Send chat message</button>
+                        <button type="button" id="clear-agent-chat" class="secondary-button focus-ring">Clear chat</button>
+                    </div>
+                    <div id="agent-chat-status" class="status-message" role="status" aria-live="polite"></div>
+                </div>
+            </details>
+
+            <details class="ai-collapse">
                 <summary>Test agent handoff</summary>
                 <div class="ai-test-panel">
                     <div class="ai-form-grid">
@@ -148,6 +180,34 @@
                     </div>
                     <div id="agent-test-status" class="status-message" role="status" aria-live="polite"></div>
                     <pre id="agent-test-result" class="result-box ai-code-block" tabindex="0"></pre>
+                </div>
+            </details>
+        </section>
+
+        <section class="rci-card ai-editor-card" aria-labelledby="json-provider-title">
+            <div class="ai-editor-header">
+                <div>
+                    <p class="eyebrow">JSON provider</p>
+                    <h2 id="json-provider-title">Add agents or MCP services from JSON</h2>
+                    <p class="rci-muted">Paste a generated JSON object with complete agent and MCP service definitions, or copy the technical contract below into your AI JSON provider.</p>
+                </div>
+            </div>
+            <details class="ai-collapse" open>
+                <summary>Import JSON</summary>
+                <div class="ai-test-panel">
+                    <div class="ai-form-grid">
+                        <label class="full-width">
+                            <span>Agent / MCP JSON</span>
+                            <textarea id="json-provider-input" rows="10" spellcheck="false" placeholder='{ "agents": [{ "name": "Operations Analyst", "key": "operations_analyst" }], "mcps": [{ "name": "Road Tools", "key": "road_tools", "url": "https://mcp.example.com/sse" }] }'></textarea>
+                        </label>
+                    </div>
+                    <div class="ai-form-actions">
+                        <button type="button" id="import-json-config" class="focus-ring">Import JSON configuration</button>
+                        <button type="button" id="copy-json-requirements" class="secondary-button focus-ring">Copy JSON requirements</button>
+                    </div>
+                    <div id="json-provider-status" class="status-message" role="status" aria-live="polite"></div>
+                    <h4>Technical JSON requirements for AI providers</h4>
+                    <pre id="json-requirements" class="result-box ai-code-block" tabindex="0"></pre>
                 </div>
             </details>
         </section>

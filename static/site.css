@@ -1046,3 +1046,9 @@ option.selected-default { background-color:var(--rci-primary-accent) !important;
   .ai-tool-results { grid-template-columns:1fr; }
   .secret-input-row { flex-direction:column; }
 }
+.ai-chat-log { border:1px solid var(--rci-border); border-radius:var(--rci-radius); background:var(--rci-surface-alt); padding:.75rem; min-height:180px; max-height:360px; overflow:auto; margin-bottom:.75rem; }
+.ai-chat-message { border:1px solid var(--rci-border); border-radius:var(--rci-radius); background:var(--rci-surface); padding:.65rem; margin-bottom:.6rem; }
+.ai-chat-message.user { border-left:4px solid var(--rci-primary); }
+.ai-chat-message.assistant { border-left:4px solid #1b7f3a; }
+.ai-chat-message strong { display:block; margin-bottom:.25rem; }
+.ai-chat-message p { margin:0; white-space:pre-wrap; }
