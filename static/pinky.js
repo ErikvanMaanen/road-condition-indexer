@@ -1,19 +1,24 @@
-const PINKY_CONFIG = {
+const DEFAULT_PINKY_SETTINGS = {
     baseUrl: 'http://drifter.ddns.net:5000',
-    endpoints: {
-        health: 'http://drifter.ddns.net:5000/api/health',
-        tools: 'http://drifter.ddns.net:5000/api/tools',
-        command: 'http://drifter.ddns.net:5000/api/command',
-        status: 'http://drifter.ddns.net:5000/api/status',
-        confirm: token => `http://drifter.ddns.net:5000/api/confirm/${encodeURIComponent(token)}`
-    },
-    recommendedApiKey: 'UB$6cv2#p9@YM34%',
+    healthPath: '/api/health',
+    toolsPath: '/api/tools',
+    commandPath: '/api/command',
+    statusPath: '/api/status',
+    confirmPath: '/api/confirm/{token}',
     expectedToolCount: 29,
-    storageKey: 'rci-pinky-api-key'
+    transport: 'http-json',
+    validationStatus: 'Validated ok on 2026-05-11'
+};
+
+const PINKY_CONFIG = {
+    recommendedApiKey: 'UB$6cv2#p9@YM34%',
+    apiKeyStorageKey: 'rci-pinky-api-key',
+    settingsStorageKey: 'rci-pinky-settings'
 };
 
 const pinkyState = {
-    latestResponse: null
+    latestResponse: null,
+    settings: { ...DEFAULT_PINKY_SETTINGS }
 };
 
 function pinkyElement(id) {
@@ -25,6 +30,61 @@ function setPinkyMessage(message, type = 'success') {
     status.textContent = message;
     status.className = `status-message ${type}`;
     status.style.display = 'block';
+}
+
+function normalizePinkyBaseUrl(baseUrl) {
+    const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '');
+    if (!trimmed) return DEFAULT_PINKY_SETTINGS.baseUrl;
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    try {
+        return new URL(candidate).origin;
+    } catch (error) {
+        return DEFAULT_PINKY_SETTINGS.baseUrl;
+    }
+}
+
+function normalizePinkyPath(path, fallback) {
+    const trimmed = String(path || '').trim();
+    if (!trimmed) return fallback;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
+function normalizePinkySettings(settings = {}) {
+    const expectedToolCount = Number.parseInt(settings.expectedToolCount, 10);
+    return {
+        ...DEFAULT_PINKY_SETTINGS,
+        ...settings,
+        baseUrl: normalizePinkyBaseUrl(settings.baseUrl || DEFAULT_PINKY_SETTINGS.baseUrl),
+        healthPath: normalizePinkyPath(settings.healthPath, DEFAULT_PINKY_SETTINGS.healthPath),
+        toolsPath: normalizePinkyPath(settings.toolsPath, DEFAULT_PINKY_SETTINGS.toolsPath),
+        commandPath: normalizePinkyPath(settings.commandPath, DEFAULT_PINKY_SETTINGS.commandPath),
+        statusPath: normalizePinkyPath(settings.statusPath, DEFAULT_PINKY_SETTINGS.statusPath),
+        confirmPath: normalizePinkyPath(settings.confirmPath, DEFAULT_PINKY_SETTINGS.confirmPath),
+        expectedToolCount: Number.isFinite(expectedToolCount) && expectedToolCount >= 0 ? expectedToolCount : DEFAULT_PINKY_SETTINGS.expectedToolCount
+    };
+}
+
+function buildPinkyUrl(path) {
+    const settings = pinkyState.settings;
+    if (/^https?:\/\//i.test(path)) return path;
+    const baseUrl = settings.baseUrl.endsWith('/') ? settings.baseUrl : `${settings.baseUrl}/`;
+    try {
+        return new URL(path.replace(/^\/+/, ''), baseUrl).toString();
+    } catch (error) {
+        return new URL(path.replace(/^\/+/, ''), `${DEFAULT_PINKY_SETTINGS.baseUrl}/`).toString();
+    }
+}
+
+function getPinkyEndpoints() {
+    const settings = pinkyState.settings;
+    return {
+        health: buildPinkyUrl(settings.healthPath),
+        tools: buildPinkyUrl(settings.toolsPath),
+        command: buildPinkyUrl(settings.commandPath),
+        status: buildPinkyUrl(settings.statusPath),
+        confirm: token => buildPinkyUrl(settings.confirmPath.replace('{token}', encodeURIComponent(token)))
+    };
 }
 
 function getPinkyApiKey() {
@@ -53,7 +113,7 @@ function setPinkyResponse(value) {
 }
 
 function describeFetchError(error) {
-    if (window.location.protocol === 'https:' && PINKY_CONFIG.baseUrl.startsWith('http://')) {
+    if (window.location.protocol === 'https:' && pinkyState.settings.baseUrl.startsWith('http://')) {
         return `${error.message}. This page is using HTTPS while Pinky is exposed over HTTP, so the browser may block mixed-content requests.`;
     }
     return `${error.message}. Check that Pinky is reachable and allows browser CORS requests from this site.`;
@@ -73,7 +133,7 @@ async function pinkyFetch(url, options = {}) {
 async function checkPinkyHealth() {
     try {
         setPinkyMessage('Checking Pinky health...', 'warning');
-        const payload = await pinkyFetch(PINKY_CONFIG.endpoints.health);
+        const payload = await pinkyFetch(getPinkyEndpoints().health);
         setPinkyResponse(payload);
         const healthStatus = payload.status || payload.health_status || 'ok';
         pinkyElement('pinky-health-pill').textContent = `Health ${healthStatus}`;
@@ -124,7 +184,7 @@ function renderPinkyTools(tools) {
 async function loadPinkyTools() {
     try {
         setPinkyMessage('Loading Pinky tools...', 'warning');
-        const payload = await pinkyFetch(PINKY_CONFIG.endpoints.tools, {
+        const payload = await pinkyFetch(getPinkyEndpoints().tools, {
             headers: getPinkyHeaders()
         });
         const tools = normalizePinkyTools(payload);
@@ -140,7 +200,7 @@ async function loadPinkyTools() {
 async function loadPinkyStatus() {
     try {
         setPinkyMessage('Loading Pinky status...', 'warning');
-        const payload = await pinkyFetch(PINKY_CONFIG.endpoints.status, {
+        const payload = await pinkyFetch(getPinkyEndpoints().status, {
             headers: getPinkyHeaders()
         });
         setPinkyResponse(payload);
@@ -164,7 +224,7 @@ async function sendPinkyCommand(event) {
     try {
         pinkyElement('pinky-send-command').disabled = true;
         setPinkyMessage('Sending command to Pinky...', 'warning');
-        const payload = await pinkyFetch(PINKY_CONFIG.endpoints.command, {
+        const payload = await pinkyFetch(getPinkyEndpoints().command, {
             method: 'POST',
             headers: getPinkyHeaders(true),
             body: JSON.stringify({ command })
@@ -191,7 +251,7 @@ async function confirmPinkyToken(event) {
 
     try {
         setPinkyMessage('Confirming Pinky token...', 'warning');
-        const payload = await pinkyFetch(PINKY_CONFIG.endpoints.confirm(token), {
+        const payload = await pinkyFetch(getPinkyEndpoints().confirm(token), {
             method: 'POST',
             headers: getPinkyHeaders()
         });
@@ -204,7 +264,7 @@ async function confirmPinkyToken(event) {
 }
 
 function restorePinkyKey() {
-    const rememberedKey = localStorage.getItem(PINKY_CONFIG.storageKey);
+    const rememberedKey = localStorage.getItem(PINKY_CONFIG.apiKeyStorageKey);
     if (rememberedKey) {
         pinkyElement('pinky-api-key').value = rememberedKey;
         pinkyElement('pinky-remember-key').checked = true;
@@ -213,10 +273,85 @@ function restorePinkyKey() {
 
 function persistPinkyKeyPreference() {
     if (pinkyElement('pinky-remember-key').checked) {
-        localStorage.setItem(PINKY_CONFIG.storageKey, getPinkyApiKey());
+        localStorage.setItem(PINKY_CONFIG.apiKeyStorageKey, getPinkyApiKey());
     } else {
-        localStorage.removeItem(PINKY_CONFIG.storageKey);
+        localStorage.removeItem(PINKY_CONFIG.apiKeyStorageKey);
     }
+}
+
+function getPinkySettingsFromForm() {
+    return normalizePinkySettings({
+        baseUrl: pinkyElement('pinky-base-url').value,
+        healthPath: pinkyElement('pinky-health-path').value,
+        toolsPath: pinkyElement('pinky-tools-path').value,
+        commandPath: pinkyElement('pinky-command-path').value,
+        statusPath: pinkyElement('pinky-status-path').value,
+        confirmPath: pinkyElement('pinky-confirm-path').value,
+        expectedToolCount: pinkyElement('pinky-expected-tools').value
+    });
+}
+
+function applyPinkySettings(settings) {
+    pinkyState.settings = normalizePinkySettings(settings);
+    pinkyElement('pinky-base-url').value = pinkyState.settings.baseUrl;
+    pinkyElement('pinky-health-path').value = pinkyState.settings.healthPath;
+    pinkyElement('pinky-tools-path').value = pinkyState.settings.toolsPath;
+    pinkyElement('pinky-command-path').value = pinkyState.settings.commandPath;
+    pinkyElement('pinky-status-path').value = pinkyState.settings.statusPath;
+    pinkyElement('pinky-confirm-path').value = pinkyState.settings.confirmPath;
+    pinkyElement('pinky-expected-tools').value = pinkyState.settings.expectedToolCount;
+    updatePinkyEndpointSummary();
+}
+
+function persistPinkySettings(showMessage = true) {
+    const settings = getPinkySettingsFromForm();
+    applyPinkySettings(settings);
+    localStorage.setItem(PINKY_CONFIG.settingsStorageKey, JSON.stringify(pinkyState.settings));
+    if (showMessage) {
+        setPinkyMessage('Pinky settings saved in this browser.', 'success');
+    }
+}
+
+function restorePinkySettings() {
+    const rememberedSettings = localStorage.getItem(PINKY_CONFIG.settingsStorageKey);
+    if (!rememberedSettings) {
+        applyPinkySettings(DEFAULT_PINKY_SETTINGS);
+        return;
+    }
+
+    try {
+        applyPinkySettings(JSON.parse(rememberedSettings));
+    } catch (error) {
+        applyPinkySettings(DEFAULT_PINKY_SETTINGS);
+        localStorage.removeItem(PINKY_CONFIG.settingsStorageKey);
+        setPinkyMessage(`Saved Pinky settings could not be loaded: ${error.message}`, 'error');
+    }
+}
+
+function resetPinkySettings() {
+    localStorage.removeItem(PINKY_CONFIG.settingsStorageKey);
+    applyPinkySettings(DEFAULT_PINKY_SETTINGS);
+    setPinkyMessage('Pinky settings reset to defaults.', 'success');
+}
+
+function updatePinkyEndpointSummary() {
+    const endpoints = getPinkyEndpoints();
+    const baseUrlLink = pinkyElement('pinky-base-url-link');
+    baseUrlLink.href = pinkyState.settings.baseUrl;
+    baseUrlLink.textContent = pinkyState.settings.baseUrl;
+    pinkyElement('pinky-transport-label').textContent = pinkyState.settings.transport;
+    pinkyElement('pinky-validation-label').textContent = pinkyState.settings.validationStatus;
+    pinkyElement('pinky-openapi-link').href = buildPinkyUrl('/openapi.json');
+    pinkyElement('pinky-manifest-link').href = buildPinkyUrl('/.well-known/omi-tools.json');
+    pinkyElement('pinky-tool-count-pill').textContent = `${pinkyState.settings.expectedToolCount} tools expected`;
+    setPinkyResponse({
+        name: 'Pinky Remote Access',
+        transport: pinkyState.settings.transport,
+        base_url: pinkyState.settings.baseUrl,
+        endpoints,
+        expected_tool_count: pinkyState.settings.expectedToolCount,
+        protected_endpoints_use: 'Authorization: Bearer <api key>'
+    });
 }
 
 function togglePinkyKeyVisibility() {
@@ -239,6 +374,7 @@ async function copyPinkyResponse() {
 }
 
 function initializePinkyPage() {
+    restorePinkySettings();
     restorePinkyKey();
     pinkyElement('pinky-health-check').addEventListener('click', checkPinkyHealth);
     pinkyElement('pinky-load-tools').addEventListener('click', loadPinkyTools);
@@ -248,18 +384,19 @@ function initializePinkyPage() {
     pinkyElement('pinky-toggle-key').addEventListener('click', togglePinkyKeyVisibility);
     pinkyElement('pinky-remember-key').addEventListener('change', persistPinkyKeyPreference);
     pinkyElement('pinky-api-key').addEventListener('input', persistPinkyKeyPreference);
+    pinkyElement('pinky-save-settings').addEventListener('click', () => persistPinkySettings());
+    pinkyElement('pinky-reset-settings').addEventListener('click', resetPinkySettings);
+    pinkyElement('pinky-settings-form').addEventListener('input', () => {
+        applyPinkySettings(getPinkySettingsFromForm());
+    });
+    pinkyElement('pinky-settings-form').addEventListener('submit', event => {
+        event.preventDefault();
+        persistPinkySettings();
+    });
     pinkyElement('pinky-copy-response').addEventListener('click', copyPinkyResponse);
     pinkyElement('pinky-clear-command').addEventListener('click', () => {
         pinkyElement('pinky-command-input').value = '';
         pinkyElement('pinky-command-input').focus();
-    });
-
-    setPinkyResponse({
-        name: 'Pinky Remote Access',
-        transport: 'http-json',
-        base_url: PINKY_CONFIG.baseUrl,
-        expected_tool_count: PINKY_CONFIG.expectedToolCount,
-        protected_endpoints_use: 'Authorization: Bearer <api key>'
     });
 }
 

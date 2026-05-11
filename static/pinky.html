@@ -39,25 +39,61 @@
         <dl class="pinky-endpoint-list">
             <div>
                 <dt>Base URL</dt>
-                <dd><a href="http://drifter.ddns.net:5000" target="_blank" rel="noopener">http://drifter.ddns.net:5000</a></dd>
+                <dd><a id="pinky-base-url-link" href="http://drifter.ddns.net:5000" target="_blank" rel="noopener">http://drifter.ddns.net:5000</a></dd>
             </div>
             <div>
                 <dt>Transport</dt>
-                <dd>http-json</dd>
+                <dd id="pinky-transport-label">http-json</dd>
             </div>
             <div>
                 <dt>Status</dt>
-                <dd>Validated ok on 2026-05-11</dd>
+                <dd id="pinky-validation-label">Validated ok on 2026-05-11</dd>
             </div>
             <div>
                 <dt>OpenAPI</dt>
-                <dd><a href="http://drifter.ddns.net:5000/openapi.json" target="_blank" rel="noopener">openapi.json</a></dd>
+                <dd><a id="pinky-openapi-link" href="http://drifter.ddns.net:5000/openapi.json" target="_blank" rel="noopener">openapi.json</a></dd>
             </div>
             <div>
                 <dt>OMI manifest</dt>
-                <dd><a href="http://drifter.ddns.net:5000/.well-known/omi-tools.json" target="_blank" rel="noopener">omi-tools.json</a></dd>
+                <dd><a id="pinky-manifest-link" href="http://drifter.ddns.net:5000/.well-known/omi-tools.json" target="_blank" rel="noopener">omi-tools.json</a></dd>
             </div>
         </dl>
+
+        <form id="pinky-settings-form" class="pinky-form pinky-settings-form" autocomplete="off">
+            <label for="pinky-base-url">Base URL</label>
+            <input type="url" id="pinky-base-url" value="http://drifter.ddns.net:5000" required>
+            <div class="pinky-settings-grid">
+                <div>
+                    <label for="pinky-health-path">Health path</label>
+                    <input type="text" id="pinky-health-path" value="/api/health" required>
+                </div>
+                <div>
+                    <label for="pinky-tools-path">Tools path</label>
+                    <input type="text" id="pinky-tools-path" value="/api/tools" required>
+                </div>
+                <div>
+                    <label for="pinky-command-path">Command path</label>
+                    <input type="text" id="pinky-command-path" value="/api/command" required>
+                </div>
+                <div>
+                    <label for="pinky-status-path">Status path</label>
+                    <input type="text" id="pinky-status-path" value="/api/status" required>
+                </div>
+                <div>
+                    <label for="pinky-confirm-path">Confirm path</label>
+                    <input type="text" id="pinky-confirm-path" value="/api/confirm/{token}" required>
+                </div>
+                <div>
+                    <label for="pinky-expected-tools">Expected tools</label>
+                    <input type="number" id="pinky-expected-tools" value="29" min="0" step="1" required>
+                </div>
+            </div>
+            <div class="pinky-actions">
+                <button type="button" id="pinky-save-settings" class="secondary-button focus-ring">Save settings</button>
+                <button type="button" id="pinky-reset-settings" class="secondary-button focus-ring">Reset defaults</button>
+            </div>
+            <small class="rci-muted">Save settings to remember them in this browser and use them to build Pinky's request URLs. Use {token} in the confirmation path where the token should be inserted.</small>
+        </form>
 
         <form id="pinky-auth-form" class="pinky-form" autocomplete="off">
             <label for="pinky-api-key">Bearer API key</label>
