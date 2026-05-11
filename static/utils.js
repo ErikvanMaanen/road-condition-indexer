@@ -689,7 +689,8 @@ const RCI_NAV_GROUPS = [
             { label: 'Audio & Video', href: '/static/av-tools.html', paths: ['/static/av-tools.html'] },
             { label: 'Shared Objects', href: '/static/shared.html', paths: ['/static/shared.html'] },
             { label: 'Monitor', href: '/static/monitor.html', paths: ['/static/monitor.html'] },
-            { label: 'AI Features', href: '/static/ai-features.html', paths: ['/static/ai-features.html'] }
+            { label: 'AI Features', href: '/static/ai-features.html', paths: ['/static/ai-features.html'] },
+            { label: 'Pinky', href: '/static/pinky.html', paths: ['/static/pinky.html'] }
         ]
     },
     {
