@@ -1832,6 +1832,11 @@ def read_monitor_page(request: Request):
     """Serve the monitor management page."""
     return serve_protected_html(request, "monitor.html", ROLE_ADMIN)
 
+@app.get("/pinky.html")
+def read_pinky_page(request: Request):
+    """Serve the Pinky integration page."""
+    return serve_protected_html(request, "pinky.html", ROLE_ADMIN)
+
 
 @app.get("/logs-partial.html")
 def read_logs_partial(request: Request):
@@ -2947,6 +2952,131 @@ def chat_with_ai_agent(request: AiAgentChatRequest, dep: None = Depends(admin_de
         "raw": response_payload,
     }
 
+
+
+
+class PinkyChatImage(BaseModel):
+    data: str
+    mime: str
+
+
+class PinkyChatRequest(BaseModel):
+    message: str
+    conversation_id: Optional[str] = None
+    images: Optional[List[PinkyChatImage]] = None
+
+
+class PinkyConversationCreateRequest(BaseModel):
+    title: Optional[str] = None
+    mode: Literal["chat", "mcp"]
+
+
+class PinkyConversationRenameRequest(BaseModel):
+    title: str
+
+
+PINKY_DEFAULT_BASE_URL = "http://localhost:8420"
+PINKY_REQUEST_TIMEOUT_SECONDS = 60
+
+
+def _pinky_base_url() -> str:
+    return os.getenv("PINKY_BASE_URL", PINKY_DEFAULT_BASE_URL).rstrip("/")
+
+
+def _pinky_headers(auth_required: bool = True, accept_sse: bool = False) -> Dict[str, str]:
+    headers = {"Accept": "application/json, text/event-stream" if accept_sse else "application/json"}
+    if auth_required:
+        api_key = os.getenv("PINKY_API_KEY", "").strip()
+        if not api_key:
+            raise HTTPException(status_code=503, detail="Pinky API key is not configured")
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _pinky_request(method: str, path: str, *, auth_required: bool = True, json_payload: Any = None, params: Optional[Dict[str, Any]] = None, timeout: int = PINKY_REQUEST_TIMEOUT_SECONDS, accept_sse: bool = False):
+    url = f"{_pinky_base_url()}{path}"
+    headers = _pinky_headers(auth_required=auth_required, accept_sse=accept_sse)
+    if json_payload is not None:
+        headers["Content-Type"] = "application/json"
+    try:
+        resp = requests.request(method, url, headers=headers, json=json_payload, params=params, timeout=timeout)
+    except requests.Timeout as exc:
+        raise HTTPException(status_code=504, detail="Pinky request timed out") from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Failed to reach Pinky") from exc
+
+    content_type = resp.headers.get("content-type", "").lower()
+    if not resp.ok:
+        detail = resp.text[:300]
+        if "application/json" in content_type:
+            try:
+                body = resp.json()
+                detail = body.get("detail") or body.get("message") or detail
+            except ValueError:
+                pass
+        raise HTTPException(status_code=resp.status_code if resp.status_code in (401,403,404,503) else 502, detail=f"Pinky error: {detail}")
+
+    if "application/json" in content_type:
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="Pinky returned invalid JSON") from exc
+    return {"raw": resp.text}
+
+
+@app.get('/api/pinky/health')
+def pinky_health(dep: None = Depends(admin_dependency)):
+    return _pinky_request('GET', '/api/health', auth_required=False, timeout=20)
+
+
+@app.get('/api/pinky/status')
+def pinky_status(dep: None = Depends(admin_dependency)):
+    return _pinky_request('GET', '/api/status')
+
+
+@app.get('/api/pinky/tools')
+def pinky_tools(dep: None = Depends(admin_dependency)):
+    return _pinky_request('GET', '/api/tools')
+
+
+@app.post('/api/pinky/chat')
+def pinky_chat(payload: PinkyChatRequest, dep: None = Depends(admin_dependency)):
+    return _pinky_request('POST', '/api/chat', json_payload=payload.model_dump(exclude_none=True))
+
+
+@app.post('/api/pinky/mcp-chat')
+def pinky_mcp_chat(payload: PinkyChatRequest, dep: None = Depends(admin_dependency)):
+    return _pinky_request('POST', '/api/mcp-chat', json_payload=payload.model_dump(exclude_none=True))
+
+
+@app.get('/api/pinky/conversations')
+def pinky_conversations(mode: Literal['chat','mcp'], dep: None = Depends(admin_dependency)):
+    return _pinky_request('GET', '/api/conversations', params={'mode': mode})
+
+
+@app.post('/api/pinky/conversations')
+def pinky_create_conversation(payload: PinkyConversationCreateRequest, dep: None = Depends(admin_dependency)):
+    return _pinky_request('POST', '/api/conversations', json_payload=payload.model_dump(exclude_none=True))
+
+
+@app.get('/api/pinky/conversations/{conversation_id}')
+def pinky_get_conversation(conversation_id: str, dep: None = Depends(admin_dependency)):
+    return _pinky_request('GET', f'/api/conversations/{quote(conversation_id, safe="")}')
+
+
+@app.patch('/api/pinky/conversations/{conversation_id}')
+def pinky_rename_conversation(conversation_id: str, payload: PinkyConversationRenameRequest, dep: None = Depends(admin_dependency)):
+    return _pinky_request('PATCH', f'/api/conversations/{quote(conversation_id, safe="")}', json_payload=payload.model_dump())
+
+
+@app.delete('/api/pinky/conversations/{conversation_id}')
+def pinky_delete_conversation(conversation_id: str, dep: None = Depends(admin_dependency)):
+    return _pinky_request('DELETE', f'/api/conversations/{quote(conversation_id, safe="")}')
+
+
+@app.post('/api/pinky/confirm/{token}')
+def pinky_confirm(token: str, dep: None = Depends(admin_dependency)):
+    return _pinky_request('POST', f'/api/confirm/{quote(token, safe="")}')
 
 class MonitorRequest(BaseModel):
     name: str = Field(..., max_length=150)
