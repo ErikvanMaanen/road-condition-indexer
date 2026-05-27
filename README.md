@@ -293,3 +293,21 @@ For AI assistants and developers working on this project, see [DEVELOPMENT.md](D
 - Testing strategies
 - Known issues and fixes
 - Development workflows
+
+## Pinky integration
+
+The admin-only Pinky UI is available at `/pinky.html`.
+
+Environment variables:
+- `PINKY_BASE_URL` (optional): Pinky base URL, defaults to `http://localhost:8420`.
+- `PINKY_API_KEY` (required for protected Pinky `/api/*` calls): forwarded server-side as `Authorization: Bearer ...`.
+
+Security model:
+- Browser UI calls local proxy routes (`/api/pinky/*`) only.
+- The server performs authenticated requests to Pinky; no Pinky bearer token is exposed to browser JavaScript.
+- Confirmation actions are explicit and manual through `/api/pinky/confirm/{token}`.
+
+Troubleshooting:
+- `503 Pinky API key is not configured`: set `PINKY_API_KEY` in runtime environment.
+- `502 Failed to reach Pinky`: verify `PINKY_BASE_URL` and network reachability.
+- `504 Pinky request timed out`: Pinky may be processing tool calls; retry or inspect Pinky status.

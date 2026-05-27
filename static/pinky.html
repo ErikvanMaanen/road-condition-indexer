@@ -1,169 +1,35 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pinky</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="/static/site.css">
-    <script src="/static/utils.js"></script>
-    <script src="/static/pinky.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pinky Integration</title>
+  <link rel="stylesheet" href="/static/site.css" />
+  <script src="/utils.js" defer></script>
+  <script src="/static/pinky.js" defer></script>
 </head>
 <body>
-<nav id="page-links" class="page-links mb-1" data-rci-navigation aria-label="Primary navigation"></nav>
-<h1><img src="/static/logo.png" alt="Road Condition Indexer Logo" class="rci-logo">Pinky</h1>
-
-<section class="rci-card pinky-hero" aria-labelledby="pinky-title">
-    <div>
-        <p class="eyebrow">Remote AI agent</p>
-        <h2 id="pinky-title">Pinky Remote Access</h2>
-        <p class="rci-muted">Connect to the self-hosted Pinky HTTP JSON agent, review health and available tools, then send natural-language commands.</p>
+<div class="container">
+  <h1>Pinky Integration</h1>
+  <div id="pinky-status-message" class="status-message"></div>
+  <div class="pinky-actions"><button id="refresh-status" class="secondary-button">Refresh status</button></div>
+  <div class="pinky-actions" role="tablist">
+    <button class="secondary-button pinky-tab" data-tab="chat">Chat</button>
+    <button class="secondary-button pinky-tab" data-tab="mcp">MCP Chat</button>
+    <button class="secondary-button pinky-tab" data-tab="status">Tools/Status</button>
+  </div>
+  <section id="tab-chat" class="rci-card">
+    <div class="pinky-layout">
+      <aside><button id="chat-new" class="secondary-button">New</button><div id="chat-conversations"></div></aside>
+      <main><div id="chat-messages"></div><textarea id="chat-input"></textarea><button id="chat-send">Send</button><div id="chat-confirm"></div></main>
     </div>
-    <div class="pinky-status-pills" aria-label="Pinky remote summary">
-        <span id="pinky-health-pill" class="pill muted">Health unknown</span>
-        <span id="pinky-tool-count-pill" class="pill muted">29 tools expected</span>
-        <span class="pill muted">homey + google_workspace</span>
-    </div>
-</section>
-
-<main class="pinky-layout" aria-labelledby="pinky-title">
-    <section class="rci-card pinky-connection" aria-labelledby="pinky-connection-title">
-        <div class="pinky-panel-header">
-            <div>
-                <p class="eyebrow">Connection</p>
-                <h2 id="pinky-connection-title">Remote endpoint</h2>
-            </div>
-            <button type="button" id="pinky-health-check" class="secondary-button focus-ring">Check health</button>
-        </div>
-
-        <dl class="pinky-endpoint-list">
-            <div>
-                <dt>Base URL</dt>
-                <dd><a id="pinky-base-url-link" href="http://drifter.ddns.net:5000" target="_blank" rel="noopener">http://drifter.ddns.net:5000</a></dd>
-            </div>
-            <div>
-                <dt>Transport</dt>
-                <dd id="pinky-transport-label">http-json</dd>
-            </div>
-            <div>
-                <dt>Status</dt>
-                <dd id="pinky-validation-label">Validated ok on 2026-05-11</dd>
-            </div>
-            <div>
-                <dt>OpenAPI</dt>
-                <dd><a id="pinky-openapi-link" href="http://drifter.ddns.net:5000/openapi.json" target="_blank" rel="noopener">openapi.json</a></dd>
-            </div>
-            <div>
-                <dt>OMI manifest</dt>
-                <dd><a id="pinky-manifest-link" href="http://drifter.ddns.net:5000/.well-known/omi-tools.json" target="_blank" rel="noopener">omi-tools.json</a></dd>
-            </div>
-        </dl>
-
-        <form id="pinky-settings-form" class="pinky-form pinky-settings-form" autocomplete="off">
-            <label for="pinky-base-url">Base URL</label>
-            <input type="url" id="pinky-base-url" value="http://drifter.ddns.net:5000" required>
-            <div class="pinky-settings-grid">
-                <div>
-                    <label for="pinky-health-path">Health path</label>
-                    <input type="text" id="pinky-health-path" value="/api/health" required>
-                </div>
-                <div>
-                    <label for="pinky-tools-path">Tools path</label>
-                    <input type="text" id="pinky-tools-path" value="/api/tools" required>
-                </div>
-                <div>
-                    <label for="pinky-command-path">Command path</label>
-                    <input type="text" id="pinky-command-path" value="/api/command" required>
-                </div>
-                <div>
-                    <label for="pinky-status-path">Status path</label>
-                    <input type="text" id="pinky-status-path" value="/api/status" required>
-                </div>
-                <div>
-                    <label for="pinky-confirm-path">Confirm path</label>
-                    <input type="text" id="pinky-confirm-path" value="/api/confirm/{token}" required>
-                </div>
-                <div>
-                    <label for="pinky-expected-tools">Expected tools</label>
-                    <input type="number" id="pinky-expected-tools" value="29" min="0" step="1" required>
-                </div>
-            </div>
-            <div class="pinky-actions">
-                <button type="button" id="pinky-save-settings" class="secondary-button focus-ring">Save settings</button>
-                <button type="button" id="pinky-reset-settings" class="secondary-button focus-ring">Reset defaults</button>
-            </div>
-            <small class="rci-muted">Save settings to remember them in this browser and use them to build Pinky's request URLs. Use {token} in the confirmation path where the token should be inserted.</small>
-        </form>
-
-        <form id="pinky-auth-form" class="pinky-form" autocomplete="off">
-            <label for="pinky-api-key">Bearer API key</label>
-            <div class="pinky-secret-row">
-                <input type="password" id="pinky-api-key" value="UB$6cv2#p9@YM34%" aria-describedby="pinky-api-key-help">
-                <button type="button" id="pinky-toggle-key" class="secondary-button focus-ring" aria-pressed="false">Show</button>
-            </div>
-            <small id="pinky-api-key-help" class="rci-muted">Used only in browser requests to protected /api/* endpoints. The public health check does not require authentication.</small>
-            <label class="toggle-row pinky-remember-row"><input type="checkbox" id="pinky-remember-key"> <span>Remember this key in this browser</span></label>
-        </form>
-
-        <div id="pinky-status-message" class="status-message" role="status" aria-live="polite"></div>
-    </section>
-
-    <section class="rci-card pinky-command" aria-labelledby="pinky-command-title">
-        <div class="pinky-panel-header">
-            <div>
-                <p class="eyebrow">Command</p>
-                <h2 id="pinky-command-title">Ask Pinky</h2>
-            </div>
-            <button type="button" id="pinky-clear-command" class="secondary-button focus-ring">Clear</button>
-        </div>
-        <form id="pinky-command-form" class="pinky-form">
-            <label for="pinky-command-input">Command</label>
-            <textarea id="pinky-command-input" rows="5" required>List my next 5 calendar events</textarea>
-            <div class="pinky-actions">
-                <button type="submit" id="pinky-send-command" class="focus-ring">Send command</button>
-                <button type="button" id="pinky-load-status" class="secondary-button focus-ring">Load status</button>
-                <button type="button" id="pinky-load-tools" class="secondary-button focus-ring">Load tools</button>
-            </div>
-        </form>
-    </section>
-
-    <section class="rci-card pinky-tools" aria-labelledby="pinky-tools-title">
-        <div class="pinky-panel-header">
-            <div>
-                <p class="eyebrow">Tools</p>
-                <h2 id="pinky-tools-title">Available tool list</h2>
-            </div>
-            <span id="pinky-tools-summary" class="pill muted">Not loaded</span>
-        </div>
-        <div id="pinky-tools-list" class="pinky-tools-list" aria-live="polite">Load tools to see Pinky's capabilities.</div>
-    </section>
-
-    <section class="rci-card pinky-response" aria-labelledby="pinky-response-title">
-        <div class="pinky-panel-header">
-            <div>
-                <p class="eyebrow">Response</p>
-                <h2 id="pinky-response-title">Latest result</h2>
-            </div>
-            <button type="button" id="pinky-copy-response" class="secondary-button focus-ring">Copy JSON</button>
-        </div>
-        <pre id="pinky-response-output" class="ai-code-block pinky-output" aria-live="polite">No response yet.</pre>
-    </section>
-
-    <section class="rci-card pinky-confirm" aria-labelledby="pinky-confirm-title">
-        <div class="pinky-panel-header">
-            <div>
-                <p class="eyebrow">Confirmations</p>
-                <h2 id="pinky-confirm-title">Confirm a pending action</h2>
-            </div>
-        </div>
-        <form id="pinky-confirm-form" class="pinky-form">
-            <label for="pinky-confirm-token">Confirmation token</label>
-            <input type="text" id="pinky-confirm-token" placeholder="Paste token from Pinky's response">
-            <div class="pinky-actions">
-                <button type="submit" class="secondary-button focus-ring">Confirm token</button>
-            </div>
-        </form>
-    </section>
-</main>
+  </section>
+  <section id="tab-mcp" class="rci-card" style="display:none">
+    <div class="pinky-layout"><aside><button id="mcp-new" class="secondary-button">New</button><div id="mcp-conversations"></div></aside><main><div id="mcp-messages"></div><textarea id="mcp-input"></textarea><button id="mcp-send">Send</button></main></div>
+  </section>
+  <section id="tab-status" class="rci-card" style="display:none">
+    <pre id="pinky-health"></pre><pre id="pinky-live-status"></pre><div id="pinky-tools-list"></div>
+  </section>
+</div>
 </body>
 </html>
