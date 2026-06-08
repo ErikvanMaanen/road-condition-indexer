@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Kanch Group of Companies provides logistics, procurement, construction, ranching, and youth development services from Lusaka, Zambia.">
+    <title>Kanch Group of Companies | Building Solutions in Zambia</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        :root {
+            --kanch-navy: #10233f;
+            --kanch-blue: #1d4f91;
+            --kanch-gold: #d99a2b;
+            --kanch-green: #177245;
+            --kanch-ink: #1e293b;
+            --kanch-muted: #64748b;
+            --kanch-line: #dbe4ef;
+            --kanch-soft: #f4f7fb;
+            --kanch-white: #ffffff;
+            --kanch-shadow: 0 24px 60px rgba(16, 35, 63, 0.16);
+        }
+
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            margin: 0;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--kanch-ink);
+            background: var(--kanch-white);
+            line-height: 1.6;
+        }
+
+        a { color: inherit; }
+
+        .site-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.92);
+            border-bottom: 1px solid rgba(219, 228, 239, 0.9);
+            backdrop-filter: blur(12px);
+        }
+
+        .header-inner,
+        .section,
+        .hero-inner {
+            width: min(1120px, calc(100% - 2rem));
+            margin: 0 auto;
+        }
+
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1rem 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            text-decoration: none;
+            font-weight: 800;
+            color: var(--kanch-navy);
+            letter-spacing: 0.02em;
+        }
+
+        .brand-mark {
+            display: inline-grid;
+            width: 3rem;
+            height: 3rem;
+            place-items: center;
+            border-radius: 1rem;
+            color: var(--kanch-white);
+            background: linear-gradient(135deg, var(--kanch-navy), var(--kanch-blue));
+            box-shadow: 0 12px 26px rgba(29, 79, 145, 0.25);
+        }
+
+        .brand small {
+            display: block;
+            color: var(--kanch-muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        .nav-links {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.35rem 1rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        .nav-links a {
+            color: var(--kanch-navy);
+            text-decoration: none;
+        }
+
+        .nav-links a:hover,
+        .nav-links a:focus { color: var(--kanch-blue); }
+
+        .nav-cta,
+        .button-primary,
+        .button-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 2.8rem;
+            padding: 0.75rem 1rem;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 800;
+        }
+
+        .nav-cta,
+        .button-primary {
+            color: var(--kanch-white) !important;
+            background: var(--kanch-gold);
+            box-shadow: 0 12px 24px rgba(217, 154, 43, 0.25);
+        }
+
+        .button-secondary {
+            color: var(--kanch-navy);
+            background: var(--kanch-white);
+            border: 1px solid rgba(255, 255, 255, 0.55);
+        }
+
+        .hero {
+            overflow: hidden;
+            color: var(--kanch-white);
+            background:
+                radial-gradient(circle at 85% 15%, rgba(217, 154, 43, 0.32), transparent 28rem),
+                linear-gradient(135deg, rgba(16, 35, 63, 0.98), rgba(29, 79, 145, 0.94));
+        }
+
+        .hero-inner {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+            gap: 3rem;
+            align-items: center;
+            padding: 6rem 0;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0 0 1rem;
+            color: #ffdf9a;
+            font-size: 0.86rem;
+            font-weight: 900;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(2.5rem, 7vw, 5.75rem);
+            line-height: 0.95;
+            letter-spacing: -0.06em;
+        }
+
+        .hero-lead {
+            max-width: 43rem;
+            margin: 1.5rem 0 0;
+            color: rgba(255, 255, 255, 0.84);
+            font-size: clamp(1.05rem, 2vw, 1.3rem);
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.9rem;
+            margin-top: 2rem;
+        }
+
+        .hero-card {
+            position: relative;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: var(--kanch-shadow);
+            backdrop-filter: blur(14px);
+        }
+
+        .hero-card h2 { margin: 0 0 1rem; }
+
+        .quick-list {
+            display: grid;
+            gap: 0.8rem;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .quick-list li {
+            display: flex;
+            gap: 0.65rem;
+            align-items: flex-start;
+        }
+
+        .quick-list span { color: #ffdf9a; }
+
+        .section { padding: 5rem 0; }
+
+        .section-heading {
+            display: grid;
+            grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+            gap: 2rem;
+            align-items: end;
+            margin-bottom: 2.5rem;
+        }
+
+        .section-heading h2 {
+            margin: 0;
+            color: var(--kanch-navy);
+            font-size: clamp(2rem, 4vw, 3.5rem);
+            line-height: 1;
+            letter-spacing: -0.04em;
+        }
+
+        .section-heading p { margin: 0; color: var(--kanch-muted); font-size: 1.05rem; }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1.2rem;
+        }
+
+        .service-card,
+        .statement-card,
+        .feedback-card,
+        .contact-card {
+            border: 1px solid var(--kanch-line);
+            border-radius: 1.4rem;
+            background: var(--kanch-white);
+            box-shadow: 0 14px 34px rgba(16, 35, 63, 0.08);
+        }
+
+        .service-card { padding: 1.5rem; }
+
+        .service-icon {
+            display: inline-grid;
+            width: 3rem;
+            height: 3rem;
+            margin-bottom: 1rem;
+            place-items: center;
+            border-radius: 1rem;
+            color: var(--kanch-white);
+            background: linear-gradient(135deg, var(--kanch-blue), var(--kanch-green));
+            font-size: 1.3rem;
+        }
+
+        .service-card h3 { margin: 0 0 0.8rem; color: var(--kanch-navy); }
+        .service-card ul { margin: 0; padding-left: 1.1rem; color: var(--kanch-muted); }
+        .service-card li + li { margin-top: 0.35rem; }
+
+        .soft-band { background: var(--kanch-soft); }
+
+        .statement-grid,
+        .feedback-grid,
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1.2rem;
+        }
+
+        .statement-card,
+        .feedback-card,
+        .contact-card { padding: 1.6rem; }
+
+        .statement-card h3,
+        .contact-card h3 { margin-top: 0; color: var(--kanch-navy); }
+
+        .statement-card p,
+        .feedback-card p { margin-bottom: 0; color: var(--kanch-muted); }
+
+        .quote-stars { color: var(--kanch-gold); letter-spacing: 0.08em; }
+
+        .feedback-card blockquote {
+            margin: 0.8rem 0 0;
+            color: var(--kanch-ink);
+            font-size: 1.05rem;
+        }
+
+        .feedback-card cite {
+            display: block;
+            margin-top: 1rem;
+            color: var(--kanch-muted);
+            font-style: normal;
+            font-weight: 800;
+        }
+
+        .contact-section {
+            color: var(--kanch-white);
+            background:
+                radial-gradient(circle at 12% 10%, rgba(217, 154, 43, 0.24), transparent 22rem),
+                linear-gradient(135deg, var(--kanch-navy), #0b172a);
+        }
+
+        .contact-section .section-heading h2,
+        .contact-section .section-heading p { color: var(--kanch-white); }
+        .contact-section .section-heading p { opacity: 0.78; }
+
+        .contact-card {
+            color: var(--kanch-ink);
+            background: rgba(255, 255, 255, 0.96);
+        }
+
+        .contact-list {
+            display: grid;
+            gap: 0.8rem;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .contact-list a { color: var(--kanch-blue); font-weight: 800; text-decoration: none; }
+        .contact-list a:hover { text-decoration: underline; }
+
+        .footer {
+            padding: 1.5rem 0;
+            color: rgba(255, 255, 255, 0.78);
+            background: #07101f;
+            text-align: center;
+        }
+
+        .footer p { margin: 0; }
+
+        @media (max-width: 880px) {
+            .header-inner { align-items: flex-start; flex-direction: column; }
+            .nav-links { justify-content: flex-start; }
+            .hero-inner,
+            .section-heading,
+            .services-grid,
+            .statement-grid,
+            .feedback-grid,
+            .contact-grid { grid-template-columns: 1fr; }
+            .hero-inner { padding: 4rem 0; }
+        }
+
+        @media (max-width: 560px) {
+            .nav-links { display: none; }
+            .section { padding: 3.5rem 0; }
+            .hero-actions a { width: 100%; }
+            .hero-card { padding: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header" aria-label="Kanch Group website header">
+        <div class="header-inner">
+            <a class="brand" href="#top" aria-label="Kanch Group of Companies home">
+                <span class="brand-mark">KG</span>
+                <span>Kanch Group<small>of Companies</small></span>
+            </a>
+            <nav class="nav-links" aria-label="Primary navigation">
+                <a href="#businesses">Businesses</a>
+                <a href="#vision">Vision</a>
+                <a href="#feedback">Feedback</a>
+                <a class="nav-cta" href="#contact">Contact Us</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+            <div class="hero-inner">
+                <div>
+                    <p class="eyebrow">Proudly Zambian-Owned Business Group</p>
+                    <h1 id="hero-title">Kanch Group of Companies</h1>
+                    <p class="hero-lead">Building Solutions. Delivering Excellence. Creating Opportunities.</p>
+                    <p class="hero-lead">We provide reliable, professional, and customer-focused services across logistics, procurement, construction, agriculture, and youth development.</p>
+                    <div class="hero-actions">
+                        <a class="button-primary" href="tel:+260966811205">Call +260 966 811 205</a>
+                        <a class="button-secondary" href="mailto:kanchlogistics@gmail.com">Email Kanch Group</a>
+                    </div>
+                </div>
+                <aside class="hero-card" aria-label="Kanch Group service summary">
+                    <h2>Moving Business Forward</h2>
+                    <ul class="quick-list">
+                        <li><span>✓</span><strong>Local and cross-border logistics solutions</strong></li>
+                        <li><span>✓</span><strong>Procurement support for organizations and projects</strong></li>
+                        <li><span>✓</span><strong>Construction, infrastructure, and prefabricated structures</strong></li>
+                        <li><span>✓</span><strong>Agribusiness investments and youth empowerment</strong></li>
+                    </ul>
+                </aside>
+            </div>
+        </section>
+
+        <section class="section" id="businesses" aria-labelledby="businesses-title">
+            <div class="section-heading">
+                <h2 id="businesses-title">Our Businesses</h2>
+                <p>Through dedicated subsidiaries and business divisions, Kanch Group offers integrated solutions that support businesses, communities, and sustainable economic growth.</p>
+            </div>
+            <div class="services-grid">
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">🚚</span>
+                    <h3>Kanch Logistics Limited</h3>
+                    <ul>
+                        <li>Transportation and distribution services</li>
+                        <li>Local and cross-border freight services</li>
+                        <li>Customs and port clearance</li>
+                        <li>Equipment and vehicle hire</li>
+                        <li>Refrigerated transport solutions</li>
+                        <li>Container sales and leasing</li>
+                        <li>Supply and procurement services</li>
+                    </ul>
+                </article>
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">📦</span>
+                    <h3>Kanch Supplies &amp; Procurement</h3>
+                    <ul>
+                        <li>General supplies</li>
+                        <li>Office equipment and stationery</li>
+                        <li>Industrial and safety equipment</li>
+                        <li>Construction materials</li>
+                        <li>Corporate procurement solutions</li>
+                    </ul>
+                </article>
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">🏗️</span>
+                    <h3>Kanch Construction &amp; Infrastructure</h3>
+                    <ul>
+                        <li>Building construction</li>
+                        <li>Renovation and maintenance works</li>
+                        <li>Prefabricated structures and site offices</li>
+                        <li>Project management services</li>
+                    </ul>
+                </article>
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">🐄</span>
+                    <h3>Kanch Ranch</h3>
+                    <ul>
+                        <li>Cattle rearing</li>
+                        <li>Livestock production</li>
+                        <li>Agribusiness investments</li>
+                        <li>Food security initiatives</li>
+                    </ul>
+                </article>
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">⚽</span>
+                    <h3>Kanch Academy</h3>
+                    <ul>
+                        <li>Football academy programs</li>
+                        <li>Talent identification and development</li>
+                        <li>Youth empowerment initiatives</li>
+                        <li>Support for underprivileged young athletes</li>
+                    </ul>
+                </article>
+                <article class="service-card">
+                    <span class="service-icon" aria-hidden="true">🤝</span>
+                    <h3>Customer-Focused Delivery</h3>
+                    <ul>
+                        <li>Reliable communication throughout each engagement</li>
+                        <li>Professional service standards</li>
+                        <li>Solutions tailored to operational needs</li>
+                        <li>Commitment to national development</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="soft-band" id="vision" aria-labelledby="vision-title">
+            <div class="section">
+                <div class="section-heading">
+                    <h2 id="vision-title">Vision &amp; Mission</h2>
+                    <p>Our work is guided by excellence, community impact, and the belief that diversified Zambian enterprise can create lasting opportunities.</p>
+                </div>
+                <div class="statement-grid">
+                    <article class="statement-card">
+                        <h3>Our Vision</h3>
+                        <p>To be a leading diversified Zambian business group delivering value, innovation, and sustainable growth.</p>
+                    </article>
+                    <article class="statement-card">
+                        <h3>Our Mission</h3>
+                        <p>To provide high-quality services and solutions while creating opportunities, empowering communities, and contributing to national development.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="feedback" aria-labelledby="feedback-title">
+            <div class="section-heading">
+                <h2 id="feedback-title">Customer Feedback Highlights</h2>
+                <p>Clients value dependable support, timely updates, and practical solutions from the Kanch Group team.</p>
+            </div>
+            <div class="feedback-grid">
+                <article class="feedback-card">
+                    <div class="quote-stars" aria-label="Five-star rating">★★★★★</div>
+                    <blockquote>“Professional service and timely delivery. The team kept us informed throughout the process.”</blockquote>
+                    <cite>— Logistics Client</cite>
+                </article>
+                <article class="feedback-card">
+                    <div class="quote-stars" aria-label="Five-star rating">★★★★★</div>
+                    <blockquote>“Reliable transportation and excellent customer support. Highly recommended.”</blockquote>
+                    <cite>— Procurement Client</cite>
+                </article>
+            </div>
+        </section>
+
+        <section class="contact-section" id="contact" aria-labelledby="contact-title">
+            <div class="section">
+                <div class="section-heading">
+                    <h2 id="contact-title">Contact Kanch Group</h2>
+                    <p>For logistics, procurement, construction, agribusiness, or academy enquiries, contact the team for professional assistance.</p>
+                </div>
+                <div class="contact-grid">
+                    <article class="contact-card">
+                        <h3>Get in Touch</h3>
+                        <ul class="contact-list">
+                            <li><strong>Email:</strong> <a href="mailto:kanchlogistics@gmail.com">kanchlogistics@gmail.com</a></li>
+                            <li><strong>Phone:</strong> <a href="tel:+260966811205">+260 966 811 205</a></li>
+                            <li><strong>Alternative phone:</strong> <a href="tel:+260573948200">+260 573 948200</a></li>
+                        </ul>
+                    </article>
+                    <article class="contact-card">
+                        <h3>Office Locations</h3>
+                        <ul class="contact-list">
+                            <li><strong>Head Office:</strong> Along 7070 Road, Makeni, Lusaka, Zambia</li>
+                            <li><strong>Branch Office:</strong> Chingola, Zambia</li>
+                        </ul>
+                    </article>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Kanch Group of Companies — Moving Business Forward, Building a Better Future.</p>
+    </footer>
+</body>
+</html>

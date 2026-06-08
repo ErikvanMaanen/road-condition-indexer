@@ -163,3 +163,18 @@ def test_admin_cannot_delete_own_user(monkeypatch):
     response = client.delete("/manage/users/2")
 
     assert response.status_code == 400
+
+
+def test_kanch_page_is_public_without_login(monkeypatch):
+    main, _store = load_main(monkeypatch)
+    client = TestClient(main.app)
+
+    route_response = client.get("/kanch.html")
+    alias_response = client.get("/kanch")
+    static_response = client.get("/static/kanch.html")
+
+    assert route_response.status_code == 200
+    assert alias_response.status_code == 200
+    assert "Kanch Group of Companies" in route_response.text
+    assert static_response.status_code == 200
+    assert "kanchlogistics@gmail.com" in static_response.text

@@ -1260,7 +1260,7 @@ MAINTENANCE_PAGES = {
     "comprehensive-logs.html",
     "dumpert.html",
 }
-PUBLIC_STATIC_HTML = {"login.html"}
+PUBLIC_STATIC_HTML = {"login.html", "kanch.html"}
 
 # Thresholds for log filtering
 MAX_INTERVAL_SEC = float(os.getenv("RCI_MAX_INTERVAL_SEC", "15"))
@@ -1755,6 +1755,12 @@ def get_leaflet_js():
     """Serve the leaflet.js file."""
     return FileResponse(BASE_DIR / "static" / "leaflet.js", media_type="application/javascript")
 
+
+@app.get("/kanch")
+@app.get("/kanch.html")
+def read_kanch_page():
+    """Serve the public Kanch Group of Companies website."""
+    return FileResponse(BASE_DIR / "static" / "kanch.html")
 
 @app.get("/static/login.html")
 def get_login_page():
